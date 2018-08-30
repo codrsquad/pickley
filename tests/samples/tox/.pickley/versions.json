@@ -1,0 +1,6 @@
+{
+  "channels": {
+    "twine": "alpha",
+    "tox": "stable"
+  }
+}

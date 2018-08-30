@@ -1,0 +1,40 @@
+dist: xenial
+language: python
+python:
+  - 3.6
+
+install:
+  - pip install tox-travis
+
+script:
+  - tox
+
+after_success:
+  - tox -e coverage,codecov,package
+
+credentials:
+  - &pypi
+    provider: pypi
+    user: zsimic
+    password:
+      secure: RQYbcXxw3cXP2GcMuvUKsp1mHUE34wOwstF1fz+7JONnWXGZA20CyfWS6cGCcsNmgK+rjvmowDCnoG3cErAX66wuwwnL8J57+b6G8HIbJrwTsWIKRJUc5pZy+azEndahzEui8dlCBSXjOPqJeIWGr14ldW2FjZGRJHqj7uMCZkzjr1myYhe8h7yOq9XgrU7s641iO5oguau0rK4puzsNF7QK/4w3WyIWddUjCgSsHSzkUbgoLIRJ+z0dq6JR2E+yqj1khqqGAxv7e+vHH2wrcS3jnAvZdkZ7PChfSBpyGhMVsBB5IjOuwVt2X9JyC9qrxkxnzL2PzM0VGoZBkgV9uRZCoJClOAAec1RSlo20dTzMTh7opArLWPeh8wIQ+eQVoLEB6WoJHEIjyH9LxEGEnW2bZ9CO4jJ7blM7RNUrhGJzzOkFMUjwr/rGJRJUAv2daTDRqyXNzzW1QPYpSNV8CuSHFMkMOn7tUWlvyY/gGwK6C6yd5SwymdqA/fdx6ZoDDfXQ9OkFtolLgk0QmQUr1zcDqgP1dckv0uaG51rQNmX3q+t0sJhiopdNvbvaOSOQ6UGS/W3EE9ZGkzMeQRNz5kEeSUqwO3Q8rxwfy5CBS7VFy0tOeSFbC1q5pUNPJVrToiiiA08nB/77UEUKdCm3UWcKZmC5WGTw7vHRQ2Mxw0g=
+  - &github
+    provider: releases
+    api_key:
+      secure: xNA2S0u/CvEmhBf2WwHONVUM2H/SV3KX31TA9JfI/DCpiFKxohQBIt27hU0cp7uPeVe3Zi5X5V52VZgDJQiuGb0DYh8tLF9qoP5jIvOHw4xd5SiC6ohePtm62IIyaa6zeVtWgOMII5kvuCJV7KiJHsare+r/yVru3JdPRDoIBtFLvlmj13lEgUBEnV/4mALzCkWtZ2W99H98K6pzgVuZThGkuy5GOL9xlrDvHkyKao+aOJDORYW5IefD+Jz9lrb+ahn4dwcH3Kv/UTyim5ahdjqrSekVSAG0Z0I9mbeNXyCLYjqEpzQwWJHzxDeDdbLFr7mFevrLzs+/+DSP59y1oRDLe2cBYDaGNIJ+9OnZDyCp3UJRUemjm3isN0jp1M8Fahtzb4ffAe8S598C5c+shWmpA2TLWjKMrLA49BSg1HHE+cgXdTIF0LYCikRmG0IFdkLDxGqYD75qkCSPa1GZSMcLGdqy7BUHYfc+/GdWdYECu+jI2/37+ez+oSFb66xYANLVqf9SgWBnO+METrkeu8hbprHSU6NgrFUxoqOQWEU+lBshTzOHn58M1O1tYfHXXv600JgQTjLlf5xGpV3ZzBKhKKGKwzkC+7csue6a9kDs+PNFqbRsd1b+YWuupJ88HCCcun7OVVq2nb5esFQ8hNlIGcwxOWPdSQ6/14KUzgs=
+
+
+deploy:
+  - <<: *pypi
+    distributions: "sdist bdist_wheel --universal"
+    on:
+      python: 3.6
+      repo: zsimic/pickley
+      tags: true
+    skip_cleanup: true
+  - <<: *github
+    file: ".tox/package/dist/pickley"
+    on:
+      repo: zsimic/pickley
+      tags: true
+    skip_cleanup: true

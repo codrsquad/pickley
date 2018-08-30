@@ -1,0 +1,9 @@
+{
+  "channel": "beta",
+  "include": [
+    "versions.json"
+  ],
+  "stable": {
+    "tox": "1.0"
+  }
+}

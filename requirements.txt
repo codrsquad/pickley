@@ -1,0 +1,6 @@
+click
+pex
+pip
+requests
+six
+virtualenv
