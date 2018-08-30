@@ -2,7 +2,7 @@
 
 """
 url: https://github.com/zsimic
-download_url: archive/v{version}.tar.gz
+download_url: releases/download/v{version}/pickley
 """
 
 
