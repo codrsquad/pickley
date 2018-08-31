@@ -63,7 +63,7 @@ class system:
     @classmethod
     def info(cls, message, *args, **kwargs):
         LOG.info(message, *args, **kwargs)
-        if cls.PRINT:
+        if not cls.QUIET and cls.PRINT:
             print(str(message) % args)
 
     @classmethod
