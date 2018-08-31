@@ -6,19 +6,19 @@ Simple json configuration system
 
 The following locations will be examined for config (in this order, first value found wins):
 - ~/.config/pickley.json
-- <base>/pickley.json
+- <base>/.pickley.json
 
 tree <base>
 ├── .pickley/                       # Folder where pickley will build/manage/track installations
 │   ├── audit.log                   # Activity is logged here
 │   ├── tox/
+│   │   ├── .current.json           # Currently installed version
+│   │   ├── .latest.json            # Latest version as determined by querying pypi
 │   │   ├── dist/                   # Temp folder used during packaging
-│   │   ├── tox-2.9.1/              # Actual installation, as packaged by pickley
-│   │   ├── current.json            # Currently installed version
-│   │   └── latest.json             # Latest version as determined by querying pypi
-├── tox -> .pickley/tox/2.9.1/...   # Produced exe, can be a symlink or a small wrapper exe (to ensure up-to-date)
+│   │   └── tox-2.9.1/              # Actual installation, as packaged by pickley
+├── .pickley.json                   # Optional config provided by user
 ├── pickley                         # pickley itself
-└── pickley.json                    # Optional config provided by user
+└── tox -> .pickley/tox/2.9.1/...   # Produced exe, can be a symlink or a small wrapper exe (to ensure up-to-date)
 
 {
     "bundle": {
@@ -395,8 +395,6 @@ class SettingsFile:
                         continue
                     if package_name in values:
                         return Definition(name, self, "%s.%s" % (key, name))
-            elif main:
-                print("check %s" % main)
         return self.get_definition("default.%s" % key)
 
     def get_definition(self, key):
@@ -608,7 +606,7 @@ class Settings:
                 fpath = os.path.join(self.cache.path, fname)
                 if not os.path.isdir(fpath):
                     continue
-                fpath = os.path.join(fpath, "current.json")
+                fpath = os.path.join(fpath, ".current.json")
                 if not os.path.exists(fpath):
                     continue
                 result.append(fname)

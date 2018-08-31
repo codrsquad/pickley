@@ -63,19 +63,19 @@ class system:
     def info(cls, message, *args, **kwargs):
         LOG.info(message, *args, **kwargs)
         if cls.PRINT:
-            print(message % args)
+            print(str(message) % args)
 
     @classmethod
     def warning(cls, message, *args, **kwargs):
         LOG.warning(message, *args, **kwargs)
         if cls.PRINT:
-            print("WARNING: %s" % (message % args))
+            print("WARNING: %s" % (str(message) % args))
 
     @classmethod
     def error(cls, message, *args, **kwargs):
         LOG.error(message, *args, **kwargs)
         if cls.PRINT:
-            print("ERROR: %s" % (message % args))
+            print("ERROR: %s" % (str(message) % args))
 
     @classmethod
     def abort(cls, message):

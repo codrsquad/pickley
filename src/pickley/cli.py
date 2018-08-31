@@ -119,7 +119,7 @@ def main(debug, quiet, dryrun):
     system.PRINT = not debug and not quiet
     system.QUIET = quiet
 
-    SETTINGS.add(["~/.config/pickley.json", "pickley.json"])
+    SETTINGS.add(["~/.config/pickley.json", ".pickley.json"])
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None
