@@ -132,17 +132,34 @@ class PexRunner(Runner):
                 return "py2.py3-none" in fname
         return False
 
-    def build(self, script_name, package_name, version, destination):
+    def shebang(self, python_interpreter):
+        """
+        :param str|None python_interpreter: Python interpreter to use
+        :return str|None: Suitable shebang
+        """
+        if not python_interpreter:
+            return None
+        if os.path.isabs(python_interpreter):
+            return python_interpreter
+        return "/usr/bin/env %s" % python_interpreter
+
+    def build(self, script_name, package_name, version, destination, python_interpreter=None):
         """
         :param str script_name: Entry point name
         :param str package_name: Pypi package name
         :param str version: Specific version of 'package_name' to use
         :param str destination: Path where to generate pex
+        :param str|None python_interpreter: Python interpreter to use
         :return str|None: None if successful, problem description otherwise
         """
         system.delete_file(destination)
         args = []
         args.extend(["-c%s" % script_name, "-o%s" % destination, "%s==%s" % (package_name, version)])
-        if self.is_universal(package_name, version):
-            args.append('--python-shebang=/usr/bin/env python')
+        if not python_interpreter and self.is_universal(package_name, version):
+            python_interpreter = "python"
+        if python_interpreter:
+            args.append("--python=%s" % python_interpreter)
+        shebang = self.shebang(python_interpreter)
+        if shebang:
+            args.append("--python-shebang=%s" % shebang)
         return self.run(args)

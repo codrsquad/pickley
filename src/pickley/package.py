@@ -320,6 +320,9 @@ class Packager(object):
         self.current = VersionMeta(self.name, "current")
         self.latest = VersionMeta(self.name, "latest")
         self.desired = VersionMeta(self.name)
+        self.dist_folder = SETTINGS.cache.full_path(self.name)
+        self.source_folder = None
+        self.python_interpreter = None
 
     def __repr__(self):
         return "%s %s" % (self.implementation_name, self.name)
@@ -352,6 +355,25 @@ class Packager(object):
             if self._entry_points is None:
                 self._entry_points = [self.name] if system.DRYRUN else []
         return self._entry_points
+
+    def set_dist_folder(self, dist_folder):
+        """
+        :param str|None dist_folder: Set 'dist_folder' (where packages end up being delivered)
+        """
+        if dist_folder:
+            self.dist_folder = system.resolved_path(dist_folder)
+
+    def set_source_folder(self, source_folder):
+        """
+        :param str|None source_folder: Set 'source_folder' (for local packaging, from not yet released checkout)
+        """
+        self.source_folder = system.resolved_path(source_folder)
+
+    def set_python_interpreter(self, python_interpreter):
+        """
+        :param str|None python_interpreter: Python interpreter to use (full path, or "python3.6")
+        """
+        self.python_interpreter = system.resolved_path(python_interpreter)
 
     def refresh_entry_points(self, folder, version):
         """
@@ -432,14 +454,16 @@ class Packager(object):
 
     def install(self, intent="install", force=False):
         """
-        Install this package
+        :param str intent: "install" or "bootstrap"
+        :param bool force: If True, re-install even if package is already installed
         """
         self.refresh_current()
         self.refresh_desired()
         if not self.desired.valid:
             system.abort("Can't %s %s: %s", intent, self.name, self.desired.problem)
         if not force and self.current.equivalent(self.desired):
-            system.info("%s is already installed", self.desired)
+            if intent == "install":
+                system.info("%s is already installed", self.desired)
             return
 
         self.effective_install(self.desired.version)
@@ -452,7 +476,6 @@ class Packager(object):
     def effective_install(self, version):
         """
         :param str version: Effective version to install
-        :return int: Exit code
         """
         system.abort("Not implemented")
 
@@ -519,39 +542,33 @@ class Pex(WheelBasedPackager):
         """
         super(Pex, self).__init__(name, cache=cache)
         self.pex = PexRunner(self.cache)
-        self.destination = SETTINGS.cache.full_path(self.name)
 
-    def package(self, version=None, destination=None, wheel_source=None):
+    def package(self, version=None):
         """
         :param str|None version: If provided, append version as suffix to produced pex
-        :param str|None destination: Optional path to folder where to store final pexes
-        :param str|None wheel_source: Optional path to project folder (from setup.py if specified, rather than from pypi)
         :return list|None: List of produced packages (files), if successful
         """
-        if destination:
-            self.destination = system.resolved_path(destination)
-
-        if not version and not wheel_source:
-            system.abort("Need either wheel_source or version in order to package")
+        if not version and not self.source_folder:
+            system.abort("Need either source_folder or version in order to package")
 
         if not version:
-            setup_py = os.path.join(wheel_source, "setup.py")
+            setup_py = os.path.join(self.source_folder, "setup.py")
             version = system.run_program(sys.executable, setup_py, "--version", fatal=False)
             if not version:
                 system.abort("Could not determine version from %s", short(setup_py))
 
-        error = self.pip.wheel(wheel_source if wheel_source else "%s==%s" % (self.name, version))
+        error = self.pip.wheel(self.source_folder if self.source_folder else "%s==%s" % (self.name, version))
         if error:
             system.abort("pip wheel failed: %s", error)
 
         self.refresh_entry_points(self.pip.cache, version)
         result = []
-        system.ensure_folder(self.destination, folder=True)
+        system.ensure_folder(self.dist_folder, folder=True)
         for name in self.entry_points:
-            dest = name if wheel_source else "%s-%s" % (name, version)
-            dest = os.path.join(self.destination, dest)
+            dest = name if self.source_folder else "%s-%s" % (name, version)
+            dest = os.path.join(self.dist_folder, dest)
 
-            error = self.pex.build(name, self.name, version, dest)
+            error = self.pex.build(name, self.name, version, dest, python_interpreter=self.python_interpreter)
             if error:
                 system.abort("pex command failed: %s", error)
             result.append(dest)
@@ -561,7 +578,6 @@ class Pex(WheelBasedPackager):
     def effective_install(self, version):
         """
         :param str version: Effective version to install
-        :return int: Exit code
         """
         # Delete any previously present venv
         system.delete_file(SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version)))
@@ -590,7 +606,6 @@ class Virtualenv(Packager):
     def effective_install(self, version):
         """
         :param str version: Effective version to install
-        :return int: Exit code
         """
         venv = virtualenv.__file__
         if not venv:
@@ -605,7 +620,11 @@ class Virtualenv(Packager):
             # Create venv in temp folder, to support the bootstrap case
             install_folder_temp = "%s.tmp" % install_folder
 
-        system.run_program(system.PYTHON, venv, install_folder_temp)
+        args = [venv, install_folder_temp]
+        if self.python_interpreter:
+            args.append("-p")
+            args.append(self.python_interpreter)
+        system.run_program(system.PYTHON, *args)
 
         args = ["--disable-pip-version-check", "install", "%s==%s" % (self.name, version)]
         if SETTINGS.index:

@@ -62,8 +62,9 @@ class system:
 
     @classmethod
     def info(cls, message, *args, **kwargs):
+        do_print = kwargs.pop("print", cls.PRINT)
         LOG.info(message, *args, **kwargs)
-        if not cls.QUIET and cls.PRINT:
+        if not cls.QUIET and do_print:
             print(str(message) % args)
 
     @classmethod

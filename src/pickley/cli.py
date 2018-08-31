@@ -70,10 +70,10 @@ def setup_audit_log():
     handler.setLevel(logging.DEBUG)
     handler.setFormatter(logging.Formatter("%(asctime)s [%(process)s] %(levelname)s - %(message)s"))
     logging.root.addHandler(handler)
-    system.debug("Arguments: %s", system.represented_args(sys.argv))
+    system.info(": %s", system.represented_args(sys.argv), print=False)
 
 
-def bootstrap():
+def bootstrap(python_interpreter):
     """
     Bootstrap pickley: re-install it as venv if need be
 
@@ -96,6 +96,7 @@ def bootstrap():
 
     # Re-install ourselves with correct packager
     system.debug("Bootstrapping %s with %s", system.PICKLEY, p.implementation_name)
+    p.set_python_interpreter(python_interpreter)
     p.install(intent="bootstrap")
     p.cleanup()
 
@@ -157,8 +158,6 @@ def check(packages):
             p = get_packager(name)
             p.refresh_current()
             p.refresh_desired()
-            system.debug("desired: %s", repr(p.desired))
-            system.debug("current: %s", repr(p.current))
             if not p.desired.valid:
                 system.error(p.desired)
                 code = 1
@@ -198,17 +197,19 @@ def list():
 @main.command()
 @packager_option()
 @click.option('--force', '-f', is_flag=True, help="Force installation, even if already installed")
+@click.option('--python', help="Python interpreter to use")
 @click.argument('packages', nargs=-1, required=True)
-def install(packager, force, packages):
+def install(packager, force, python, packages):
     """
     Install a package from pypi
     """
     setup_audit_log()
-    bootstrap()
+    bootstrap(python)
 
     packages = SETTINGS.resolved_packages(packages)
     for name in packages:
         p = get_packager(name, packager)
+        p.set_python_interpreter(python)
         p.install(force=force)
         p.cleanup()
 
@@ -218,9 +219,10 @@ def install(packager, force, packages):
 @main.command()
 @click.option('--dist', '-d', default='./dist', show_default=True, help="Folder where to produce package")
 @click.option('--build', '-b', default='./build', show_default=True, help="Folder to use as build cache")
+@click.option('--python', help="Python interpreter to use")
 @packager_option(default="pex")
 @click.argument('folder', required=True)
-def package(dist, build, packager, folder):
+def package(dist, build, python, packager, folder):
     """
     Package a project from source checkout
     """
@@ -245,8 +247,11 @@ def package(dist, build, packager, folder):
             system.abort("Could not determine package name from %s", short(setup_py))
 
     p = get_packager(name, packager, cache=build)
+    p.set_dist_folder(dist)
+    p.set_source_folder(folder)
+    p.set_python_interpreter(python)
     if hasattr(p, 'package'):
-        r = p.package(destination=dist, wheel_source=folder)
+        r = p.package()
         system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))
         sys.exit(0)
 
