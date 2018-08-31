@@ -467,7 +467,7 @@ class Packager(object):
 
         for name in self.entry_points:
             target = SETTINGS.base.full_path(name)
-            if not self.current.file_exists:
+            if self.name != system.PICKLEY and not self.current.file_exists:
                 uninstall_existing(target)
             if name != self.name:
                 # Delete any previously present delivery
