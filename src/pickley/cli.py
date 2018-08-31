@@ -183,8 +183,6 @@ def list():
     """
     List installed packages
     """
-    from pickley.uninstall import uninstall_existing
-    uninstall_existing("/usr/local/bin/mgit")
     setup_audit_log()
     packages = SETTINGS.current_names()
     if not packages:
