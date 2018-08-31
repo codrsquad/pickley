@@ -193,9 +193,8 @@ def list():
 @main.command()
 @packager_option()
 @click.option('--force', '-f', is_flag=True, help="Force installation, even if already installed")
-@click.option('--diagnostics', '-d', is_flag=True, help="Log diagnostics info")
 @click.argument('packages', nargs=-1, required=True)
-def install(packager, force, diagnostics, packages):
+def install(packager, force, packages):
     """
     Install a package from pypi
     """
@@ -207,9 +206,6 @@ def install(packager, force, diagnostics, packages):
         p = get_packager(name, packager)
         p.install(force=force)
         p.cleanup()
-
-    if diagnostics:
-        system.info("queried keys: %s", ", ".join(sorted(SETTINGS.queried_keys)))
 
     sys.exit(0)
 

@@ -31,11 +31,11 @@ tree <base>
     },
     "default": {
         "channel": "latest",
-        "delivery": "wrapper, or symlink, or copy",
+        "delivery": "wrap, or symlink, or copy",
         "packager": "virtualenv"
     },
     "delivery": {
-        "wrapper": "logfetch mgit"
+        "wrap": "logfetch mgit"
     },
     "include": [
         "~/foo/pickley.json"
@@ -304,7 +304,6 @@ class SettingsFile:
         :param Settings parent: Parent settings object
         :param str|None path: Path to settings file
         """
-        self.queried_keys = set()
         self.parent = parent
         self.path = short(path) or "defaults"
         self.folder = system.parent_folder(path)
@@ -408,7 +407,6 @@ class SettingsFile:
         """
         if not key:
             return None
-        self.queried_keys.add(key)
         if "." in key:
             prefix, _, leaf = key.rpartition(".")
             definition = self.get_definition(prefix)
@@ -471,14 +469,6 @@ class Settings:
 
     def __repr__(self):
         return "[%s] %s" % (len(self.children), self.base)
-
-    @property
-    def queried_keys(self):
-        result = set()
-        for child in self.children:
-            result.update(child.queried_keys)
-        result.update(self.defaults.queried_keys)
-        return result
 
     def add(self, paths, base=None):
         """

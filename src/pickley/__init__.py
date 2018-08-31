@@ -167,34 +167,6 @@ class system:
             raise
 
     @classmethod
-    def copy_file(cls, source, dest):
-        """ Copy file 'source' -> 'dest' """
-        if cls.DRYRUN:
-            cls.debug("Would copy %s -> %s", short(source), short(dest))
-            return
-
-        if not os.path.exists(source):
-            cls.error("Can't copy %s -> %s, source does not exist", short(source), short(dest))
-            return
-
-        try:
-            cls.debug("Copying %s -> %s", short(source), short(dest))
-            cls.ensure_folder(dest)
-            cls.delete_file(dest)
-
-            if os.path.isdir(source):
-                shutil.copytree(source, dest, symlinks=False)
-            else:
-                shutil.copy(source, dest)
-
-            # Make sure last modification time is preserved
-            shutil.copystat(source, dest)
-
-        except Exception as e:
-            cls.error("Can't copy %s -> %s: %s", short(source), short(dest), e)
-            raise
-
-    @classmethod
     def delete_file(cls, path):
         """ Delete file/folder with 'path' """
         islink = os.path.islink(path)
@@ -215,36 +187,6 @@ class system:
         except Exception as e:
             cls.error("Can't delete %s: %s", short(path), e)
             raise
-
-    @classmethod
-    def symlink(cls, linkpath, target):
-        """
-        Create symlink linkpath -> target
-
-        :param str linkpath: Path to the symlink to be created
-        :param str target: Path to where that symlink should point to
-        """
-        actual_target = target
-        if os.path.isabs(target) and os.path.isabs(linkpath):
-            linkfolder = cls.parent_folder(linkpath)
-            if cls.parent_folder(target).startswith(linkfolder):
-                # Use relative path if target is under linkpath
-                actual_target = os.path.relpath(target, linkfolder)
-
-        if cls.DRYRUN:
-            cls.debug("Would symlink %s -> %s", short(linkpath), short(actual_target))
-            return
-
-        if not os.path.exists(target):
-            cls.error("%s does not exist, can't symlink %s to it", short(target), short(linkpath))
-            return
-
-        try:
-            cls.delete_file(linkpath)
-            cls.debug("Creating symlink %s -> %s", short(linkpath), short(actual_target))
-            os.symlink(actual_target, linkpath)
-        except Exception as e:
-            cls.error("Can't symlink %s -> %s: %s", short(linkpath), short(actual_target), e)
 
     @classmethod
     def make_executable(cls, path):
