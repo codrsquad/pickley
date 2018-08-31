@@ -410,7 +410,10 @@ class SettingsFile:
             if not definition:
                 return None
             if isinstance(definition.value, dict):
-                return Definition(definition.value.get(leaf), self, key)
+                value = definition.value.get(leaf)
+                if value is not None:
+                    return Definition(value, self, key)
+                return None
             if definition.value is not None:
                 system.debug("'%s' is of type %s (not a dict) in '%s'", prefix, type(definition.value), short(self.path))
             return None
