@@ -78,8 +78,8 @@ class system:
             print("ERROR: %s" % (str(message) % args))
 
     @classmethod
-    def abort(cls, message):
-        cls.error(message)
+    def abort(cls, message, *args, **kwargs):
+        cls.error(message, *args, **kwargs)
         sys.exit(1)
 
     @classmethod
@@ -240,17 +240,18 @@ class system:
         full_path = cls.which(program)
 
         fatal = kwargs.pop("fatal", True)
+        logger = kwargs.pop("logger", cls.debug)
         dryrun = fatal and cls.DRYRUN
         message = "Would run" if dryrun else "Running"
         message = "%s: %s %s" % (message, short(full_path or program), cls.represented_args(args))
-        cls.debug(message)
+        logger(message)
 
         if dryrun:
             return message
 
         if not full_path:
             if fatal:
-                cls.abort("%s is not installed" % program)
+                cls.abort("%s is not installed", program)
             return None
 
         stdout = kwargs.pop("stdout", subprocess.PIPE)
@@ -271,7 +272,7 @@ class system:
                     info = ": %s\n%s" % (error, output)
                 else:
                     info = ""
-                cls.abort("%s exited with code %s%s" % (program, p.returncode, info))
+                cls.abort("%s exited with code %s%s", program, p.returncode, info)
             return None
 
         return output or error or "<no output>"

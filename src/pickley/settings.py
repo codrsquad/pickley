@@ -225,10 +225,9 @@ class JsonSerializable:
 
         try:
             with open(path, 'rt') as fh:
-                system.debug("Reading %s", short(path))
                 data = json.load(fh)
                 if default is not None and type(data) != type(default):
-                    system.warning("Wrong type %s for %s, expecting %s" % (type(data), short(path), type(default)))
+                    system.debug("Wrong type %s for %s, expecting %s" % (type(data), short(path), type(default)))
                 return data
 
         except Exception as e:

@@ -56,10 +56,10 @@ def get_packager(name, packager=None, cache=None):
     """
     pkg = packager or PACKAGERS.resolved(name)
     if not pkg:
-        system.abort("Can't determine packager to use for '%s'" % name)
+        system.abort("Can't determine packager to use for '%s'", name)
     if issubclass(pkg, Packager):
         return pkg(name, cache=cache)
-    system.abort("Invalid packager implementation for '%s': %s" % (name, pkg.__class__.__name__))
+    system.abort("Invalid packager implementation for '%s': %s", name, pkg.__class__.__name__)
 
 
 def setup_audit_log():
@@ -100,6 +100,7 @@ def bootstrap():
     p.cleanup()
 
     # Rerun with same args, to pick up freshly bootstrapped installation
+    system.PRINT = False
     system.run_program(*sys.argv, stdout=sys.stdout, stderr=sys.stderr)
     if system.DRYRUN:
         return
@@ -115,8 +116,12 @@ def main(debug, quiet, dryrun):
     """
     Package manager for python CLIs
     """
+    if dryrun:
+        debug = True
+    if debug:
+        quiet = False
     system.DRYRUN = dryrun
-    system.PRINT = not debug and not quiet
+    system.PRINT = not debug
     system.QUIET = quiet
 
     SETTINGS.add(["~/.config/pickley.json", ".pickley.json"])
@@ -128,9 +133,9 @@ def main(debug, quiet, dryrun):
     logging.root.setLevel(logging.INFO if quiet else logging.DEBUG)
 
     if debug:
-        # Log to console only with --debug
+        # Log to console with --debug or --dryrun
         console = logging.StreamHandler()
-        console.setLevel(logging.DEBUG if debug else logging.WARNING)
+        console.setLevel(logging.DEBUG)
         console.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
         logging.root.addHandler(console)
 
@@ -178,6 +183,8 @@ def list():
     """
     List installed packages
     """
+    from pickley.uninstall import uninstall_existing
+    uninstall_existing("/usr/local/bin/mgit")
     setup_audit_log()
     packages = SETTINGS.current_names()
     if not packages:
@@ -227,17 +234,17 @@ def package(dist, build, packager, folder):
     setup_audit_log()
 
     if not os.path.isdir(folder):
-        system.abort("Folder %s does not exist" % short(folder))
+        system.abort("Folder %s does not exist", short(folder))
 
     setup_py = os.path.join(folder, "setup.py")
     if not os.path.exists(setup_py):
-        system.abort("No setup.py in %s" % short(folder))
+        system.abort("No setup.py in %s", short(folder))
 
     with cd(folder):
         # Some setup.py's assume their working folder is the folder where they're in
         name = system.run_program(sys.executable, setup_py, "--name", fatal=False)
         if not name:
-            system.abort("Could not determine package name from %s" % short(setup_py))
+            system.abort("Could not determine package name from %s", short(setup_py))
 
     p = get_packager(name, packager, cache=build)
     if hasattr(p, 'package'):
@@ -245,7 +252,7 @@ def package(dist, build, packager, folder):
         system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))
         sys.exit(0)
 
-    system.abort("Packaging folders via '%s' is not supported" % p.implementation_name)
+    system.abort("Packaging folders via '%s' is not supported", p.implementation_name)
 
 
 @main.command()

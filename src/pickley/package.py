@@ -10,6 +10,7 @@ from pickley import ImplementationMap, short, system
 from pickley.install import PexRunner, PipRunner
 from pickley.pypi import latest_pypi_version, read_entry_points
 from pickley.settings import JsonSerializable, SETTINGS
+from pickley.uninstall import uninstall_existing
 
 
 PACKAGERS = ImplementationMap(SETTINGS, "packager")
@@ -94,13 +95,12 @@ class DeliveryMethod:
         """
         return self.__class__.class_implementation_name()
 
-    def install(self, entry_point, source, package_name):
+    def install(self, target, source, package_name):
         """
-        :param str entry_point: Name of entry-point being installed
+        :param str target: Full path of executable to deliver (<base>/<entry_point>)
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         :param str package_name: Associated pypi package name
         """
-        target = SETTINGS.base.full_path(entry_point)
         system.delete_file(target)
         if system.DRYRUN:
             system.debug("Would %s %s (source: %s)", self.implementation_name, short(target), short(source))
@@ -240,6 +240,13 @@ class VersionMeta(JsonSerializable):
         """
         return bool(self.version) and not self._problem
 
+    @property
+    def file_exists(self):
+        """
+        :return bool: True if corresponding json file exists
+        """
+        return self._path and os.path.exists(self._path)
+
     def equivalent(self, other):
         """
         :param VersionMeta other: VersionMeta to compare to
@@ -355,7 +362,7 @@ class Packager(object):
             return
         self._entry_points = self.get_entry_points(folder, version)
         if not self._entry_points:
-            system.abort("'%s' is not a CLI, it has no console_scripts entry points" % self.name)
+            system.abort("'%s' is not a CLI, it has no console_scripts entry points", self.name)
         JsonSerializable.save_json(self._entry_points, self.entry_points_path)
 
     def get_entry_points(self, folder, version):
@@ -364,7 +371,7 @@ class Packager(object):
         :param str version: Version of package
         :return list|None: Determine entry points for pypi package with 'self.name'
         """
-        system.abort("get_entry_points not implemented for %s" % self.implementation_name)
+        system.abort("get_entry_points not implemented for %s", self.implementation_name)
 
     def cleanup(self):
         """Delete build cache and older installs"""
@@ -423,12 +430,6 @@ class Packager(object):
             return
         self.desired.invalidate("can't determine %s version" % configured.channel)
 
-    def clean_existing(self):
-        """
-        Clean existing installation of same target
-        """
-        pass
-
     def install(self, intent="install", force=False):
         """
         Install this package
@@ -436,7 +437,7 @@ class Packager(object):
         self.refresh_current()
         self.refresh_desired()
         if not self.desired.valid:
-            system.abort("Can't %s %s: %s" % (intent, self.name, self.desired.problem))
+            system.abort("Can't %s %s: %s", intent, self.name, self.desired.problem)
         if not force and self.current.equivalent(self.desired):
             system.info("%s is already installed", self.desired)
             return
@@ -462,14 +463,17 @@ class Packager(object):
         """
         deliverer = DELIVERERS.resolved(self.name)
         if not deliverer:
-            system.abort("No delivery type configured for %s" % self.name)
+            system.abort("No delivery type configured for %s", self.name)
 
         for name in self.entry_points:
+            target = SETTINGS.base.full_path(name)
+            if not self.current.file_exists:
+                uninstall_existing(target)
             if name != self.name:
                 # Delete any previously present delivery
                 system.delete_file(SETTINGS.cache.full_path(self.name, "%s-%s" % (name, version)))
             path = source.format(cache=SETTINGS.cache.full_path(self.name), name=name, version=version)
-            deliverer().install(name, path, self.name)
+            deliverer().install(target, path, self.name)
 
 
 class WheelBasedPackager(Packager):
@@ -534,11 +538,11 @@ class Pex(WheelBasedPackager):
             setup_py = os.path.join(wheel_source, "setup.py")
             version = system.run_program(sys.executable, setup_py, "--version", fatal=False)
             if not version:
-                system.abort("Could not determine version from %s" % short(setup_py))
+                system.abort("Could not determine version from %s", short(setup_py))
 
         error = self.pip.wheel(wheel_source if wheel_source else "%s==%s" % (self.name, version))
         if error:
-            system.abort("pip wheel failed: %s" % error)
+            system.abort("pip wheel failed: %s", error)
 
         self.refresh_entry_points(self.pip.cache, version)
         result = []
@@ -549,7 +553,7 @@ class Pex(WheelBasedPackager):
 
             error = self.pex.build(name, self.name, version, dest)
             if error:
-                system.abort("pex command failed: %s" % error)
+                system.abort("pex command failed: %s", error)
             result.append(dest)
 
         return result
