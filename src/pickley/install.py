@@ -1,15 +1,11 @@
 
-import logging
 import os
 
 from pex.bin.pex import main as pex_main
 from pip._internal import main as pip_main
 
-from pickley import capture_output, delete_file, ensure_folder, flattened, represented_args
+from pickley import capture_output, system
 from pickley.settings import SETTINGS
-
-
-LOG = logging.getLogger(__name__)
 
 
 def add_paths(result, env_var, *paths):
@@ -43,15 +39,15 @@ class Runner:
         self.cache = cache
 
     def run(self, *args):
-        args = flattened([self.prelude_args(), args], unique=False)
+        args = system.flattened([self.prelude_args(), args], unique=False)
 
-        if SETTINGS.dryrun:
-            LOG.debug("Would run: %s %s", self.name, represented_args(args))
+        if system.DRYRUN:
+            system.debug("Would run: %s %s", self.name, system.represented_args(args))
             return None
 
-        ensure_folder(self.cache, folder=True, dryrun=SETTINGS.dryrun)
-        LOG.debug("Running %s %s", self.name, represented_args(args))
-        with capture_output(self.cache, env=self.custom_env(), dryrun=SETTINGS.dryrun) as captured:
+        system.ensure_folder(self.cache, folder=True)
+        system.debug("Running %s %s", self.name, system.represented_args(args))
+        with capture_output(self.cache, env=self.custom_env()) as captured:
             try:
                 exit_code = self.effective_run(args)
             except SystemExit as e:
@@ -144,7 +140,7 @@ class PexRunner(Runner):
         :param str destination: Path where to generate pex
         :return str|None: None if successful, problem description otherwise
         """
-        delete_file(destination, dryrun=SETTINGS.dryrun)
+        system.delete_file(destination)
         args = []
         args.extend(["-c%s" % script_name, "-o%s" % destination, "%s==%s" % (package_name, version)])
         if self.is_universal(package_name, version):

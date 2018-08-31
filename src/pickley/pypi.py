@@ -1,15 +1,13 @@
 import json
-import logging
 import os
 import re
 from distutils.version import StrictVersion
 
 from six.moves.urllib.request import Request, urlopen
 
-from pickley import decode
+from pickley import decode, system
 
 
-LOG = logging.getLogger(__name__)
 RE_HTML_VERSION = re.compile(r'href=".+/([^/]+)\.tar\.gz#')
 
 
@@ -19,13 +17,13 @@ def request_get(url):
     :return str: Response body
     """
     try:
-        LOG.debug("GET %s" % url)
+        system.debug("GET %s", url)
         request = Request(url)              # nosec
         response = urlopen(request).read()  # nosec
         return response and decode(response).strip()
 
     except Exception as e:
-        LOG.debug("GET %s failed: %s", url, e, exc_info=e)
+        system.debug("GET %s failed: %s", url, e, exc_info=e)
 
     return None
 
@@ -51,31 +49,32 @@ def latest_pypi_version(url, name):
         return None
 
     if data[0] == '{':
+        # See https://warehouse.pypa.io/api-reference/json/
         data = json.loads(data)
         if isinstance(data, dict):
             return data.get('info', {}).get('version')
 
         return None
 
-    versions = []
+    # Legacy mode: parse returned HTML
     prefix = "%s-" % name
+    latest = None
+    latest_text = None
     for line in data.splitlines():
         m = RE_HTML_VERSION.search(line)
         if m:
             value = m.group(1)
             if value.startswith(prefix):
                 try:
+                    version_text = value[len(prefix):]
                     value = StrictVersion(value[len(prefix):])
-                    if not value.prerelease:
-                        versions.append(value)
+                    if not value.prerelease and latest is None or latest < value:
+                        latest = value
+                        latest_text = version_text
                 except ValueError:
                     pass
 
-    if versions:
-        versions = sorted(versions, reverse=True)
-        return str(versions[0])
-
-    return None
+    return latest_text
 
 
 def read_entry_points(lines):

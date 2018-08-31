@@ -24,7 +24,7 @@ tree <base>
     "bundle": {
         "mybundle": "tox twine"
     },
-    "channels": {
+    "channel": {
         "stable": {
             "tox": "1.0"
         }
@@ -33,6 +33,9 @@ tree <base>
         "channel": "latest",
         "delivery": "wrapper, or symlink, or copy",
         "packager": "virtualenv"
+    },
+    "delivery": {
+        "wrapper": "logfetch mgit"
     },
     "include": [
         "~/foo/pickley.json"
@@ -49,16 +52,12 @@ tree <base>
 """
 
 import json
-import logging
 import os
 import sys
 
 import six
 
-from pickley import ensure_folder, flattened, represented_args, resolved_path, short
-
-
-LOG = logging.getLogger(__name__)
+from pickley import short, system
 
 
 def same_type(t1, t2):
@@ -88,8 +87,8 @@ def add_representation(result, data, indent=""):
     if isinstance(data, dict):
         for key, value in data.items():
             if isinstance(value, list):
-                brief = represented_args(value, separator=", ")
-                if len(brief) < 60:
+                brief = system.represented_args(value, separator=", ")
+                if len(brief) < 90:
                     result.append("%s%s: [%s]" % (indent, short(key), brief))
                     continue
             if not isinstance(value, (dict, list)):
@@ -134,11 +133,11 @@ class JsonSerializable:
         for key, value in data.items():
             key = key.replace("-", "_")
             if not hasattr(self, key):
-                LOG.debug("%s is not an attribute of %s", key, self.__class__.__name__)
+                system.debug("%s is not an attribute of %s", key, self.__class__.__name__)
                 continue
             attr = getattr(self, key)
             if attr is not None and not same_type(value, attr):
-                LOG.debug(
+                system.debug(
                     "Wrong type %s for %s.%s in %s, expecting %s",
                     type(value),
                     self.__class__.__name__,
@@ -202,16 +201,16 @@ class JsonSerializable:
         if data is None or not path:
             return
         try:
-            path = resolved_path(path)
-            ensure_folder(path, dryrun=SETTINGS.dryrun)
-            if SETTINGS.dryrun:
-                LOG.debug("Would save %s", short(path))
+            path = system.resolved_path(path)
+            system.ensure_folder(path)
+            if system.DRYRUN:
+                system.debug("Would save %s", short(path))
             else:
                 with open(path, 'wt') as fh:
                     json.dump(data, fh, sort_keys=True, indent=2)
 
         except Exception as e:
-            LOG.warning("Couldn't save %s: %s", short(path), e)
+            system.warning("Couldn't save %s: %s" % (short(path), e))
 
     @staticmethod
     def get_json(path, default=None):
@@ -220,20 +219,20 @@ class JsonSerializable:
         :param dict|list default: Default if file is not present, or if it's not json
         :return dict|list: Deserialized data from file
         """
-        path = resolved_path(path)
+        path = system.resolved_path(path)
         if not path or not os.path.exists(path):
             return default
 
         try:
             with open(path, 'rt') as fh:
-                LOG.debug("Reading %s", short(path))
+                system.debug("Reading %s", short(path))
                 data = json.load(fh)
                 if default is not None and type(data) != type(default):
-                    LOG.warning("Wrong type %s for %s, expecting %s", type(data), short(path), type(default))
+                    system.warning("Wrong type %s for %s, expecting %s" % (type(data), short(path), type(default)))
                 return data
 
         except Exception as e:
-            LOG.warning("Invalid json file %s: %s", short(path), e)
+            system.warning("Invalid json file %s: %s" % (short(path), e))
             return default
 
 
@@ -247,7 +246,7 @@ class FolderBase(object):
         :param str path: Path to folder
         :param str|None name: Name of this folder (defaults to basename of 'path')
         """
-        self.path = resolved_path(path)
+        self.path = system.resolved_path(path)
         self.name = name or os.path.basename(path)
 
     def relative_path(self, path):
@@ -273,18 +272,20 @@ class Definition:
     Defined value, with origin where the value came from
     """
 
-    def __init__(self, value, source=None):
+    def __init__(self, value, source, key):
         """
         :param value: Actual value
-        :param SettingsFile|None source: Where value was defined
+        :param SettingsFilesource source: Where value was defined
+        :param str key: Under what key it was defined
         """
         self.value = value
         self.source = source
+        self.key = key
         self.channel = None
 
     def __repr__(self):
         channel = " [%s]" % self.channel if self.channel else ""
-        source = " from %s" % short(self.source.path) if self.source else ""
+        source = " from %s:%s" % (short(self.source.path), self.key)
         return "%s%s%s" % (self.value, source, channel)
 
     def __str__(self):
@@ -303,9 +304,10 @@ class SettingsFile:
         :param Settings parent: Parent settings object
         :param str|None path: Path to settings file
         """
+        self.queried_keys = set()
         self.parent = parent
         self.path = short(path) or "defaults"
-        self.folder = path and os.path.dirname(resolved_path(path))
+        self.folder = system.parent_folder(path)
         self._contents = None
 
     def __repr__(self):
@@ -334,12 +336,12 @@ class SettingsFile:
         if names:
             for name in names:
                 if name.startswith("bundle:"):
-                    bundle = self.get_value("bundle.%s" % name[7:])
-                    if bundle:
-                        result.extend(flattened(bundle, separator=" "))
+                    bundle = self.get_definition("bundle.%s" % name[7:])
+                    if bundle and bundle.value:
+                        result.extend(system.flattened(bundle.value, separator=" "))
                         continue
                 result.append(name)
-        return flattened(result, separator=" ")
+        return system.flattened(result, separator=" ")
 
     def flatten(self, key, separator=None, direct=False):
         if not self._contents:
@@ -348,11 +350,11 @@ class SettingsFile:
         if not node:
             return
         if direct:
-            self._contents[key] = flattened(node, separator=separator)
+            self._contents[key] = system.flattened(node, separator=separator)
             return
         result = {}
         for name, value in node.items():
-            result[name] = flattened(value, separator=separator)
+            result[name] = system.flattened(value, separator=separator)
         self._contents[key] = result
 
     @property
@@ -371,62 +373,56 @@ class SettingsFile:
         """
         return self.contents.get("include")
 
-    def package_channel(self, package_name):
-        """
-        :param str package_name: Package name
-        :return Definition|None: Channel to use to determine versions for 'package_name'
-        """
-        value = self._get_raw_value("select.%s.channel" % package_name)
-        if value:
-            return value
-        channels = self.contents.get("channels")
-        if isinstance(channels, dict):
-            for name, values in channels.items():
-                if package_name in values:
-                    return Definition(name, source=self)
-        return None
-
-    def get_definition(self, key, package_name=None):
+    def resolved_definition(self, key, package_name=None):
         """
         :param str key: Key to look up
         :param str|None package_name: Optional associated package name
         :return Definition|None: Definition corresponding to 'key' in this settings file, if any
         """
-        value = self.get_value(key, package_name=package_name)
-        if value is not None:
-            return Definition(value, source=self)
-        return None
-
-    def get_value(self, key, package_name=None):
-        """
-        :param str key: Key to look up
-        :param str|None package_name: Optional associated package name
-        :return: Value corresponding to 'key' in this settings file, if any
-        """
         if not key:
             return None
         if package_name:
-            value = self._get_raw_value("select.%s.%s" % (package_name, key))
-            if value:
-                return value
-        return self._get_raw_value(key)
+            definition = self.get_definition("select.%s.%s" % (package_name, key))
+            if definition:
+                return definition
+            main = self.contents.get(key)
+            if isinstance(main, dict):
+                for name, values in main.items():
+                    if isinstance(values, dict):
+                        values = values.keys()
+                    elif hasattr(values, "split"):
+                        values = values.split()
+                    else:
+                        continue
+                    if package_name in values:
+                        return Definition(name, self, "%s.%s" % (key, name))
+            elif main:
+                print("check %s" % main)
+        return self.get_definition("default.%s" % key)
 
-    def _get_raw_value(self, key):
+    def get_definition(self, key):
         """
         :param str key: Key to look up
-        :return: Value corresponding to 'key' in this settings file, if any
+        :param str|None package_name: Optional associated package name
+        :return Definition|None: Definition corresponding to 'key' in this settings file, if any
         """
         if not key:
             return None
+        self.queried_keys.add(key)
         if "." in key:
             prefix, _, leaf = key.rpartition(".")
-            value = self._get_raw_value(prefix)
-            if isinstance(value, dict):
-                return value.get(leaf)
-            if value is not None:
-                LOG.debug("'%s' is not a dict in '%s'", prefix, self)
+            definition = self.get_definition(prefix)
+            if not definition:
+                return None
+            if isinstance(definition.value, dict):
+                return Definition(definition.value.get(leaf), self, key)
+            if definition.value is not None:
+                system.debug("'%s' is of type %s (not a dict) in '%s'", prefix, type(definition.value), short(self.path))
             return None
-        return self.contents.get(key)
+        value = self.contents.get(key)
+        if value is not None:
+            return Definition(value, self, key)
+        return None
 
     def represented(self):
         """
@@ -444,11 +440,10 @@ class Settings:
     Collection of settings files
     """
 
-    def __init__(self, base=None, config=None, dryrun=False):
+    def __init__(self, base=None, config=None):
         """
         :param str|None base: Base folder to use
         :param list|None config: Optional configuration files to load
-        :param bool dryrun: Whether execution should perform a dryrun or not
         """
         if not base:
             base = os.environ.get("PICKLEY_ROOT")
@@ -457,10 +452,9 @@ class Settings:
             base = os.path.join(sys.prefix, "root")
         if not base:
             # By default, base is folder of executable
-            base = os.path.dirname(resolved_path(sys.argv[0]))
+            base = system.parent_folder(sys.argv[0])
 
         self.base = FolderBase(base, name="base")
-        self.dryrun = dryrun
         self.cache = meta_cache(self.base.path)
         self.defaults = SettingsFile(self)
         self.defaults.set_contents(
@@ -478,6 +472,14 @@ class Settings:
     def __repr__(self):
         return "[%s] %s" % (len(self.children), self.base)
 
+    @property
+    def queried_keys(self):
+        result = set()
+        for child in self.children:
+            result.update(child.queried_keys)
+        result.update(self.defaults.queried_keys)
+        return result
+
     def add(self, paths, base=None):
         """
         :param list(str) paths: Paths to files to consider as settings
@@ -488,7 +490,7 @@ class Settings:
         if not base:
             base = self.base.path
         for path in paths:
-            path = resolved_path(path, base=base)
+            path = system.resolved_path(path, base=base)
             if path in self.paths:
                 return
             settings_file = SettingsFile(self, path)
@@ -497,37 +499,48 @@ class Settings:
             if settings_file.include:
                 self.add(settings_file.include, base=settings_file.folder)
 
-    def get_definition(self, key, package_name=None):
+    def resolved_definition(self, key, package_name=None):
         """
         :param str key: Key to look up
         :param str|None package_name: Optional associated package name
-        :return Definition|None: Top-most definition found, if any
-        """
-        value = self._get_raw_definition(key, package_name=package_name)
-        if value is not None:
-            return value
-        return self._get_raw_definition("default.%s" % key, package_name=package_name)
-
-    def _get_raw_definition(self, key, package_name=None):
-        """
-        :param str key: Key to look up
-        :param str|None package_name: Optional associated package name
-        :return Definition|None: Top-most definition found, if any
+        :return Definition|None: Definition corresponding to 'key', if any
         """
         for child in self.children:
-            value = child.get_definition(key, package_name=package_name)
-            if value is not None:
-                return value
-        return self.defaults.get_definition(key, package_name=package_name)
+            definition = child.resolved_definition(key, package_name=package_name)
+            if definition is not None:
+                return definition
+        return self.defaults.resolved_definition(key, package_name=package_name)
 
-    def get_value(self, key, package_name=None, default=None):
+    def resolved_value(self, key, package_name=None, default=None):
         """
         :param str key: Key to look up
         :param str|None package_name: Optional associated package name
         :param default: Default value to return if 'key' is not defined
         :return: Value corresponding to 'key' in this settings file, if any
         """
-        value = self.get_definition(key, package_name=package_name)
+        definition = self.resolved_definition(key, package_name=package_name)
+        if definition is not None:
+            return definition.value
+        return default
+
+    def get_definition(self, key):
+        """
+        :param str key: Key to look up
+        :return Definition|None: Top-most definition found, if any
+        """
+        for child in self.children:
+            definition = child.get_definition(key)
+            if definition is not None:
+                return definition
+        return self.defaults.get_definition(key)
+
+    def get_value(self, key, default=None):
+        """
+        :param str key: Key to look up
+        :param default: Default value to return if 'key' is not defined
+        :return: Value corresponding to 'key' in this settings file, if any
+        """
+        value = self.get_definition(key)
         if value is not None:
             return value.value
         return default
@@ -537,7 +550,7 @@ class Settings:
         """
         :return str: Default packager to use
         """
-        return self.get_value("default.packager").lower()
+        return self.get_value("default.packager", default="virtualenv").lower()
 
     @property
     def default_channel(self):
@@ -567,25 +580,21 @@ class Settings:
                         result.extend(bundle)
                         continue
                 result.append(name)
-        return flattened(result)
+        return system.flattened(result)
 
     def package_delivery(self, package_name):
         """
         :param str package_name: Package name
         :return Definition: Delivery mode to use
         """
-        return self.get_definition("delivery", package_name=package_name)
+        return self.resolved_definition("delivery", package_name=package_name)
 
     def package_channel(self, package_name):
         """
         :param str package_name: Package name
         :return Definition: Channel to use to determine versions for 'package_name'
         """
-        for child in self.children:
-            value = child.package_channel(package_name)
-            if value is not None:
-                return value
-        return self.get_definition("default.channel")
+        return self.resolved_definition("channel", package_name=package_name)
 
     def version(self, package_name, channel=None):
         """
@@ -595,9 +604,9 @@ class Settings:
         """
         if not channel:
             channel = self.package_channel(package_name)
-        definition = self.get_definition("channels.%s.%s" % (channel.value, package_name))
+        definition = self.get_definition("channel.%s.%s" % (channel.value, package_name))
         if not definition:
-            definition = Definition(None)
+            definition = Definition(None, channel.source, channel.key)
         definition.channel = channel.value
         return definition
 

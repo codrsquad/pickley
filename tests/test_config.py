@@ -26,14 +26,14 @@ def test_settings():
     s.add(["b", "a", "b"])
     assert len(s.children) == 2
 
-    assert s.get_value("channel") == "latest"
-    assert s.get_definition("channel").source.path == "defaults"
-    assert s.get_value("delivery") == "symlink"
+    assert s.resolved_value("channel") == "latest"
+    assert s.resolved_definition("channel").source.path == "defaults"
+    assert s.resolved_value("delivery") == "symlink"
     assert not s.index
 
     tox_channel = s.package_channel("tox")
     assert str(tox_channel) == "latest"
-    assert repr(tox_channel) == "latest from defaults"
+    assert repr(tox_channel) == "latest from defaults:default.channel"
     tox_version = s.version("tox", channel=tox_channel)
     assert tox_version.value is None
     assert tox_version.channel == "latest"
@@ -41,7 +41,7 @@ def test_settings():
     assert s.base.relative_path(__file__) == "test_config.py"
     assert s.base.full_path("test_config.py") == __file__
 
-    assert s.defaults.get_value(None) is None
+    assert s.defaults.get_definition(None) is None
 
     # Invalid bundle type
     s.children[0].contents["bundle"] = "foo"
@@ -50,7 +50,7 @@ def test_settings():
     # Valid (parsed via set_contents()) bundle + channel setup
     s.children[0].set_contents(
         bundle=dict(foo="bar baz"),
-        channels=dict(stable=dict(foo="1.2.3")),
+        channel=dict(stable=dict(foo="1.2.3")),
     )
     assert s.get_value("bundle.foo") == ["bar", "baz"]
     assert s.get_definition("bundle.foo").source == s.children[0]

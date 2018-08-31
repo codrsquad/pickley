@@ -18,7 +18,7 @@ def run_cli(args):
 
 def expect_messages(result, *messages):
     for message in messages:
-        if message[0] == '!':
+        if message[0] == "!":
             assert message[1:] not in result
         else:
             assert message in result
@@ -37,6 +37,6 @@ def expect_failure(args, *messages):
 
 
 def test_help():
-    expect_success('--version', "version ")
-    expect_success('--help', "Package manager for python CLIs")
-    expect_success('install --help', "Install a package")
+    expect_success("-q --version", "version ")
+    expect_success("--help", "Package manager for python CLIs")
+    expect_success("install --help", "Install a package")
