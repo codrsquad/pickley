@@ -592,8 +592,6 @@ class Virtualenv(Packager):
         :param str version: Effective version to install
         :return int: Exit code
         """
-        install_folder = SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version))
-
         venv = virtualenv.__file__
         if not venv:
             system.abort("Can't determine path to virtualenv.py")
@@ -601,8 +599,12 @@ class Virtualenv(Packager):
         if venv.endswith('.pyc'):
             venv = venv[:-1]
 
-        # Create venv in temp folder, to support the bootstrap case
-        install_folder_temp = "%s.tmp" % install_folder
+        install_folder = SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version))
+        install_folder_temp = install_folder
+        if self.name == system.PICKLEY:
+            # Create venv in temp folder, to support the bootstrap case
+            install_folder_temp = "%s.tmp" % install_folder
+
         system.run_program(system.PYTHON, venv, install_folder_temp)
 
         args = ["--disable-pip-version-check", "install", "%s==%s" % (self.name, version)]
@@ -610,15 +612,16 @@ class Virtualenv(Packager):
             args.append("-i")
             args.append(SETTINGS.index)
 
-        pip = os.path.join(install_folder_temp, "bin", "pip")
-        system.run_program(pip, *args)
+        system.run_program(os.path.join(install_folder_temp, "bin", "pip"), *args)
 
-        system.delete_file(install_folder)
-        if system.DRYRUN:
-            system.debug("Would move %s -> %s", short(install_folder_temp), short(install_folder))
-        else:
-            system.debug("Moving %s -> %s", short(install_folder_temp), short(install_folder))
-            shutil.move(install_folder_temp, install_folder)
+        if install_folder != install_folder_temp:
+            system.run_program(system.PYTHON, venv, "--relocatable", install_folder_temp)
+            system.delete_file(install_folder)
+            if system.DRYRUN:
+                system.debug("Would move %s -> %s", short(install_folder_temp), short(install_folder))
+            else:
+                system.debug("Moving %s -> %s", short(install_folder_temp), short(install_folder))
+                shutil.move(install_folder_temp, install_folder)
 
         self.refresh_entry_points(install_folder, version)
         self.perform_delivery(version, "%s/{name}" % os.path.join(install_folder, "bin"))
