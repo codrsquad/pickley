@@ -595,7 +595,6 @@ class Virtualenv(Packager):
         install_folder = SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version))
         bin_folder = os.path.join(install_folder, "bin")
         pip = os.path.join(bin_folder, "pip")
-        system.delete_file(install_folder)
 
         venv = virtualenv.__file__
         if not venv:
@@ -604,7 +603,14 @@ class Virtualenv(Packager):
         if venv.endswith('.pyc'):
             venv = venv[:-1]
 
-        system.run_program(system.PYTHON, venv, install_folder)
+        # Create venv in temp folder, to support the bootstrap case
+        install_folder_temp = "%s.tmp" % install_folder
+        system.run_program(system.PYTHON, venv, install_folder_temp)
+        system.delete_file(install_folder)
+        if system.DRYRUN:
+            system.debug("Would move %s -> %s", short(install_folder_temp), short(install_folder))
+        else:
+            shutil.move(install_folder_temp, install_folder)
 
         args = ["--disable-pip-version-check", "install", "%s==%s" % (self.name, version)]
         if SETTINGS.index:
