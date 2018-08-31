@@ -107,6 +107,13 @@ class system:
         return path and os.path.dirname(cls.resolved_path(path, base=base))
 
     @classmethod
+    def to_str(cls, text):
+        """Pex and pip want all their args to be str in python2"""
+        if sys.version_info.major < 3:
+            text = text.encode('ascii', 'ignore')
+        return text
+
+    @classmethod
     def flatten(cls, result, value, separator=None, unique=True):
         """
         :param list result: Flattened values
@@ -127,9 +134,8 @@ class system:
             cls.flatten(result, value.split(separator), separator=separator, unique=unique)
             return
         if not unique or value not in result:
-            if not unique and sys.version_info.major < 3:
-                # Pex and pip want all their args to be str in python2
-                value = value.encode('ascii', 'ignore')
+            if not unique:
+                value = cls.to_str(value)
             result.append(value)
 
     @classmethod
@@ -228,11 +234,11 @@ class system:
         if not program:
             return None
         if os.path.isabs(program):
-            return program if cls.is_executable(program) else None
+            return cls.to_str(program) if cls.is_executable(program) else None
         for p in os.environ.get('PATH', '').split(':'):
             fp = os.path.join(p, program)
             if cls.is_executable(fp):
-                return fp
+                return cls.to_str(fp)
         return None
 
     @classmethod
@@ -257,26 +263,30 @@ class system:
 
         stdout = kwargs.pop("stdout", subprocess.PIPE)
         stderr = kwargs.pop("stderr", subprocess.PIPE)
-        args = [full_path] + list(args)
-        p = subprocess.Popen(args, stdout=stdout, stderr=stderr)  # nosec
-        output, error = p.communicate()
-        output = decode(output)
-        error = decode(error)
-        if output:
-            output = output.strip()
-        if error:
-            error = error.strip()
+        args = [full_path] + cls.flattened(args, unique=False)
+        try:
+            p = subprocess.Popen(args, stdout=stdout, stderr=stderr)  # nosec
+            output, error = p.communicate()
+            output = decode(output)
+            error = decode(error)
+            if output:
+                output = output.strip()
+            if error:
+                error = error.strip()
 
-        if p.returncode:
-            if fatal:
-                if output or error:
-                    info = ": %s\n%s" % (error, output)
-                else:
-                    info = ""
-                cls.abort("%s exited with code %s%s", program, p.returncode, info)
-            return None
+            if p.returncode:
+                if fatal:
+                    if output or error:
+                        info = ": %s\n%s" % (error, output)
+                    else:
+                        info = ""
+                    cls.abort("%s exited with code %s%s", program, p.returncode, info)
+                return None
 
-        return output or error or "<no output>"
+            return output or error or "<no output>"
+
+        except Exception as e:
+            system.abort("%s failed: %s", os.path.basename(program), e, exc_info=e)
 
     @classmethod
     def represented_args(cls, args, base=None, separator=" ", shorten=True):

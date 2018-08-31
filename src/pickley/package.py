@@ -593,8 +593,6 @@ class Virtualenv(Packager):
         :return int: Exit code
         """
         install_folder = SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version))
-        bin_folder = os.path.join(install_folder, "bin")
-        pip = os.path.join(bin_folder, "pip")
 
         venv = virtualenv.__file__
         if not venv:
@@ -606,17 +604,21 @@ class Virtualenv(Packager):
         # Create venv in temp folder, to support the bootstrap case
         install_folder_temp = "%s.tmp" % install_folder
         system.run_program(system.PYTHON, venv, install_folder_temp)
-        system.delete_file(install_folder)
-        if system.DRYRUN:
-            system.debug("Would move %s -> %s", short(install_folder_temp), short(install_folder))
-        else:
-            shutil.move(install_folder_temp, install_folder)
 
         args = ["--disable-pip-version-check", "install", "%s==%s" % (self.name, version)]
         if SETTINGS.index:
             args.append("-i")
             args.append(SETTINGS.index)
 
+        pip = os.path.join(install_folder_temp, "bin", "pip")
         system.run_program(pip, *args)
+
+        system.delete_file(install_folder)
+        if system.DRYRUN:
+            system.debug("Would move %s -> %s", short(install_folder_temp), short(install_folder))
+        else:
+            system.debug("Moving %s -> %s", short(install_folder_temp), short(install_folder))
+            shutil.move(install_folder_temp, install_folder)
+
         self.refresh_entry_points(install_folder, version)
-        self.perform_delivery(version, "%s/{name}" % bin_folder)
+        self.perform_delivery(version, "%s/{name}" % os.path.join(install_folder, "bin"))
