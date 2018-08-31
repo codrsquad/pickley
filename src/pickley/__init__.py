@@ -47,6 +47,7 @@ class system:
     PRINT = True
     QUIET = False
     PICKLEY = "pickley"
+    DOT_PICKLEY = ".pickley"
     HOME = os.path.expanduser('~')
 
     if hasattr(sys, "real_prefix"):

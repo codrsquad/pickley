@@ -74,7 +74,7 @@ def meta_cache(path):
     :param str path: Path to folder to use
     :return FolderBase: Associated object
     """
-    return FolderBase(os.path.join(path, ".pickley"), name="meta")
+    return FolderBase(os.path.join(path, system.DOT_PICKLEY), name="meta")
 
 
 def add_representation(result, data, indent=""):
@@ -451,6 +451,10 @@ class Settings:
         if not base:
             # By default, base is folder of executable
             base = system.parent_folder(sys.argv[0])
+            if system.DOT_PICKLEY in base:
+                # Don't consider bootstrapped .pickley/... as installation base
+                i = base.index(system.DOT_PICKLEY)
+                base = base[:i].rstrip("/")
 
         self.base = FolderBase(base, name="base")
         self.cache = meta_cache(self.base.path)
