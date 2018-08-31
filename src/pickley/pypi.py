@@ -67,7 +67,10 @@ def latest_pypi_version(url, name):
             if value.startswith(prefix):
                 try:
                     version_text = value[len(prefix):]
-                    value = StrictVersion(value[len(prefix):])
+                    canonical_version = version_text
+                    if "+" in canonical_version:
+                        canonical_version, _, _ = canonical_version.partition("+")
+                    value = StrictVersion(canonical_version)
                     if not value.prerelease and latest is None or latest < value:
                         latest = value
                         latest_text = version_text
