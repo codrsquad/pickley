@@ -155,9 +155,12 @@ class PexRunner(Runner):
         system.delete_file(destination)
         args = []
         args.extend(["-c%s" % script_name, "-o%s" % destination, "%s==%s" % (package_name, version)])
-        if not python_interpreter and self.is_universal(package_name, version):
-            python_interpreter = "python"
-        if python_interpreter:
+        if not python_interpreter:
+            if self.is_universal(package_name, version):
+                python_interpreter = "python"
+            else:
+                python_interpreter = system.PYTHON
+        if python_interpreter != system.PYTHON and python_interpreter != "python":
             args.append("--python=%s" % python_interpreter)
         shebang = self.shebang(python_interpreter)
         if shebang:
