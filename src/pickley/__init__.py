@@ -38,6 +38,16 @@ def short(path, base=None):
     return path
 
 
+def python_interpreter():
+    """
+    :return str: Path to python interpreter currently used
+    """
+    if hasattr(sys, "real_prefix"):
+        return os.path.join(sys.real_prefix, "bin", "python")
+    else:
+        return sys.executable
+
+
 class system:
     """
     Functionality for the whole app, easily importable via one name
@@ -49,11 +59,7 @@ class system:
     PICKLEY = "pickley"
     DOT_PICKLEY = ".pickley"
     HOME = os.path.expanduser('~')
-
-    if hasattr(sys, "real_prefix"):
-        PYTHON = os.path.join(sys.real_prefix, "bin", "python")
-    else:
-        PYTHON = sys.executable
+    PYTHON = python_interpreter()
 
     @classmethod
     def debug(cls, message, *args, **kwargs):
@@ -83,6 +89,15 @@ class system:
     def abort(cls, message, *args, **kwargs):
         cls.error(message, *args, **kwargs)
         sys.exit(1)
+
+    @classmethod
+    def touch(cls, path):
+        """
+        :param path: Path to file to touch
+        """
+        if path:
+            with open(path, "at"):
+                os.utime(path, None)
 
     @classmethod
     def resolved_path(cls, path, base=None):
@@ -245,6 +260,7 @@ class system:
     @classmethod
     def run_program(cls, program, *args, **kwargs):
         """Run 'program' with 'args'"""
+        args = cls.flattened(args, unique=False)
         full_path = cls.which(program)
 
         fatal = kwargs.pop("fatal", True)
@@ -264,7 +280,7 @@ class system:
 
         stdout = kwargs.pop("stdout", subprocess.PIPE)
         stderr = kwargs.pop("stderr", subprocess.PIPE)
-        args = [full_path] + cls.flattened(args, unique=False)
+        args = [full_path] + args
         try:
             p = subprocess.Popen(args, stdout=stdout, stderr=stderr)  # nosec
             output, error = p.communicate()

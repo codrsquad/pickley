@@ -73,7 +73,7 @@ def setup_audit_log():
     system.info(": %s", system.represented_args(sys.argv), output=False)
 
 
-def bootstrap(python_interpreter):
+def bootstrap():
     """
     Bootstrap pickley: re-install it as venv if need be
 
@@ -96,7 +96,6 @@ def bootstrap(python_interpreter):
 
     # Re-install ourselves with correct packager
     system.debug("Bootstrapping %s with %s", system.PICKLEY, p.implementation_name)
-    p.set_python_interpreter(python_interpreter)
     p.install(intent="bootstrap")
     p.cleanup()
 
@@ -113,7 +112,9 @@ def bootstrap(python_interpreter):
 @click.option('--debug', is_flag=True, help="Show debug logs")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode, do not output anything")
 @click.option('--dryrun', '-n', is_flag=True, help="Perform a dryrun")
-def main(debug, quiet, dryrun):
+@click.option('--base', metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
+@click.option("--config", "-c", metavar="KEY=VALUE", multiple=True, help="Override configuration")
+def main(debug, quiet, dryrun, base, config):
     """
     Package manager for python CLIs
     """
@@ -125,6 +126,12 @@ def main(debug, quiet, dryrun):
     system.OUTPUT = not debug
     system.QUIET = quiet
 
+    if base:
+        if not os.path.exists(base):
+            system.abort("Can't use %s as base: folder does not exist", short(base))
+        SETTINGS.set_base(base)
+
+    SETTINGS.set_cli_config(config)
     SETTINGS.add(["~/.config/pickley.json", ".pickley.json"])
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
@@ -197,19 +204,17 @@ def list():
 @main.command()
 @packager_option()
 @click.option('--force', '-f', is_flag=True, help="Force installation, even if already installed")
-@click.option('--python', help="Python interpreter to use")
 @click.argument('packages', nargs=-1, required=True)
-def install(packager, force, python, packages):
+def install(packager, force, packages):
     """
     Install a package from pypi
     """
     setup_audit_log()
-    bootstrap(python)
+    bootstrap()
 
     packages = SETTINGS.resolved_packages(packages)
     for name in packages:
         p = get_packager(name, packager)
-        p.set_python_interpreter(python)
         p.install(force=force)
         p.cleanup()
 
@@ -219,10 +224,9 @@ def install(packager, force, python, packages):
 @main.command()
 @click.option('--dist', '-d', default='./dist', show_default=True, help="Folder where to produce package")
 @click.option('--build', '-b', default='./build', show_default=True, help="Folder to use as build cache")
-@click.option('--python', help="Python interpreter to use")
 @packager_option(default="pex")
 @click.argument('folder', required=True)
-def package(dist, build, python, packager, folder):
+def package(dist, build, packager, folder):
     """
     Package a project from source checkout
     """
@@ -249,7 +253,6 @@ def package(dist, build, python, packager, folder):
     p = get_packager(name, packager, cache=build)
     p.set_dist_folder(dist)
     p.set_source_folder(folder)
-    p.set_python_interpreter(python)
     if hasattr(p, 'package'):
         r = p.package()
         system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))

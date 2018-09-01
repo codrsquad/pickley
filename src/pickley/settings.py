@@ -85,7 +85,7 @@ def add_representation(result, data, indent=""):
             result.append("%s- %s" % (indent, short(item)))
         return
     if isinstance(data, dict):
-        for key, value in data.items():
+        for key, value in sorted(data.items()):
             if isinstance(value, list):
                 brief = system.represented_args(value, separator=", ")
                 if len(brief) < 90:
@@ -298,13 +298,13 @@ class SettingsFile:
     - other setting files to include
     - versions to use per channel
     """
-    def __init__(self, parent, path=None):
+    def __init__(self, parent, path=None, name=None):
         """
         :param Settings parent: Parent settings object
         :param str|None path: Path to settings file
         """
         self.parent = parent
-        self.path = short(path) or "defaults"
+        self.path = short(path) or name
         self.folder = system.parent_folder(path)
         self._contents = None
 
@@ -443,36 +443,55 @@ class Settings:
         :param str|None base: Base folder to use
         :param list|None config: Optional configuration files to load
         """
-        if not base:
-            base = os.environ.get("PICKLEY_ROOT")
-        if not base and sys.prefix.endswith(".venv"):
-            # Convenience for development
-            base = os.path.join(sys.prefix, "root")
-        if not base:
-            # By default, base is folder of executable
-            base = system.parent_folder(sys.argv[0])
-            if system.DOT_PICKLEY in base:
-                # Don't consider bootstrapped .pickley/... as installation base
-                i = base.index(system.DOT_PICKLEY)
-                base = base[:i].rstrip("/")
-
-        self.base = FolderBase(base, name="base")
+        self.set_base(base)
         self.cache = meta_cache(self.base.path)
-        self.defaults = SettingsFile(self)
+        self.cli = SettingsFile(self, name="cli")
+        self.cli.set_contents({})
+        self.defaults = SettingsFile(self, name="defaults")
         self.defaults.set_contents(
             default=dict(
                 channel="latest",
                 delivery="symlink",
                 packager="virtualenv",
+                python=system.PYTHON,
             ),
         )
-        self.paths = set()
+        self.config = config
+        self.paths = []
         self.children = []
-        if config:
-            self.add(config)
+        self.add(config)
 
     def __repr__(self):
         return "[%s] %s" % (len(self.children), self.base)
+
+    def set_base(self, base):
+        """
+        :param str|FolderBase|None base: Folder to use as base for installations
+        """
+        if not base:
+            base = os.environ.get("PICKLEY_ROOT")
+        if not base:
+            base = system.parent_folder(sys.argv[0])
+            if system.DOT_PICKLEY in base:
+                # Don't consider bootstrapped .pickley/... as installation base
+                i = base.index(system.DOT_PICKLEY)
+                base = base[:i].rstrip("/")
+            elif ".venv" in base:
+                # Convenience for development
+                base = system.parent_folder(base)
+                base = os.path.join(base, "root")
+
+        if isinstance(base, FolderBase):
+            self.base = base
+        else:
+            self.base = FolderBase(base, name="base")
+
+    def set_cli_config(self, entries):
+        content = {}
+        for entry in entries:
+            key, _, value = entry.partition("=")
+            content[key.strip()] = value.strip()
+        self.cli.set_contents(content)
 
     def add(self, paths, base=None):
         """
@@ -481,14 +500,12 @@ class Settings:
         """
         if not paths:
             return
-        if not base:
-            base = self.base.path
         for path in paths:
-            path = system.resolved_path(path, base=base)
+            path = system.resolved_path(path, base=base or self.base.path)
             if path in self.paths:
                 return
             settings_file = SettingsFile(self, path)
-            self.paths.add(path)
+            self.paths.append(path)
             self.children.append(settings_file)
             if settings_file.include:
                 self.add(settings_file.include, base=settings_file.folder)
@@ -499,6 +516,9 @@ class Settings:
         :param str|None package_name: Optional associated package name
         :return Definition|None: Definition corresponding to 'key', if any
         """
+        definition = self.cli.get_definition(key)
+        if definition:
+            return definition
         for child in self.children:
             definition = child.resolved_definition(key, package_name=package_name)
             if definition is not None:
@@ -522,6 +542,9 @@ class Settings:
         :param str key: Key to look up
         :return Definition|None: Top-most definition found, if any
         """
+        definition = self.cli.get_definition(key)
+        if definition:
+            return definition
         for child in self.children:
             definition = child.get_definition(key)
             if definition is not None:
@@ -630,6 +653,7 @@ class Settings:
         if self.index:
             result.append("  index: %s" % self.index)
         result.append("  config:")
+        result.append(self.cli.represented())
         for child in self.children:
             result.append(child.represented())
         result.append(self.defaults.represented())

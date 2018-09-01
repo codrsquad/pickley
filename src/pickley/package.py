@@ -150,8 +150,12 @@ class DeliveryWrap(DeliveryMethod):
         return system.represented_args(args, shorten=False)
 
     def _install(self, packager, target, source):
+        # Touch the .checked file to avoid an immediate check for upgrades
+        checked = SETTINGS.cache.full_path(packager.name, ".checked")
+        system.touch(checked)
+
         pickley = self.shell(SETTINGS.base.full_path(system.PICKLEY))
-        checked = self.shell(SETTINGS.cache.full_path(packager.name, ".checked"))
+        checked = self.shell(checked)
         source = self.shell(source)
         with open(target, "wt") as fh:
             fh.write("#!/bin/bash\n\n")
@@ -159,7 +163,7 @@ class DeliveryWrap(DeliveryMethod):
             fh.write("if [[ -x %s ]]; then\n" % pickley)
             fh.write("  if [[ ! -f %s || -n `find %s -mmin +60 2> /dev/null` ]]; then\n" % (checked, checked))
             fh.write("    touch %s\n" % checked)
-            fh.write("    %s -q install %s\n" % (pickley, packager.name))
+            fh.write("    %s --quiet install %s\n" % (pickley, packager.name))
             fh.write("    exec %s $*\n" % self.shell(target))
             fh.write("  fi\n")
             fh.write("fi\n\n")
@@ -324,7 +328,6 @@ class Packager(object):
         self.desired = VersionMeta(self.name)
         self.dist_folder = SETTINGS.cache.full_path(self.name)
         self.source_folder = None
-        self.python_interpreter = None
 
     def __repr__(self):
         return "%s %s" % (self.implementation_name, self.name)
@@ -370,12 +373,6 @@ class Packager(object):
         :param str|None source_folder: Set 'source_folder' (for local packaging, from not yet released checkout)
         """
         self.source_folder = system.resolved_path(source_folder)
-
-    def set_python_interpreter(self, python_interpreter):
-        """
-        :param str|None python_interpreter: Python interpreter to use (full path, or "python3.6")
-        """
-        self.python_interpreter = system.resolved_path(python_interpreter)
 
     def refresh_entry_points(self, folder, version):
         """
@@ -570,7 +567,7 @@ class Pex(WheelBasedPackager):
             dest = name if self.source_folder else "%s-%s" % (name, version)
             dest = os.path.join(self.dist_folder, dest)
 
-            error = self.pex.build(name, self.name, version, dest, python_interpreter=self.python_interpreter)
+            error = self.pex.build(name, self.name, version, dest)
             if error:
                 system.abort("pex command failed: %s", error)
             result.append(dest)
@@ -617,28 +614,24 @@ class Virtualenv(Packager):
             venv = venv[:-1]
 
         install_folder = SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version))
-        install_folder_temp = install_folder
-        if self.name == system.PICKLEY:
-            # Create venv in temp folder, to support the bootstrap case
-            install_folder_temp = "%s.tmp" % install_folder
+        working_folder = install_folder
+        if venv.lower().startswith(working_folder.lower()):
+            # Create venv in a different folder, to support the bootstrap case
+            working_folder = "%s.tmp" % install_folder
 
-        system.run_program(system.PYTHON, venv, install_folder_temp, "-p", self.python_interpreter or system.PYTHON)
+        python = SETTINGS.resolved_value("python", package_name=self.name)
+        pip = os.path.join(working_folder, "bin", "pip")
+        system.run_program(system.PYTHON, venv, working_folder, "-p", python)
+        system.run_program(pip, "--disable-pip-version-check", "install", "%s==%s" % (self.name, version), "-i", SETTINGS.index)
 
-        args = ["--disable-pip-version-check", "install", "%s==%s" % (self.name, version)]
-        if SETTINGS.index:
-            args.append("-i")
-            args.append(SETTINGS.index)
-
-        system.run_program(os.path.join(install_folder_temp, "bin", "pip"), *args)
-
-        if install_folder != install_folder_temp:
-            system.run_program(system.PYTHON, venv, "--relocatable", install_folder_temp, "-p", self.python_interpreter or system.PYTHON)
+        if install_folder != working_folder:
+            system.run_program(system.PYTHON, venv, "--relocatable", working_folder, "-p", python)
             system.delete_file(install_folder)
             if system.DRYRUN:
-                system.debug("Would move %s -> %s", short(install_folder_temp), short(install_folder))
+                system.debug("Would move %s -> %s", short(working_folder), short(install_folder))
             else:
-                system.debug("Moving %s -> %s", short(install_folder_temp), short(install_folder))
-                shutil.move(install_folder_temp, install_folder)
+                system.debug("Moving %s -> %s", short(working_folder), short(install_folder))
+                shutil.move(working_folder, install_folder)
 
         self.refresh_entry_points(install_folder, version)
         self.perform_delivery(version, "%s/{name}" % os.path.join(install_folder, "bin"))
