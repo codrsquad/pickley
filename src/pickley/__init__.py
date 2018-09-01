@@ -44,7 +44,7 @@ class system:
     """
 
     DRYRUN = False
-    PRINT = True
+    OUTPUT = True
     QUIET = False
     PICKLEY = "pickley"
     DOT_PICKLEY = ".pickley"
@@ -62,21 +62,21 @@ class system:
 
     @classmethod
     def info(cls, message, *args, **kwargs):
-        do_print = kwargs.pop("print", cls.PRINT)
+        output = kwargs.pop("output", cls.OUTPUT)
         LOG.info(message, *args, **kwargs)
-        if not cls.QUIET and do_print:
+        if not cls.QUIET and output:
             print(str(message) % args)
 
     @classmethod
     def warning(cls, message, *args, **kwargs):
         LOG.warning(message, *args, **kwargs)
-        if cls.PRINT:
+        if cls.OUTPUT:
             print("WARNING: %s" % (str(message) % args))
 
     @classmethod
     def error(cls, message, *args, **kwargs):
         LOG.error(message, *args, **kwargs)
-        if cls.PRINT:
+        if cls.OUTPUT:
             print("ERROR: %s" % (str(message) % args))
 
     @classmethod

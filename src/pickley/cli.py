@@ -70,7 +70,7 @@ def setup_audit_log():
     handler.setLevel(logging.DEBUG)
     handler.setFormatter(logging.Formatter("%(asctime)s [%(process)s] %(levelname)s - %(message)s"))
     logging.root.addHandler(handler)
-    system.info(": %s", system.represented_args(sys.argv), print=False)
+    system.info(": %s", system.represented_args(sys.argv), output=False)
 
 
 def bootstrap(python_interpreter):
@@ -101,7 +101,7 @@ def bootstrap(python_interpreter):
     p.cleanup()
 
     # Rerun with same args, to pick up freshly bootstrapped installation
-    system.PRINT = False
+    system.OUTPUT = False
     system.run_program(*sys.argv, stdout=sys.stdout, stderr=sys.stderr)
     if system.DRYRUN:
         return
@@ -122,7 +122,7 @@ def main(debug, quiet, dryrun):
     if debug:
         quiet = False
     system.DRYRUN = dryrun
-    system.PRINT = not debug
+    system.OUTPUT = not debug
     system.QUIET = quiet
 
     SETTINGS.add(["~/.config/pickley.json", ".pickley.json"])
