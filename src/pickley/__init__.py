@@ -429,10 +429,18 @@ class capture_output:
         assert "some message" in logged
     """
 
-    def __init__(self, folder=None, stdout=True, stderr=True, env=None):
+    def __init__(self, folder=None, stdout=True, stderr=True, env=None, dryrun=None):
+        """
+        :param str|None folder: Change cwd to 'folder' when provided
+        :param bool stdout: Capture stdout
+        :param bool stderr: Capture stderr
+        :param dict|None env: Customize PATH-like env vars when provided
+        :param bool|None dryrun: Switch dryrun when provided
+        """
         self.current_folder = os.getcwd()
         self.folder = folder
         self.env = env
+        self.dryrun = dryrun
         self.old_env = {}
         self.old_out = sys.stdout
         self.old_err = sys.stderr
@@ -475,6 +483,9 @@ class capture_output:
         sys.stderr = self.err_buffer
         logging.root.handlers = [self.handler]
 
+        if self.dryrun is not None:
+            (system.DRYRUN, self.dryrun) = (bool(self.dryrun), bool(system.DRYRUN))
+
         return self
 
     def __exit__(self, *args):
@@ -497,6 +508,9 @@ class capture_output:
             elif key in os.environ:
                 system.debug("Removing env %s", key)
                 del os.environ[key]
+
+        if self.dryrun is not None:
+            system.DRYRUN = self.dryrun
 
     def __contains__(self, item):
         return item is not None and item in str(self)

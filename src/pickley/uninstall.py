@@ -24,12 +24,21 @@ def brew_uninstall(target):
     :param str target: Path of file to uninstall
     :return bool: True if uninstallation was successful
     """
-    if not target or not target.startswith(USR_LOCAL_BIN):
+    if not target or not target.startswith(USR_LOCAL_BIN) or not os.path.exists(BREW):
+        # Path not under /usr/local/bin, or brew not present
         return False
+
     real_path = os.path.realpath(target)
     if not real_path or not real_path.lower().startswith(BREW_CELLAR.lower()):
+        # Is not a brew symlink
         return False
+
     name, _, _ = real_path[len(BREW_CELLAR) + 1:].partition("/")
-    system.run_program(BREW, "uninstall", "-f", name, logger=system.info)
+    output = system.run_program(BREW, "uninstall", "-f", name, fatal=False, logger=system.info)
+    if output is None:
+        # Failed brew uninstall
+        return False
+
+    # All good, run 'cleanup' for good measure
     system.run_program(BREW, "cleanup", fatal=False, logger=system.info)
     return True

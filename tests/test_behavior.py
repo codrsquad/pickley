@@ -90,12 +90,14 @@ def test_implementation_map():
 
 
 def test_capture_env():
-    env = dict(PATH=None)
+    env = dict(PATH=None, JAVA_HOME="/some-place/java")
     with capture_output() as logged:
         with capture_output(env=env):
             assert "PATH" not in os.environ
+            assert os.environ.get("JAVA_HOME") == "/some-place/java"
         assert "PATH" in os.environ
         assert "Removing env PATH" in logged
+        assert "Customizing env JAVA_HOME=/some-place/java" in logged
         assert "Restoring env PATH=" in logged
     assert "PATH" in os.environ
 
@@ -112,18 +114,21 @@ def failed_run(*_):
     sys.exit(1)
 
 
-@patch("pickley.system.DRYRUN", return_value=True)
-def test_pex_runner(_, temp_base):
-    p = PexRunner(os.path.join(temp_base, "foo"))
-    assert not p.is_universal("tox", "1.0")
+def test_pex_runner(temp_base):
+    with capture_output(dryrun=True):
+        p = PexRunner(os.path.join(temp_base, "foo"))
+        assert not p.is_universal("tox", "1.0")
 
-    p = PexRunner(temp_base)
-    assert not p.is_universal("tox", "1.0")
+        p = PexRunner(temp_base)
+        assert not p.is_universal("tox", "1.0")
 
-    p = Runner(temp_base)
-    assert p.effective_run(None)
-    assert p.prelude_args() is None
-    assert p.run() is None
-    p.effective_run = failed_run
-    system.DRYRUN = False
-    assert "Failed run" in p.run()
+        p = Runner(temp_base)
+
+        # Edge cases
+        assert p.effective_run(None)
+        assert p.prelude_args() is None
+        assert p.run() is None
+
+        p.effective_run = failed_run
+        system.DRYRUN = False
+        assert "Failed run" in p.run()

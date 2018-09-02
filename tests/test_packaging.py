@@ -22,13 +22,11 @@ def test_cleanup(temp_base):
     assert sorted(os.listdir(SETTINGS.cache.full_path("tox"))) == [".checked", "tox-3.0"]
 
     # Plus a few edge cases
-    system.DRYRUN = True
-    with capture_output() as logged:
+    with capture_output(dryrun=True) as logged:
         system.delete_file(temp_base)
         system.make_executable(checked)
         assert "Would delete" in logged
         assert "Would make %s executable" % short(checked) in logged
-    system.DRYRUN = False
 
 
 def test_delivery(temp_base):

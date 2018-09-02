@@ -4,7 +4,7 @@ from mock import patch
 
 from pickley import short, system
 from pickley.pypi import latest_pypi_version
-from pickley.settings import same_type, Settings
+from pickley.settings import add_representation, JsonSerializable, same_type, Settings
 
 from .conftest import sample_path
 
@@ -40,15 +40,34 @@ settings:
       delivery:
         venv: tox pipenv
       include: [custom.json]
+      index: https://pypi.org/
     - {base}/custom.json:
       channel:
         alpha:
           virtualenv: 16.0.0
-      index: https://pypi.org/
+      include:
+        - bogus.json
+        - bogus2.json
+        - bogus3.json
+        - bogus4.json
+        - bogus5.json
+        - bogus6.json
+        - bogus7.json
+        - bogus8.json
+        - bogus9.json
       select:
         virtualenv:
           delivery: wrap
           packager: pex
+    - {base}/bogus.json: # empty
+    - {base}/bogus2.json: # empty
+    - {base}/bogus3.json: # empty
+    - {base}/bogus4.json: # empty
+    - {base}/bogus5.json: # empty
+    - {base}/bogus6.json: # empty
+    - {base}/bogus7.json: # empty
+    - {base}/bogus8.json: # empty
+    - {base}/bogus9.json: # empty
     - defaults:
       default:
         channel: latest
@@ -62,7 +81,7 @@ def test_custom_settings():
     s = Settings(sample_path())
     s.add(system.config_paths(True))
 
-    assert str(s) == "[2] base: %s" % short(s.base.path)
+    assert str(s) == "[11] base: %s" % short(s.base.path)
     assert str(s.defaults) == "defaults"
     assert str(s.base) == "base: %s" % short(s.base.path)
     assert s.get_definition(None) is None
@@ -143,3 +162,34 @@ def test_pypi_bad_response(*_):
 @patch("pickley.pypi.request_get", return_value=LEGACY_SAMPLE)
 def test_pypi_legacy(*_):
     assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "twine") == "1.9.1"
+
+
+def test_add_representation():
+    # Cover add_representation() edge cases
+    r = []
+    add_representation(r, None)
+    assert not r
+    add_representation(r, "foo")
+    assert r == ["- foo"]
+
+
+def test_serialization():
+    j = JsonSerializable()
+    assert str(j) == "no source"
+    j.save()  # no-op
+    j.set_from_dict(None, source="test")
+    j.some_list = []
+    j.some_string = []
+    j.set_from_dict(dict(foo="bar", some_list="some_value", some_string="some_value"), source="test")
+    assert not j.some_list
+    assert not hasattr(j, "foo")
+    assert not j.some_string == "some_value"
+    j.reset()
+    assert not j.some_string
+
+    j = JsonSerializable.from_json(None)
+    assert str(j) == "no source"
+
+    j = JsonSerializable.from_json("/dev/null/foo")
+    assert str(j) == "/dev/null/foo"
+    j.save()  # Warns: Couldn't save...

@@ -77,6 +77,11 @@ def meta_cache(path):
 
 
 def add_representation(result, data, indent=""):
+    """
+    :param list result: Where to add lines representing 'data'
+    :param dict|list|str data: Data to represent
+    :param str indent: Indentation to use
+    """
     if not data:
         return
     if isinstance(data, list):
@@ -90,11 +95,11 @@ def add_representation(result, data, indent=""):
                 if len(brief) < 90:
                     result.append("%s%s: [%s]" % (indent, short(key), brief))
                     continue
-            if not isinstance(value, (dict, list)):
-                result.append("%s%s: %s" % (indent, short(key), short(value)))
-            else:
+            if isinstance(value, (dict, list)):
                 result.append("%s%s:" % (indent, short(key)))
                 add_representation(result, value, indent="  %s" % indent)
+            else:
+                result.append("%s%s: %s" % (indent, short(key), short(value)))
         return
     result.append("%s- %s" % (indent, short(data)))
 

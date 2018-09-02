@@ -12,5 +12,6 @@
   },
   "delivery": {
     "venv": "tox pipenv"
-  }
+  },
+  "index": "https://pypi.org/"
 }

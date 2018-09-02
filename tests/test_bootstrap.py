@@ -36,13 +36,11 @@ def test_second_bootstrap(_, __, temp_base):
     SETTINGS.cli.contents["delivery"] = "wrap"
     pickley = os.path.join(temp_base, system.PICKLEY)
 
-    system.DRYRUN = True
-    with capture_output() as logged:
+    with capture_output(dryrun=True) as logged:
         bootstrap(testing=True)
         assert "Would move " in logged
         assert "Would bootstrap pickley" in logged
 
-    system.DRYRUN = False
     with capture_output() as logged:
         bootstrap(testing=True)
         assert "Moving " in logged
