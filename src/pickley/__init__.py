@@ -66,6 +66,10 @@ class system:
     DEBUG_HANDLER = None
     TESTING = "pytest" in sys.argv[0]
 
+    DEFAULT_CHANNEL = "latest"
+    DEFAULT_DELIVERY = "symlink"
+    DEFAULT_PACKAGER = "venv"
+
     @classmethod
     def debug(cls, message, *args, **kwargs):
         if not cls.QUIET:
@@ -96,6 +100,13 @@ class system:
     def abort(cls, message, *args, **kwargs):
         cls.error(message, *args, **kwargs)
         sys.exit(1)
+
+    @classmethod
+    def config_paths(cls, testing):
+        if testing:
+            return [".pickley.json"]
+        else:
+            return ["~/.config/pickley.json", ".pickley.json"]
 
     @classmethod
     def touch(cls, path):
@@ -354,7 +365,7 @@ class ImplementationMap:
         :param str key: Key in setting where to lookup default to use
         """
         self.key = key
-        self.settings = settings  # type: pickley.settings.Settings
+        self.settings = settings
         self.map = {}
 
     def register(self, implementation, name=None):
@@ -431,7 +442,7 @@ class capture_output:
 
         self.handler = logging.StreamHandler(stream=self.err_buffer)
         self.handler.setLevel(logging.DEBUG)
-        self.handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s - %(message)s"))
+        self.handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
 
     def __repr__(self):
         result = ""

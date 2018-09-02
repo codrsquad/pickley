@@ -1,0 +1,13 @@
+{
+  "channel": {
+    "alpha": {
+      "virtualenv": "16.0.0"
+    }
+  },
+  "select": {
+    "virtualenv": {
+      "delivery": "wrap",
+      "packager": "pex"
+    }
+  }
+}

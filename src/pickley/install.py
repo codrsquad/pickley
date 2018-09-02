@@ -52,7 +52,7 @@ class Runner:
             except SystemExit as e:
                 exit_code = e.code
             if exit_code:
-                return captured.error
+                return str(captured)
             return None
 
     def custom_env(self):

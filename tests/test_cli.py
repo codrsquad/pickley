@@ -7,9 +7,7 @@ from pickley.cli import main
 from pickley.package import VenvPackager
 from pickley.settings import SETTINGS
 
-
-TESTS = system.parent_folder(__file__)
-PROJECT = system.parent_folder(TESTS)
+from .conftest import PROJECT
 
 
 def run_cli(args, **kwargs):
@@ -20,9 +18,6 @@ def run_cli(args, **kwargs):
     runner = CliRunner()
     if not isinstance(args, list):
         args = args.split()
-    allow_user_config = kwargs.pop("allow_user_config", False)
-    if not allow_user_config and "--no-user-config" not in args:
-        args = ["--no-user-config"] + args
     base = kwargs.pop("base", None)
     if base and "-b" not in args and "--base" not in args:
         args = ["-b", base] + args
@@ -87,7 +82,7 @@ def test_install(temp_base):
     assert not os.path.exists(tox)
     assert system.first_line(tox) is None
 
-    expect_failure("-b foo/bar settings", "Can't use", "as base", "folder does not exist", allow_user_config=True)
+    expect_failure("-b foo/bar settings", "Can't use", "as base", "folder does not exist")
 
     expect_failure("package foo/bar", "Folder", "does not exist")
     expect_failure(["package", temp_base], "No setup.py")

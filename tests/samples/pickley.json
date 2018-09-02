@@ -1,0 +1,12 @@
+{
+  "include": "custom.json",
+  "bundle": {
+    "dev": "tox twine"
+  },
+  "channel": {
+    "stable": {
+      "tox": "3.2.1",
+      "twine": "1.9.0"
+    }
+  }
+}

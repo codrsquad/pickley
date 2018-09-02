@@ -4,9 +4,18 @@ from tempfile import mkdtemp
 
 import pytest
 
-from pickley import capture_output
+from pickley import capture_output, system
 from pickley.cli import setup_debug_log
 from pickley.settings import SETTINGS
+
+
+TESTS = system.parent_folder(__file__)
+PROJECT = system.parent_folder(TESTS)
+INEXISTING_FILE = "does/not/exist"
+
+
+def sample_path(*relative):
+    return os.path.join(TESTS, "samples", *relative)
 
 
 def verify_abort(func, *args, **kwargs):

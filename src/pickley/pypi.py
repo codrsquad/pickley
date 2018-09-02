@@ -50,9 +50,12 @@ def latest_pypi_version(url, name):
 
     if data[0] == "{":
         # See https://warehouse.pypa.io/api-reference/json/
-        data = json.loads(data)
-        if isinstance(data, dict):
+        try:
+            data = json.loads(data)
             return data.get("info", {}).get("version")
+
+        except Exception as e:
+            system.warning("Failed to parse pypi json: %s\n%s", e, data)
 
         return None
 

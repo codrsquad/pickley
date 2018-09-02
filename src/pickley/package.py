@@ -339,7 +339,7 @@ class Packager(object):
         self.cache = system.resolved_path(cache) or SETTINGS.cache.full_path(self.name, "dist")
         self._entry_points = None
         self.current = VersionMeta(self.name, "current")
-        self.latest = VersionMeta(self.name, "latest")
+        self.latest = VersionMeta(self.name, system.DEFAULT_CHANNEL)
         self.desired = VersionMeta(self.name)
         self.dist_folder = SETTINGS.cache.full_path(self.name)
         self.source_folder = None
@@ -446,7 +446,7 @@ class Packager(object):
             return
 
         version = latest_pypi_version(SETTINGS.index, self.name)
-        self.latest.set_version(version, SETTINGS.index or "pypi", channel="latest")
+        self.latest.set_version(version, SETTINGS.index or "pypi", channel=system.DEFAULT_CHANNEL)
         if version:
             self.latest.save()
 
@@ -461,7 +461,7 @@ class Packager(object):
                 configured.value, str(configured.source), channel=configured.channel, packager=self.implementation_name
             )
             return
-        if configured.channel == "latest":
+        if configured.channel == system.DEFAULT_CHANNEL:
             self.refresh_latest()
             self.desired.set(self.latest)
             self.desired.packager = self.implementation_name
@@ -635,16 +635,19 @@ class VenvPackager(Packager):
         """
         return venv.lower().startswith(working_folder.lower())
 
+    def virtualenv_path(self):
+        venv = virtualenv.__file__
+        if venv and venv.endswith(".pyc"):
+            venv = venv[:-1]
+        return venv
+
     def effective_install(self, version):
         """
         :param str version: Effective version to install
         """
-        venv = virtualenv.__file__
+        venv = self.virtualenv_path()
         if not venv:
             system.abort("Can't determine path to virtualenv.py")
-
-        if venv.endswith(".pyc"):
-            venv = venv[:-1]
 
         install_folder = SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version))
         working_folder = install_folder

@@ -90,6 +90,16 @@ def setup_debug_log():
     logging.root.setLevel(logging.DEBUG)
 
 
+def relaunch():
+    """
+    Rerun with same args, to pick up freshly bootstrapped installation
+    """
+    system.OUTPUT = False
+    system.run_program(*sys.argv, stdout=sys.stdout, stderr=sys.stderr)
+    if not system.DRYRUN:
+        sys.exit(0)
+
+
 def bootstrap(testing=False):
     """
     Bootstrap pickley: re-install it as venv if need be
@@ -106,29 +116,18 @@ def bootstrap(testing=False):
     p.refresh_current()
     if p.current.packager == p.implementation_name:
         # We're already packaged correctly, no need to bootstrap
-        if not testing:  # pragma: no cover
-            return
+        return
     p.refresh_desired()
     if not p.desired.valid:
         system.abort("Can't bootstrap %s: %s", p.name, p.desired.problem)
     if p.current.equivalent(p.desired):
-        if not testing:  # pragma: no cover
-            return
+        return
 
     # Re-install ourselves with correct packager
     system.debug("Bootstrapping %s with %s", system.PICKLEY, p.implementation_name)
     p.install(bootstrap=True)
     p.cleanup()
-
-    if testing:  # pragma: no cover
-        return
-
-    # Rerun with same args, to pick up freshly bootstrapped installation
-    system.OUTPUT = False  # pragma: no cover
-    system.run_program(*sys.argv, stdout=sys.stdout, stderr=sys.stderr)  # pragma: no cover
-    if system.DRYRUN:  # pragma: no cover
-        return
-    sys.exit(0)  # pragma: no cover
+    relaunch()
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=160), epilog=__doc__)
@@ -136,10 +135,9 @@ def bootstrap(testing=False):
 @click.option("--debug", is_flag=True, help="Show debug logs")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode, do not output anything")
 @click.option("--dryrun", "-n", is_flag=True, help="Perform a dryrun")
-@click.option("--no-user-config", is_flag=True, help="Do not load ~/.config.pickley.json")
 @click.option("--base", "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
 @click.option("--config", "-c", metavar="KEY=VALUE", multiple=True, help="Override configuration")
-def main(debug, quiet, dryrun, no_user_config, base, config):
+def main(debug, quiet, dryrun, base, config):
     """
     Package manager for python CLIs
     """
@@ -157,10 +155,7 @@ def main(debug, quiet, dryrun, no_user_config, base, config):
         SETTINGS.set_base(base)
 
     SETTINGS.set_cli_config(config)
-    if no_user_config:
-        SETTINGS.add([".pickley.json"])
-    else:
-        SETTINGS.add(["~/.config/pickley.json", ".pickley.json"])
+    SETTINGS.add(system.config_paths(system.TESTING))
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None

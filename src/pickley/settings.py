@@ -445,9 +445,9 @@ class Settings:
         self.defaults = SettingsFile(self, name="defaults")
         self.defaults.set_contents(
             default=dict(
-                channel="latest",
-                delivery="symlink",
-                packager="venv",
+                channel=system.DEFAULT_CHANNEL,
+                delivery=system.DEFAULT_DELIVERY,
+                packager=system.DEFAULT_PACKAGER,
                 python=system.PYTHON,
             ),
         )

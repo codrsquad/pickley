@@ -8,10 +8,7 @@ from pickley.install import PexRunner
 from pickley.package import DeliveryCopy, DeliveryMethod, DeliverySymlink, DeliveryWrap, Packager, PexPackager, VenvPackager, VersionMeta
 from pickley.settings import Definition, SETTINGS
 
-from .conftest import verify_abort
-
-
-INEXISTING_FILE = "does/not/exist"
+from .conftest import INEXISTING_FILE, verify_abort
 
 
 def test_cleanup(temp_base):
@@ -32,30 +29,6 @@ def test_cleanup(temp_base):
         assert "Would delete" in logged
         assert "Would make %s executable" % short(checked) in logged
     system.DRYRUN = False
-
-
-def test_edge_cases(temp_base):
-    assert system.which(None) is None
-    assert system.which("foo/bar") is None
-    assert system.which("bash")
-
-    system.ensure_folder(None)
-    assert "Can't create folder" in verify_abort(system.ensure_folder, "/dev/null/foo", exception=Exception)
-
-    assert "Can't delete" in verify_abort(system.delete_file, "/dev/null", exception=Exception)
-    assert "does not exist" in verify_abort(system.make_executable, "/dev/null/foo")
-    assert "Can't chmod" in verify_abort(system.make_executable, "/dev/null", exception=Exception)
-
-    assert "is not installed" in verify_abort(system.run_program, "foo/bar")
-    assert "exited with code" in verify_abort(system.run_program, "ls", "foo/bar")
-
-    assert system.run_program("foo/bar", fatal=False) is None
-    assert system.run_program("ls", "foo/bar", fatal=False) is None
-
-
-@patch("subprocess.Popen", side_effect=Exception)
-def test_popen_crash(temp_base):
-    assert "ls failed:" in verify_abort(system.run_program, "ls")
 
 
 def test_delivery(temp_base):
@@ -195,6 +168,15 @@ def test_versions(_, __, temp_base):
     assert "pex command failed" in verify_abort(p.package)
 
     SETTINGS.cli.set_contents({})
+
+
+@patch("pickley.settings.SETTINGS.version", return_value=Definition("1.0", "test", "channel.stable.foo"))
+@patch("pickley.package.VenvPackager.virtualenv_path", return_value=None)
+def test_configured_version(*_):
+    p = VenvPackager("foo")
+    p.refresh_desired()
+    assert p.desired.representation(verbose=True) == "foo 1.0 (as venv, source: test)"
+    assert "Can't determine path to virtualenv.py" in verify_abort(p.effective_install, "1.0")
 
 
 def pydef(value, source="test"):
