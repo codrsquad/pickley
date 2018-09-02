@@ -64,29 +64,32 @@ class system:
     PYTHON = python_interpreter()
     AUDIT_HANDLER = None
     DEBUG_HANDLER = None
+    TESTING = "pytest" in sys.argv[0]
 
     @classmethod
     def debug(cls, message, *args, **kwargs):
         if not cls.QUIET:
             LOG.debug(message, *args, **kwargs)
+        if cls.TESTING:
+            print(str(message) % args)
 
     @classmethod
     def info(cls, message, *args, **kwargs):
         output = kwargs.pop("output", cls.OUTPUT)
         LOG.info(message, *args, **kwargs)
-        if not cls.QUIET and output:
+        if (not cls.QUIET and output) or cls.TESTING:
             print(str(message) % args)
 
     @classmethod
     def warning(cls, message, *args, **kwargs):
         LOG.warning(message, *args, **kwargs)
-        if cls.OUTPUT:
+        if cls.OUTPUT or cls.TESTING:
             print("WARNING: %s" % (str(message) % args))
 
     @classmethod
     def error(cls, message, *args, **kwargs):
         LOG.error(message, *args, **kwargs)
-        if cls.OUTPUT:
+        if cls.OUTPUT or cls.TESTING:
             print("ERROR: %s" % (str(message) % args))
 
     @classmethod
@@ -136,8 +139,7 @@ class system:
         try:
             with io.open(path, "rt", errors="ignore") as fh:
                 return fh.readline().strip()
-        except Exception as e:
-            cls.debug("Can't read 1st line: %s", e)
+        except Exception:
             return None
 
     @classmethod
@@ -242,14 +244,14 @@ class system:
             return
 
         if not os.path.exists(path):
-            cls.error("%s does not exist, can't make it executable", short(path))
-            return
+            cls.abort("%s does not exist, can't make it executable", short(path))
 
         try:
             os.chmod(path, 0o755)  # nosec
 
         except Exception as e:
             cls.error("Can't chmod %s: %s", short(path), e)
+            raise
 
     @classmethod
     def is_executable(cls, path):
@@ -311,10 +313,7 @@ class system:
 
             if p.returncode:
                 if fatal:
-                    if output or error:
-                        info = ": %s\n%s" % (error, output)
-                    else:
-                        info = ""
+                    info = ": %s\n%s" % (error, output) if output or error else ""
                     cls.abort("%s exited with code %s%s", program, p.returncode, info)
                 return None
 
@@ -358,30 +357,6 @@ class ImplementationMap:
         self.settings = settings  # type: pickley.settings.Settings
         self.map = {}
 
-    @property
-    def default_name(self):
-        """
-        :return str: Default name from settings
-        """
-        name = self.settings.resolved_value(self.key)
-        if not name:
-            names = self.names()
-            if names:
-                name = names[0]
-        return name
-
-    @property
-    def default(self):
-        """
-        :return type: Default implementation to use
-        """
-        imp = self.get(self.settings.resolved_value(self.key))
-        if not imp:
-            names = self.names()
-            if names:
-                imp = self.map[names[0]]
-        return imp
-
     def register(self, implementation, name=None):
         """
         :param type implementation: Class to register
@@ -422,9 +397,6 @@ class cd:
     def __init__(self, destination):
         self.destination = system.resolved_path(destination)
 
-    def __repr__(self):
-        return self.destination
-
     def __enter__(self):
         self.current_folder = os.getcwd()
         os.chdir(self.destination)
@@ -462,7 +434,12 @@ class capture_output:
         self.handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s - %(message)s"))
 
     def __repr__(self):
-        return self.to_string()
+        result = ""
+        if self.out_buffer:
+            result += decode(self.out_buffer.getvalue())
+        if self.err_buffer:
+            result += decode(self.err_buffer.getvalue())
+        return result
 
     def __enter__(self):
         if self.folder:
@@ -510,88 +487,4 @@ class capture_output:
                 del os.environ[key]
 
     def __contains__(self, item):
-        return item is not None and item in self.to_string()
-
-    def __add__(self, other):
-        return "%s %s" % (self, other)
-
-    @property
-    def error(self):
-        if not self.err_buffer:
-            return None
-        return decode(self.err_buffer.getvalue())
-
-    @property
-    def output(self):
-        if not self.out_buffer:
-            return None
-        return decode(self.out_buffer.getvalue())
-
-    def to_string(self):
-        result = ""
-        if self.out_buffer:
-            result += decode(self.out_buffer.getvalue())
-        if self.err_buffer:
-            result += decode(self.err_buffer.getvalue())
-        return result
-
-
-def duration_unit(count, name, short):
-    if short:
-        name = name[0]
-    else:
-        name = " %s%s" % (name, "" if count == 1 else "s")
-    return "%s%s" % (count, name)
-
-
-def represented_duration(seconds, short=True, top=2, separator=" "):
-    """
-    :param int|float seconds: Duration in seconds
-    :param bool short: If True, use short form
-    :param int|None top: If specified, return 'top' most significant components
-    :param str separator: Separator to use
-    :return str: Human friendly duration representation
-    """
-    if seconds is None:
-        return ""
-
-    result = []
-    if isinstance(seconds, float):
-        seconds = int(seconds)
-
-    if not isinstance(seconds, int):
-        return str(seconds)
-
-    # First, separate seconds and days
-    days = seconds // SECONDS_IN_ONE_DAY
-    seconds -= days * SECONDS_IN_ONE_DAY
-
-    # Break down days into years, weeks and days
-    years = days // 365
-    days -= years * 365
-    weeks = days // 7
-    days -= weeks * 7
-
-    # Break down seconds into hours, minutes and seconds
-    hours = seconds // SECONDS_IN_ONE_HOUR
-    seconds -= hours * SECONDS_IN_ONE_HOUR
-    minutes = seconds // SECONDS_IN_ONE_MINUTE
-    seconds -= minutes * SECONDS_IN_ONE_MINUTE
-
-    if years:
-        result.append(duration_unit(years, "year", short))
-    if weeks:
-        result.append(duration_unit(weeks, "week", short))
-    if days:
-        result.append(duration_unit(days, "day", short))
-
-    if hours:
-        result.append(duration_unit(hours, "hour", short))
-    if minutes:
-        result.append(duration_unit(minutes, "minute", short))
-    if seconds or not result:
-        result.append(duration_unit(seconds, "second", short))
-    if top:
-        result = result[:top]
-
-    return separator.join(result)
+        return item is not None and item in str(self)

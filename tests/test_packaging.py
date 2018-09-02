@@ -1,26 +1,61 @@
 import os
 import time
 
-import pytest
 from mock import patch
 
-from pickley import capture_output, system
+from pickley import capture_output, short, system
 from pickley.install import PexRunner
 from pickley.package import DeliveryCopy, DeliveryMethod, DeliverySymlink, DeliveryWrap, Packager, PexPackager, VenvPackager, VersionMeta
 from pickley.settings import Definition, SETTINGS
+
+from .conftest import verify_abort
 
 
 INEXISTING_FILE = "does/not/exist"
 
 
 def test_cleanup(temp_base):
-    system.touch(SETTINGS.cache.full_path("tox", ".checked"))
+    checked = SETTINGS.cache.full_path("tox", ".checked")
+    system.touch(checked)
     system.touch(SETTINGS.cache.full_path("tox", "tox-1.0", "bin"))
     system.touch(SETTINGS.cache.full_path("tox", "tox-2.0", "bin"))
     system.touch(SETTINGS.cache.full_path("tox", "tox-3.0", "bin"))
     p = VenvPackager("tox")
     p.cleanup()
     assert sorted(os.listdir(SETTINGS.cache.full_path("tox"))) == [".checked", "tox-3.0"]
+
+    # Plus a few edge cases
+    system.DRYRUN = True
+    with capture_output() as logged:
+        system.delete_file(temp_base)
+        system.make_executable(checked)
+        assert "Would delete" in logged
+        assert "Would make %s executable" % short(checked) in logged
+    system.DRYRUN = False
+
+
+def test_edge_cases(temp_base):
+    assert system.which(None) is None
+    assert system.which("foo/bar") is None
+    assert system.which("bash")
+
+    system.ensure_folder(None)
+    assert "Can't create folder" in verify_abort(system.ensure_folder, "/dev/null/foo", exception=Exception)
+
+    assert "Can't delete" in verify_abort(system.delete_file, "/dev/null", exception=Exception)
+    assert "does not exist" in verify_abort(system.make_executable, "/dev/null/foo")
+    assert "Can't chmod" in verify_abort(system.make_executable, "/dev/null", exception=Exception)
+
+    assert "is not installed" in verify_abort(system.run_program, "foo/bar")
+    assert "exited with code" in verify_abort(system.run_program, "ls", "foo/bar")
+
+    assert system.run_program("foo/bar", fatal=False) is None
+    assert system.run_program("ls", "foo/bar", fatal=False) is None
+
+
+@patch("subprocess.Popen", side_effect=Exception)
+def test_popen_crash(temp_base):
+    assert "ls failed:" in verify_abort(system.run_program, "ls")
 
 
 def test_delivery(temp_base):
@@ -63,14 +98,15 @@ def test_delivery(temp_base):
         deliver.install(p, target, source)
         assert system.is_executable(target)
 
+        # Cover edge case for make_executable():
+        system.make_executable(target)
+        assert system.is_executable(target)
+
 
 def test_packager():
     p = Packager("tox")
-    with pytest.raises(SystemExit):
-        p.get_entry_points(".", "1.0")
-
-    with pytest.raises(SystemExit):
-        p.effective_install("1.0")
+    assert "not implemented" in verify_abort(p.get_entry_points, ".", "1.0")
+    assert "Not implemented" in verify_abort(p.effective_install, "1.0")
 
 
 def test_version_meta():
@@ -106,15 +142,8 @@ def test_versions(_, __, temp_base):
     p.refresh_desired()
     assert p.desired.representation() == "foo: can't determine stable version"
 
-    with capture_output() as logged:
-        with pytest.raises(SystemExit):
-            p.install()
-        assert "Can't install foo: can't determine stable version" in logged
-
-    with capture_output() as logged:
-        with pytest.raises(SystemExit):
-            p.perform_delivery("0.0.0", "foo")
-        assert "No delivery type configured for foo" in logged
+    assert "can't determine stable version" in verify_abort(p.install)
+    assert "No delivery type configured" in verify_abort(p.perform_delivery, "0.0.0", "foo")
 
     # Without pip cache
     assert p.get_entry_points(p.pip.cache, "0.0.0") is None
@@ -132,25 +161,16 @@ def test_versions(_, __, temp_base):
         system.delete_file(whl)
 
     # Ambiguous package() call
-    with capture_output() as logged:
-        with pytest.raises(SystemExit):
-            p.package()
-        assert "Need either source_folder or version in order to package" in logged
+    assert "Need either source_folder or version in order to package" in verify_abort(p.package)
 
     # Package bogus folder without a setup.py
     p.source_folder = temp_base
-    with capture_output() as logged:
-        with pytest.raises(SystemExit):
-            p.package()
-        assert "No setup.py" in logged
+    assert "No setup.py" in verify_abort(p.package)
 
     # Package with a bogus setup.py
     setup_py = os.path.join(temp_base, "setup.py")
-    with capture_output() as logged:
-        system.touch(setup_py)
-        with pytest.raises(SystemExit):
-            p.package()
-        assert "Could not determine version" in logged
+    system.touch(setup_py)
+    assert "Could not determine version" in verify_abort(p.package)
 
     # Provide a minimal setup.py
     with open(setup_py, "wt") as fh:
@@ -160,28 +180,19 @@ def test_versions(_, __, temp_base):
     # Package project without entry points
     p.get_entry_points = lambda *_: None
     p.pip.wheel = lambda *_: None
-    with capture_output() as logged:
-        with pytest.raises(SystemExit):
-            p.package()
-        assert "is not a CLI" in logged
+    assert "is not a CLI" in verify_abort(p.package)
 
     # Simulate presence of entry points
     p.get_entry_points = lambda *_: ["foo"]
 
     # Simulate pip wheel failure
     p.pip.wheel = lambda *_: "failed"
-    with capture_output() as logged:
-        with pytest.raises(SystemExit):
-            p.package()
-        assert "pip wheel failed" in logged
+    assert "pip wheel failed" in verify_abort(p.package)
 
     # Simulate pex failure
     p.pip.wheel = lambda *_: None
     p.pex.build = lambda *_: "failed"
-    with capture_output() as logged:
-        with pytest.raises(SystemExit):
-            p.package()
-        assert "pex command failed" in logged
+    assert "pex command failed" in verify_abort(p.package)
 
     SETTINGS.cli.set_contents({})
 

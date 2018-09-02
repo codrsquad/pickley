@@ -261,7 +261,7 @@ class FolderBase(object):
         return "%s: %s" % (self.name, short(self.path))
 
 
-class Definition:
+class Definition(object):
     """
     Defined value, with origin where the value came from
     """

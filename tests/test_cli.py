@@ -1,7 +1,10 @@
+import os
+
 from click.testing import CliRunner
 
-from pickley import capture_output, short, system
+from pickley import short, system
 from pickley.cli import main
+from pickley.package import VenvPackager
 from pickley.settings import SETTINGS
 
 
@@ -17,17 +20,14 @@ def run_cli(args, **kwargs):
     runner = CliRunner()
     if not isinstance(args, list):
         args = args.split()
-    if "--no-user-config" not in args:
+    allow_user_config = kwargs.pop("allow_user_config", False)
+    if not allow_user_config and "--no-user-config" not in args:
         args = ["--no-user-config"] + args
     base = kwargs.pop("base", None)
     if base and "-b" not in args and "--base" not in args:
         args = ["-b", base] + args
-    if "--debug" not in args:
-        args = ["--debug"] + args
-    with capture_output() as logged:
-        result = runner.invoke(main, args=args)
-        result.logged = logged.to_string()
-        return result
+    result = runner.invoke(main, args=args)
+    return result
 
 
 def expect_messages(result, *messages):
@@ -41,13 +41,13 @@ def expect_messages(result, *messages):
 def expect_success(args, *messages, **kwargs):
     result = run_cli(args, **kwargs)
     assert result.exit_code == 0
-    expect_messages("%s\n%s" % (result.output, result.logged), *messages)
+    expect_messages(result.output, *messages)
 
 
 def expect_failure(args, *messages, **kwargs):
     result = run_cli(args, **kwargs)
     assert result.exit_code != 0
-    expect_messages("%s\n%s" % (result.output, result.logged), *messages)
+    expect_messages(result.output, *messages)
 
 
 def test_help():
@@ -84,6 +84,20 @@ def test_package(temp_base):
 
 def test_install(temp_base):
     tox = SETTINGS.base.full_path("tox")
+    assert not os.path.exists(tox)
+    assert system.first_line(tox) is None
+
+    expect_failure("-b foo/bar settings", "Can't use", "as base", "folder does not exist", allow_user_config=True)
+
+    expect_failure("package foo/bar", "Folder", "does not exist")
+    expect_failure(["package", temp_base], "No setup.py")
+    system.touch(os.path.join(temp_base, "setup.py"))
+    expect_failure(["package", temp_base], "Could not determine package name")
+
+    expect_success("check", "No packages installed", base=temp_base)
+    expect_success("list", "No packages installed", base=temp_base)
+    expect_failure("check tox", "is not installed", base=temp_base)
+    expect_failure("check bogus_", "can't determine latest version", base=temp_base)
 
     expect_success("settings -d", "base: %s" % short(temp_base), "cache: %s" % short(SETTINGS.base.full_path(system.DOT_PICKLEY)), base=temp_base)
 
@@ -99,10 +113,21 @@ def test_install(temp_base):
     assert "tox" in output
 
     expect_success("install tox", "already installed", base=temp_base)
+    expect_success("check", "tox", "is installed", base=temp_base)
+    expect_success("check --verbose", "tox", "is installed (as venv, channel: ", base=temp_base)
+
+    p = VenvPackager("tox")
+    p.refresh_latest()
+    p.latest.version = "10000.0"
+    p.latest.save()
+    expect_failure("check", "tox", "can be upgraded to 10000.0", base=temp_base)
+
     expect_success("install twine -ppex", "Installed twine", base=temp_base)
 
     expect_success("list", "tox", "twine", base=temp_base)
     expect_success("list --verbose", "tox", "twine", base=temp_base)
 
-    expect_success("check", "tox", "is installed", base=temp_base)
-    expect_success("check --verbose", "tox", "is installed (as venv, channel: ", base=temp_base)
+    p.refresh_current()
+    system.delete_file(p.current._path)
+    system.touch(p.current._path)
+    expect_failure("check", "tox", "Invalid json file", "is not installed", base=temp_base)

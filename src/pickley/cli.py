@@ -29,9 +29,6 @@ def _option(func, *args, **kwargs):
         kwargs.setdefault("required", False)
         if not kwargs.get("is_flag"):
             kwargs.setdefault("show_default", True)
-            if "type" not in kwargs:
-                kwargs.setdefault("metavar", "<%s>" % name.replace("-", ""))
-                kwargs.setdefault("type", str)
         if not name.startswith("-"):
             name = "--%s" % name
         return click.option(name, *args, **kwargs)(f)
@@ -109,13 +106,13 @@ def bootstrap(testing=False):
     p.refresh_current()
     if p.current.packager == p.implementation_name:
         # We're already packaged correctly, no need to bootstrap
-        if not testing:
+        if not testing:  # pragma: no cover
             return
     p.refresh_desired()
     if not p.desired.valid:
         system.abort("Can't bootstrap %s: %s", p.name, p.desired.problem)
     if p.current.equivalent(p.desired):
-        if not testing:
+        if not testing:  # pragma: no cover
             return
 
     # Re-install ourselves with correct packager
@@ -123,15 +120,15 @@ def bootstrap(testing=False):
     p.install(bootstrap=True)
     p.cleanup()
 
-    if testing:
+    if testing:  # pragma: no cover
         return
 
     # Rerun with same args, to pick up freshly bootstrapped installation
-    system.OUTPUT = False
-    system.run_program(*sys.argv, stdout=sys.stdout, stderr=sys.stderr)
-    if system.DRYRUN:
+    system.OUTPUT = False  # pragma: no cover
+    system.run_program(*sys.argv, stdout=sys.stdout, stderr=sys.stderr)  # pragma: no cover
+    if system.DRYRUN:  # pragma: no cover
         return
-    sys.exit(0)
+    sys.exit(0)  # pragma: no cover
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=160), epilog=__doc__)
@@ -151,7 +148,6 @@ def main(debug, quiet, dryrun, no_user_config, base, config):
     if debug:
         quiet = False
     system.DRYRUN = dryrun
-    system.OUTPUT = not debug
     system.QUIET = quiet
 
     if base:
@@ -198,11 +194,8 @@ def check(verbose, packages):
             if not p.desired.valid:
                 system.error(p.desired.representation(verbose))
                 code = 1
-            elif not p.current.version:
+            elif not p.current.version or not p.current.valid:
                 system.info(p.desired.representation(verbose, note="is not installed"))
-                code = 1
-            elif not p.current.valid:
-                system.error(p.current.representation(verbose))
                 code = 1
             elif p.current.version != p.desired.version:
                 system.info(p.current.representation(verbose, note="can be upgraded to %s" % p.desired.version))
@@ -290,7 +283,7 @@ def package(dist, build, packager, folder):
         system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))
         sys.exit(0)
 
-    system.abort("Packaging folders via '%s' is not supported", p.implementation_name)
+    system.abort("Packaging folders via '%s' is not supported", p.implementation_name)  # pragma: no cover
 
 
 @main.command()
@@ -311,5 +304,5 @@ def settings(diagnostics):
     system.info(SETTINGS.represented())
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()  # Only useful for convenient debugging
