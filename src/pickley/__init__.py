@@ -6,7 +6,7 @@ import io
 import logging
 import os
 import shutil
-import subprocess   # nosec
+import subprocess  # nosec
 import sys
 
 import six
@@ -21,7 +21,7 @@ SECONDS_IN_ONE_DAY = 24 * SECONDS_IN_ONE_HOUR
 def decode(value):
     """ Python 2/3 friendly decoding of output """
     if isinstance(value, bytes) and not isinstance(value, str):
-        return value.decode('utf-8')
+        return value.decode("utf-8")
     return value
 
 
@@ -60,7 +60,7 @@ class system:
     QUIET = False
     PICKLEY = "pickley"
     DOT_PICKLEY = ".pickley"
-    HOME = os.path.expanduser('~')
+    HOME = os.path.expanduser("~")
     PYTHON = python_interpreter()
     AUDIT_HANDLER = None
     DEBUG_HANDLER = None
@@ -144,7 +144,7 @@ class system:
     def to_str(cls, text):
         """Pex and pip want all their args to be str in python2"""
         if sys.version_info.major < 3:
-            text = text.encode('ascii', 'ignore')
+            text = text.encode("ascii", "ignore")
         return text
 
     @classmethod
@@ -246,7 +246,7 @@ class system:
             return
 
         try:
-            os.chmod(path, 0o755)   # nosec
+            os.chmod(path, 0o755)  # nosec
 
         except Exception as e:
             cls.error("Can't chmod %s: %s", short(path), e)
@@ -269,7 +269,7 @@ class system:
             return None
         if os.path.isabs(program):
             return cls.to_str(program) if cls.is_executable(program) else None
-        for p in os.environ.get('PATH', '').split(':'):
+        for p in os.environ.get("PATH", "").split(":"):
             fp = os.path.join(p, program)
             if cls.is_executable(fp):
                 return cls.to_str(fp)
@@ -355,7 +355,7 @@ class ImplementationMap:
         :param str key: Key in setting where to lookup default to use
         """
         self.key = key
-        self.settings = settings    # type: pickley.settings.Settings
+        self.settings = settings  # type: pickley.settings.Settings
         self.map = {}
 
     @property
@@ -418,6 +418,7 @@ class ImplementationMap:
 
 class cd:
     """Context manager for changing the current working directory"""
+
     def __init__(self, destination):
         self.destination = system.resolved_path(destination)
 
@@ -443,6 +444,7 @@ class capture_output:
         ... do something that generates output ...
         assert "some message" in logged
     """
+
     def __init__(self, folder=None, stdout=True, stderr=True, env=None):
         self.current_folder = os.getcwd()
         self.folder = folder
@@ -457,7 +459,7 @@ class capture_output:
 
         self.handler = logging.StreamHandler(stream=self.err_buffer)
         self.handler.setLevel(logging.DEBUG)
-        self.handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s - %(message)s'))
+        self.handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s - %(message)s"))
 
     def __repr__(self):
         return self.to_string()
@@ -526,7 +528,7 @@ class capture_output:
         return decode(self.out_buffer.getvalue())
 
     def to_string(self):
-        result = ''
+        result = ""
         if self.out_buffer:
             result += decode(self.out_buffer.getvalue())
         if self.err_buffer:
@@ -538,11 +540,11 @@ def duration_unit(count, name, short):
     if short:
         name = name[0]
     else:
-        name = ' %s%s' % (name, '' if count == 1 else 's')
+        name = " %s%s" % (name, "" if count == 1 else "s")
     return "%s%s" % (count, name)
 
 
-def represented_duration(seconds, short=True, top=2, separator=' '):
+def represented_duration(seconds, short=True, top=2, separator=" "):
     """
     :param int|float seconds: Duration in seconds
     :param bool short: If True, use short form
@@ -551,7 +553,7 @@ def represented_duration(seconds, short=True, top=2, separator=' '):
     :return str: Human friendly duration representation
     """
     if seconds is None:
-        return ''
+        return ""
 
     result = []
     if isinstance(seconds, float):
@@ -577,18 +579,18 @@ def represented_duration(seconds, short=True, top=2, separator=' '):
     seconds -= minutes * SECONDS_IN_ONE_MINUTE
 
     if years:
-        result.append(duration_unit(years, 'year', short))
+        result.append(duration_unit(years, "year", short))
     if weeks:
-        result.append(duration_unit(weeks, 'week', short))
+        result.append(duration_unit(weeks, "week", short))
     if days:
-        result.append(duration_unit(days, 'day', short))
+        result.append(duration_unit(days, "day", short))
 
     if hours:
-        result.append(duration_unit(hours, 'hour', short))
+        result.append(duration_unit(hours, "hour", short))
     if minutes:
-        result.append(duration_unit(minutes, 'minute', short))
+        result.append(duration_unit(minutes, "minute", short))
     if seconds or not result:
-        result.append(duration_unit(seconds, 'second', short))
+        result.append(duration_unit(seconds, "second", short))
     if top:
         result = result[:top]
 

@@ -329,6 +329,7 @@ class Packager(object):
     """
     Interface of a packager
     """
+
     def __init__(self, name, cache=None):
         """
         :param str name: Name of pypi package
@@ -456,7 +457,9 @@ class Packager(object):
         """Refresh self.desired"""
         configured = SETTINGS.version(self.name)
         if configured.value:
-            self.desired.set_version(configured.value, str(configured.source), channel=configured.channel, packager=self.implementation_name)
+            self.desired.set_version(
+                configured.value, str(configured.source), channel=configured.channel, packager=self.implementation_name
+            )
             return
         if configured.channel == "latest":
             self.refresh_latest()
@@ -521,6 +524,7 @@ class WheelBasedPackager(Packager):
     """
     Common implementation for wheel-based packagers
     """
+
     def __init__(self, name, cache=None):
         super(WheelBasedPackager, self).__init__(name, cache=cache)
         self.pip = PipRunner(self.cache)
@@ -535,10 +539,10 @@ class WheelBasedPackager(Packager):
             return None
         prefix = "%s-%s-" % (self.name, version)
         for fname in os.listdir(self.pip.cache):
-            if fname.startswith(prefix) and fname.endswith('.whl'):
+            if fname.startswith(prefix) and fname.endswith(".whl"):
                 wheel_path = os.path.join(self.pip.cache, fname)
                 try:
-                    with zipfile.ZipFile(wheel_path, 'r') as wheel:
+                    with zipfile.ZipFile(wheel_path, "r") as wheel:
                         for fname in wheel.namelist():
                             if os.path.basename(fname) == "entry_points.txt":
                                 with wheel.open(fname) as fh:
@@ -553,6 +557,7 @@ class PexPackager(WheelBasedPackager):
     """
     Package/install via pex (https://pypi.org/project/pex/)
     """
+
     def __init__(self, name, cache=None):
         """
         :param str name: Name of pypi package
@@ -611,6 +616,7 @@ class VenvPackager(Packager):
     """
     Install via virtualenv (https://pypi.org/project/virtualenv/)
     """
+
     def get_entry_points(self, folder, version):
         """
         :param str folder: Folder where to look for entry points
@@ -619,7 +625,7 @@ class VenvPackager(Packager):
         """
         ep = find_entry_points(folder, self.name, version)
         if ep:
-            with open(ep, 'rt') as fh:
+            with open(ep, "rt") as fh:
                 return read_entry_points(fh)
         return None
 
@@ -637,7 +643,7 @@ class VenvPackager(Packager):
         if not venv:
             system.abort("Can't determine path to virtualenv.py")
 
-        if venv.endswith('.pyc'):
+        if venv.endswith(".pyc"):
             venv = venv[:-1]
 
         install_folder = SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version))

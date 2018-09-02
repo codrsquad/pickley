@@ -30,7 +30,6 @@ def add_paths(result, env_var, *paths):
 
 
 class Runner:
-
     def __init__(self, cache):
         """
         :param str cache: Path to folder to use as cache
@@ -77,7 +76,6 @@ class Runner:
 
 
 class PipRunner(Runner):
-
     def effective_run(self, args):
         """
         :param list args: Args to run with
@@ -96,7 +94,6 @@ class PipRunner(Runner):
 
 
 class PexRunner(Runner):
-
     def custom_env(self):
         """
         :return dict: Optional customized env vars to use
@@ -128,7 +125,7 @@ class PexRunner(Runner):
             return False
         prefix = "%s-%s-" % (package_name, version)
         for fname in os.listdir(self.cache):
-            if fname.startswith(prefix) and fname.endswith('.whl'):
+            if fname.startswith(prefix) and fname.endswith(".whl"):
                 return "py2.py3-none" in fname
         return False
 

@@ -41,6 +41,7 @@ def _option(func, *args, **kwargs):
 
 def packager_option(**kwargs):
     """Packager to use"""
+
     def _callback(ctx, param, value):
         return PACKAGERS.get(value)
 
@@ -133,13 +134,13 @@ def bootstrap(testing=False):
     sys.exit(0)
 
 
-@click.group(context_settings=dict(help_option_names=['-h', '--help'], max_content_width=160), epilog=__doc__)
+@click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=160), epilog=__doc__)
 @click.version_option()
-@click.option('--debug', is_flag=True, help="Show debug logs")
+@click.option("--debug", is_flag=True, help="Show debug logs")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode, do not output anything")
-@click.option('--dryrun', '-n', is_flag=True, help="Perform a dryrun")
-@click.option('--no-user-config', is_flag=True, help="Do not load ~/.config.pickley.json")
-@click.option('--base', "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
+@click.option("--dryrun", "-n", is_flag=True, help="Perform a dryrun")
+@click.option("--no-user-config", is_flag=True, help="Do not load ~/.config.pickley.json")
+@click.option("--base", "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
 @click.option("--config", "-c", metavar="KEY=VALUE", multiple=True, help="Override configuration")
 def main(debug, quiet, dryrun, no_user_config, base, config):
     """
@@ -167,7 +168,7 @@ def main(debug, quiet, dryrun, no_user_config, base, config):
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None
-    logging.getLogger('pip').setLevel(logging.WARNING)
+    logging.getLogger("pip").setLevel(logging.WARNING)
 
     logging.root.setLevel(logging.INFO if quiet else logging.DEBUG)
 
@@ -177,8 +178,8 @@ def main(debug, quiet, dryrun, no_user_config, base, config):
 
 
 @main.command()
-@click.option('--verbose', '-v', is_flag=True, help="Show more information")
-@click.argument('packages', nargs=-1, required=False)
+@click.option("--verbose", "-v", is_flag=True, help="Show more information")
+@click.argument("packages", nargs=-1, required=False)
 def check(verbose, packages):
     """
     Check whether specified packages need an upgrade
@@ -214,7 +215,7 @@ def check(verbose, packages):
 
 
 @main.command()
-@click.option('--verbose', '-v', is_flag=True, help="Show more information")
+@click.option("--verbose", "-v", is_flag=True, help="Show more information")
 def list(verbose):
     """
     List installed packages
@@ -233,8 +234,8 @@ def list(verbose):
 
 @main.command()
 @packager_option()
-@click.option('--force', '-f', is_flag=True, help="Force installation, even if already installed")
-@click.argument('packages', nargs=-1, required=True)
+@click.option("--force", "-f", is_flag=True, help="Force installation, even if already installed")
+@click.argument("packages", nargs=-1, required=True)
 def install(packager, force, packages):
     """
     Install a package from pypi
@@ -252,10 +253,10 @@ def install(packager, force, packages):
 
 
 @main.command()
-@click.option('--dist', '-d', default='./dist', show_default=True, help="Folder where to produce package")
-@click.option('--build', '-b', default='./build', show_default=True, help="Folder to use as build cache")
+@click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
+@click.option("--build", "-b", default="./build", show_default=True, help="Folder to use as build cache")
 @packager_option(default="pex")
-@click.argument('folder', required=True)
+@click.argument("folder", required=True)
 def package(dist, build, packager, folder):
     """
     Package a project from source checkout
@@ -284,7 +285,7 @@ def package(dist, build, packager, folder):
     p = get_packager(name, packager, cache=build)
     p.set_dist_folder(dist)
     p.set_source_folder(folder)
-    if hasattr(p, 'package'):
+    if hasattr(p, "package"):
         r = p.package()
         system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))
         sys.exit(0)
@@ -293,7 +294,7 @@ def package(dist, build, packager, folder):
 
 
 @main.command()
-@click.option('--diagnostics', '-d', is_flag=True, help="Show diagnostics info")
+@click.option("--diagnostics", "-d", is_flag=True, help="Show diagnostics info")
 def settings(diagnostics):
     """
     Show settings
@@ -303,12 +304,12 @@ def settings(diagnostics):
         system.info("python interpreter: %s", short(system.PYTHON))
         system.info("sys.argv          : %s", system.represented_args(sys.argv))
         system.info("sys.executable    : %s", short(sys.executable))
-        system.info("sys.prefix        : %s", short(getattr(sys, 'prefix', None)))
-        system.info("sys.real_prefix   : %s", short(getattr(sys, 'real_prefix', None)))
+        system.info("sys.prefix        : %s", short(getattr(sys, "prefix", None)))
+        system.info("sys.real_prefix   : %s", short(getattr(sys, "real_prefix", None)))
         system.info("")
 
     system.info(SETTINGS.represented())
 
 
 if __name__ == "__main__":
-    main()      # Only useful for convenient debugging in say PyCharm
+    main()  # Only useful for convenient debugging

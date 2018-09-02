@@ -105,8 +105,8 @@ class JsonSerializable:
     Json serializable object
     """
 
-    _path = None            # type: str # Path where this file should be stored, if any
-    _source = None          # type: str # Where data came from
+    _path = None  # type: str # Path where this file should be stored, if any
+    _source = None  # type: str # Where data came from
 
     def __repr__(self):
         return self._source or "no source"
@@ -138,12 +138,7 @@ class JsonSerializable:
             attr = getattr(self, key)
             if attr is not None and not same_type(value, attr):
                 system.debug(
-                    "Wrong type %s for %s.%s in %s, expecting %s",
-                    type(value),
-                    self.__class__.__name__,
-                    key,
-                    self._source,
-                    type(attr)
+                    "Wrong type %s for %s.%s in %s, expecting %s", type(value), self.__class__.__name__, key, self._source, type(attr)
                 )
                 continue
             setattr(self, key, value)
@@ -153,7 +148,7 @@ class JsonSerializable:
         Reset all fields of this object to class defaults
         """
         for name in self.__dict__:
-            if name.startswith('_'):
+            if name.startswith("_"):
                 continue
             attr = getattr(self, name)
             setattr(self, name, attr and attr.__class__())
@@ -164,7 +159,7 @@ class JsonSerializable:
         """
         result = {}
         for name in self.__dict__:
-            if name.startswith('_'):
+            if name.startswith("_"):
                 continue
             name = name.replace("_", "-")
             attr = getattr(self, name)
@@ -298,6 +293,7 @@ class SettingsFile:
     - other setting files to include
     - versions to use per channel
     """
+
     def __init__(self, parent, path=None, name=None):
         """
         :param Settings parent: Parent settings object

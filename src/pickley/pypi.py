@@ -18,7 +18,7 @@ def request_get(url):
     """
     try:
         system.debug("GET %s", url)
-        request = Request(url)              # nosec
+        request = Request(url)  # nosec
         response = urlopen(request).read()  # nosec
         return response and decode(response).strip()
 
@@ -48,11 +48,11 @@ def latest_pypi_version(url, name):
     if not data:
         return None
 
-    if data[0] == '{':
+    if data[0] == "{":
         # See https://warehouse.pypa.io/api-reference/json/
         data = json.loads(data)
         if isinstance(data, dict):
-            return data.get('info', {}).get('version')
+            return data.get("info", {}).get("version")
 
         return None
 
@@ -92,12 +92,12 @@ def read_entry_points(lines):
         line = decode(line).strip()
         if not line:
             continue
-        if line.startswith('['):
-            section = line.strip('[]').strip()
+        if line.startswith("["):
+            section = line.strip("[]").strip()
             continue
-        if section != 'console_scripts':
+        if section != "console_scripts":
             continue
-        key, _, value = line.partition('=')
+        key, _, value = line.partition("=")
         key = key.strip()
         value = value.strip()
         if value:
