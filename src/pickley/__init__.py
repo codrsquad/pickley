@@ -2,6 +2,7 @@
 Brew style python CLI installation
 """
 
+import io
 import logging
 import os
 import shutil
@@ -42,8 +43,9 @@ def python_interpreter():
     """
     :return str: Path to python interpreter currently used
     """
-    if hasattr(sys, "real_prefix"):
-        return os.path.join(sys.real_prefix, "bin", "python")
+    prefix = getattr(sys, "real_prefix", None)
+    if prefix:
+        return os.path.join(prefix, "bin", "python")
     else:
         return sys.executable
 
@@ -60,6 +62,8 @@ class system:
     DOT_PICKLEY = ".pickley"
     HOME = os.path.expanduser('~')
     PYTHON = python_interpreter()
+    AUDIT_HANDLER = None
+    DEBUG_HANDLER = None
 
     @classmethod
     def debug(cls, message, *args, **kwargs):
@@ -96,6 +100,7 @@ class system:
         :param path: Path to file to touch
         """
         if path:
+            cls.ensure_folder(path)
             with open(path, "at"):
                 os.utime(path, None)
 
@@ -121,6 +126,19 @@ class system:
         :return str: Absolute path of parent folder of 'path'
         """
         return path and os.path.dirname(cls.resolved_path(path, base=base))
+
+    @classmethod
+    def first_line(cls, path):
+        """
+        :param str path: Path to file
+        :return str|None: First line of file, if any
+        """
+        try:
+            with io.open(path, "rt", errors="ignore") as fh:
+                return fh.readline().strip()
+        except Exception as e:
+            cls.debug("Can't read 1st line: %s", e)
+            return None
 
     @classmethod
     def to_str(cls, text):
@@ -181,7 +199,7 @@ class system:
         if os.path.isdir(folder):
             return
         if cls.DRYRUN:
-            cls.debug("Would create %s", short(path))
+            cls.debug("Would create %s", short(folder))
             return
         try:
             os.makedirs(folder)
@@ -192,8 +210,8 @@ class system:
     @classmethod
     def delete_file(cls, path):
         """ Delete file/folder with 'path' """
-        islink = os.path.islink(path)
-        if not islink and not os.path.exists(path):
+        islink = path and os.path.islink(path)
+        if not islink and (not path or not os.path.exists(path)):
             return
 
         if cls.DRYRUN:
@@ -300,7 +318,7 @@ class system:
                     cls.abort("%s exited with code %s%s", program, p.returncode, info)
                 return None
 
-            return output or error or "<no output>"
+            return output
 
         except Exception as e:
             system.abort("%s failed: %s", os.path.basename(program), e, exc_info=e)
@@ -393,13 +411,9 @@ class ImplementationMap:
     def resolved(self, package_name):
         """
         :param str package_name: Name of pypi package
-        :return type: Corresponding implementation class
+        :return Definition: Corresponding implementation name to use
         """
-        configured = self.settings.resolved_value(self.key, package_name=package_name)
-        imp = self.get(configured)
-        if not imp:
-            imp = self.default
-        return imp
+        return self.settings.resolved_definition(self.key, package_name=package_name)
 
 
 class cd:
@@ -429,7 +443,7 @@ class capture_output:
         ... do something that generates output ...
         assert "some message" in logged
     """
-    def __init__(self, folder, stdout=True, stderr=True, env=None):
+    def __init__(self, folder=None, stdout=True, stderr=True, env=None):
         self.current_folder = os.getcwd()
         self.folder = folder
         self.env = env

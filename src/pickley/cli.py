@@ -11,7 +11,7 @@ from logging.handlers import RotatingFileHandler
 import click
 
 from pickley import cd, short, system
-from pickley.package import Packager, PACKAGERS
+from pickley.package import Packager, PACKAGERS, VenvPackager
 from pickley.settings import meta_cache, SETTINGS
 
 
@@ -54,9 +54,14 @@ def get_packager(name, packager=None, cache=None):
     :param str|None cache: Optional custom cache folder to use
     :return Packager: Packager to use
     """
-    pkg = packager or PACKAGERS.resolved(name)
+    pkg = packager
     if not pkg:
-        system.abort("Can't determine packager to use for '%s'", name)
+        definition = PACKAGERS.resolved(name)
+        if not definition:
+            system.abort("No packager configured for %s" % name)
+        pkg = PACKAGERS.get(definition.value)
+        if not pkg:
+            system.abort("Unknown packager '%s'" % definition)
     if issubclass(pkg, Packager):
         return pkg(name, cache=cache)
     system.abort("Invalid packager implementation for '%s': %s", name, pkg.__class__.__name__)
@@ -64,16 +69,30 @@ def get_packager(name, packager=None, cache=None):
 
 def setup_audit_log():
     """Log to <base>/audit.log"""
+    if system.DRYRUN or system.AUDIT_HANDLER:
+        return
     path = SETTINGS.cache.full_path("audit.log")
     system.ensure_folder(path)
-    handler = RotatingFileHandler(path, maxBytes=500 * 1024, backupCount=1)
-    handler.setLevel(logging.DEBUG)
-    handler.setFormatter(logging.Formatter("%(asctime)s [%(process)s] %(levelname)s - %(message)s"))
-    logging.root.addHandler(handler)
-    system.info(": %s", system.represented_args(sys.argv), output=False)
+    system.AUDIT_HANDLER = RotatingFileHandler(path, maxBytes=500 * 1024, backupCount=1)
+    system.AUDIT_HANDLER.setLevel(logging.DEBUG)
+    system.AUDIT_HANDLER.setFormatter(logging.Formatter("%(asctime)s [%(process)s] %(levelname)s - %(message)s"))
+    logging.root.addHandler(system.AUDIT_HANDLER)
+    system.info(":: %s", system.represented_args(sys.argv), output=False)
 
 
-def bootstrap():
+def setup_debug_log():
+    """Log to stderr"""
+    if system.DEBUG_HANDLER:
+        return
+    system.OUTPUT = False
+    system.DEBUG_HANDLER = logging.StreamHandler()
+    system.DEBUG_HANDLER.setLevel(logging.DEBUG)
+    system.DEBUG_HANDLER.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+    logging.root.addHandler(system.DEBUG_HANDLER)
+    logging.root.setLevel(logging.DEBUG)
+
+
+def bootstrap(testing=False):
     """
     Bootstrap pickley: re-install it as venv if need be
 
@@ -81,23 +100,30 @@ def bootstrap():
     however there are some edge cases where running pip from a pex-packaged CLI doesn't work very well
     So, first thing we do is re-package ourselves as a venv on the target machine
     """
-    if not sys.argv:
-        # Shouldn't happen
-        return
-    if system.QUIET or sys.argv[0] != SETTINGS.base.full_path(system.PICKLEY):
-        # Don't bootstrap in quiet mode, or if not running from actual base location (from development venv)
+    if not testing and (system.QUIET or getattr(sys, "real_prefix", None)):
+        # Don't bootstrap in quiet mode, or if we're running from a venv already
         return
 
-    p = get_packager(system.PICKLEY)
+    p = VenvPackager(system.PICKLEY)
     p.refresh_current()
     if p.current.packager == p.implementation_name:
         # We're already packaged correctly, no need to bootstrap
-        return
+        if not testing:
+            return
+    p.refresh_desired()
+    if not p.desired.valid:
+        system.abort("Can't bootstrap %s: %s", p.name, p.desired.problem)
+    if p.current.equivalent(p.desired):
+        if not testing:
+            return
 
     # Re-install ourselves with correct packager
     system.debug("Bootstrapping %s with %s", system.PICKLEY, p.implementation_name)
-    p.install(intent="bootstrap")
+    p.install(bootstrap=True)
     p.cleanup()
+
+    if testing:
+        return
 
     # Rerun with same args, to pick up freshly bootstrapped installation
     system.OUTPUT = False
@@ -112,9 +138,10 @@ def bootstrap():
 @click.option('--debug', is_flag=True, help="Show debug logs")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode, do not output anything")
 @click.option('--dryrun', '-n', is_flag=True, help="Perform a dryrun")
-@click.option('--base', metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
+@click.option('--no-user-config', is_flag=True, help="Do not load ~/.config.pickley.json")
+@click.option('--base', "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
 @click.option("--config", "-c", metavar="KEY=VALUE", multiple=True, help="Override configuration")
-def main(debug, quiet, dryrun, base, config):
+def main(debug, quiet, dryrun, no_user_config, base, config):
     """
     Package manager for python CLIs
     """
@@ -127,12 +154,16 @@ def main(debug, quiet, dryrun, base, config):
     system.QUIET = quiet
 
     if base:
+        base = system.resolved_path(base)
         if not os.path.exists(base):
             system.abort("Can't use %s as base: folder does not exist", short(base))
         SETTINGS.set_base(base)
 
     SETTINGS.set_cli_config(config)
-    SETTINGS.add(["~/.config/pickley.json", ".pickley.json"])
+    if no_user_config:
+        SETTINGS.add([".pickley.json"])
+    else:
+        SETTINGS.add(["~/.config/pickley.json", ".pickley.json"])
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None
@@ -142,15 +173,13 @@ def main(debug, quiet, dryrun, base, config):
 
     if debug:
         # Log to console with --debug or --dryrun
-        console = logging.StreamHandler()
-        console.setLevel(logging.DEBUG)
-        console.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
-        logging.root.addHandler(console)
+        setup_debug_log()
 
 
 @main.command()
+@click.option('--verbose', '-v', is_flag=True, help="Show more information")
 @click.argument('packages', nargs=-1, required=False)
-def check(packages):
+def check(verbose, packages):
     """
     Check whether specified packages need an upgrade
     """
@@ -166,26 +195,27 @@ def check(packages):
             p.refresh_current()
             p.refresh_desired()
             if not p.desired.valid:
-                system.error(p.desired)
+                system.error(p.desired.representation(verbose))
                 code = 1
             elif not p.current.version:
-                system.info("%s not installed", p.desired)
+                system.info(p.desired.representation(verbose, note="is not installed"))
                 code = 1
             elif not p.current.valid:
-                system.error(p.current)
+                system.error(p.current.representation(verbose))
                 code = 1
             elif p.current.version != p.desired.version:
-                system.info("%s can be upgraded to %s", p.name, p.desired)
+                system.info(p.current.representation(verbose, note="can be upgraded to %s" % p.desired.version))
                 code = 1
             else:
-                system.info("%s is installed", p.desired)
+                system.info(p.current.representation(verbose, note="is installed"))
             p.cleanup()
 
     sys.exit(code)
 
 
 @main.command()
-def list():
+@click.option('--verbose', '-v', is_flag=True, help="Show more information")
+def list(verbose):
     """
     List installed packages
     """
@@ -198,7 +228,7 @@ def list():
         for name in packages:
             p = get_packager(name)
             p.refresh_current()
-            system.info(p.current)
+            system.info(p.current.representation(verbose))
 
 
 @main.command()
@@ -236,6 +266,7 @@ def package(dist, build, packager, folder):
 
     SETTINGS.cache = meta_cache(build)
     setup_audit_log()
+    bootstrap()
 
     if not os.path.isdir(folder):
         system.abort("Folder %s does not exist", short(folder))

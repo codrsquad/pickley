@@ -65,8 +65,7 @@ def find_entry_points(folder, name, version):
         return ep
     if version.endswith(".0"):
         # Try without trailing ".0", as that sometimes gets simplified away by some version parsers
-        version = version[:-2]
-        ep = os.path.join(sp, "%s-%s.dist-info" % (name, version), "entry_points.txt")
+        ep = os.path.join(sp, "%s-%s.dist-info" % (name, version[:-2]), "entry_points.txt")
         if os.path.exists(ep):
             return ep
     # Finally, try also adding ".0", in case something simplified it away before we got 'version'
@@ -210,20 +209,35 @@ class VersionMeta(JsonSerializable):
             self._path = SETTINGS.cache.full_path(self.name, ".%s.json" % suffix)
 
     def __repr__(self):
+        return self.representation()
+
+    def representation(self, verbose=False, note=None):
+        """
+        :param bool verbose: If True, show more extensive info
+        :return str: Human readable representation
+        """
         if self._problem:
-            return "%s: %s" % (self.name, self._problem)
-        notice = []
-        if self.packager and self.packager != PACKAGERS.default_name:
-            notice.append("as %s" % self.packager)
-        if self.channel and self.channel != SETTINGS.default_channel:
-            notice.append("channel: %s" % self.channel)
-        if self.source != SETTINGS.index:
-            notice.append("source: %s" % self.source)
-        if notice:
-            notice = " (%s)" % ", ".join(notice)
+            lead = "%s: %s" % (self.name, self._problem)
+        elif self.version:
+            lead = "%s %s" % (self.name, self.version)
         else:
-            notice = ""
-        return "%s %s%s" % (self.name, self.version, notice)
+            lead = "%s: no version" % (self.name)
+        notice = ""
+        if verbose:
+            notice = []
+            if self.packager:
+                notice.append("as %s" % self.packager)
+            if self.channel:
+                notice.append("channel: %s" % self.channel)
+            if self.source and self.source != SETTINGS.index:
+                notice.append("source: %s" % self.source)
+            if notice:
+                notice = " (%s)" % ", ".join(notice)
+            else:
+                notice = ""
+        if note:
+            notice = " %s%s" % (note, notice)
+        return "%s%s" % (lead, notice)
 
     @property
     def name(self):
@@ -266,12 +280,12 @@ class VersionMeta(JsonSerializable):
             return False
         return True
 
-    def set_version(self, version, source, channel, packager):
+    def set_version(self, version, source, channel="", packager=""):
         """
         :param str version: Effective version
         :param str source: Description of where version determination came from
         :param str channel: Channel (stable, latest, ...) via which this version was determined
-        :param str packager: Packager (pex, virtualenv, ...) used
+        :param str packager: Packager (pex, venv, ...) used
         """
         self.version = version
         self.source = source
@@ -337,7 +351,7 @@ class Packager(object):
         """
         :return str: Identifier for this packager type
         """
-        return cls.__name__.lower()
+        return cls.__name__.replace("Packager", "").lower()
 
     @property
     def implementation_name(self):
@@ -422,7 +436,7 @@ class Packager(object):
         """Refresh self.current"""
         self.current.load()
         if not self.current.valid:
-            self.current.invalidate("not installed")
+            self.current.invalidate("is not installed")
 
     def refresh_latest(self):
         """Refresh self.latest"""
@@ -431,8 +445,8 @@ class Packager(object):
             return
 
         version = latest_pypi_version(SETTINGS.index, self.name)
+        self.latest.set_version(version, SETTINGS.index or "pypi", channel="latest")
         if version:
-            self.latest.set_version(version, SETTINGS.index or "pypi", "latest", self.implementation_name)
             self.latest.save()
 
         else:
@@ -442,7 +456,7 @@ class Packager(object):
         """Refresh self.desired"""
         configured = SETTINGS.version(self.name)
         if configured.value:
-            self.desired.set_version(configured.value, str(configured.source), configured.channel, self.implementation_name)
+            self.desired.set_version(configured.value, str(configured.source), channel=configured.channel, packager=self.implementation_name)
             return
         if configured.channel == "latest":
             self.refresh_latest()
@@ -451,26 +465,27 @@ class Packager(object):
             return
         self.desired.invalidate("can't determine %s version" % configured.channel)
 
-    def install(self, intent="install", force=False):
+    def install(self, force=False, bootstrap=False):
         """
-        :param str intent: "install" or "bootstrap"
         :param bool force: If True, re-install even if package is already installed
+        :param bool bootstrap: Bootstrap mode
         """
-        self.refresh_current()
-        self.refresh_desired()
-        if not self.desired.valid:
-            system.abort("Can't %s %s: %s", intent, self.name, self.desired.problem)
-        if not force and self.current.equivalent(self.desired):
-            if intent == "install":
-                system.info("%s is already installed", self.desired)
-            return
+        if not bootstrap:
+            self.refresh_current()
+            self.refresh_desired()
+            if not self.desired.valid:
+                system.abort("Can't install %s: %s", self.name, self.desired.problem)
+            if not force and self.current.equivalent(self.desired):
+                system.info(self.desired.representation(verbose=True, note="is already installed"))
+                return
 
         self.effective_install(self.desired.version)
 
         self.current.set(self.desired)
         self.current.save()
-        msg = "Would %s" % intent if system.DRYRUN else "%sed" % (intent.title())
-        system.info("%s %s", msg, self.desired)
+        msg = "bootstrap" if bootstrap else "install"
+        msg = "Would %s" % msg if system.DRYRUN else "%sed" % (msg.title())
+        system.info("%s %s", msg, self.desired.representation(verbose=True))
 
     def effective_install(self, version):
         """
@@ -483,9 +498,13 @@ class Packager(object):
         :param str version: Version being delivered
         :param str source: Template describing where source is coming from, example: {cache}/{name}-{version}
         """
-        deliverer = DELIVERERS.resolved(self.name)
-        if not deliverer:
+        deliverer_definition = DELIVERERS.resolved(self.name)
+        if not deliverer_definition:
             system.abort("No delivery type configured for %s", self.name)
+
+        deliverer = DELIVERERS.get(deliverer_definition.value)
+        if not deliverer:
+            system.abort("Unknown delivery type '%s'", deliverer_definition)
 
         for name in self.entry_points:
             target = SETTINGS.base.full_path(name)
@@ -530,7 +549,7 @@ class WheelBasedPackager(Packager):
 
 
 @PACKAGERS.register
-class Pex(WheelBasedPackager):
+class PexPackager(WheelBasedPackager):
     """
     Package/install via pex (https://pypi.org/project/pex/)
     """
@@ -539,7 +558,7 @@ class Pex(WheelBasedPackager):
         :param str name: Name of pypi package
         :param str|None cache: Optional path to folder to use as build cache
         """
-        super(Pex, self).__init__(name, cache=cache)
+        super(PexPackager, self).__init__(name, cache=cache)
         self.pex = PexRunner(self.cache)
 
     def package(self, version=None):
@@ -552,6 +571,8 @@ class Pex(WheelBasedPackager):
 
         if not version:
             setup_py = os.path.join(self.source_folder, "setup.py")
+            if not os.path.isfile(setup_py):
+                system.abort("No setup.py in %s", short(self.source_folder))
             version = system.run_program(sys.executable, setup_py, "--version", fatal=False)
             if not version:
                 system.abort("Could not determine version from %s", short(setup_py))
@@ -586,7 +607,7 @@ class Pex(WheelBasedPackager):
 
 
 @PACKAGERS.register
-class Virtualenv(Packager):
+class VenvPackager(Packager):
     """
     Install via virtualenv (https://pypi.org/project/virtualenv/)
     """
@@ -602,6 +623,12 @@ class Virtualenv(Packager):
                 return read_entry_points(fh)
         return None
 
+    def is_within(self, venv, working_folder):
+        """
+        :return bool: True if 'venv' path is under 'working_folder'
+        """
+        return venv.lower().startswith(working_folder.lower())
+
     def effective_install(self, version):
         """
         :param str version: Effective version to install
@@ -615,7 +642,7 @@ class Virtualenv(Packager):
 
         install_folder = SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version))
         working_folder = install_folder
-        if venv.lower().startswith(working_folder.lower()):
+        if self.is_within(venv, working_folder):
             # Create venv in a different folder, to support the bootstrap case
             working_folder = "%s.tmp" % install_folder
 

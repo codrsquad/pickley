@@ -32,7 +32,7 @@ tree <base>
     "default": {
         "channel": "latest",
         "delivery": "wrap, or symlink, or copy",
-        "packager": "virtualenv"
+        "packager": "venv"
     },
     "delivery": {
         "wrap": "logfetch mgit"
@@ -206,7 +206,7 @@ class JsonSerializable:
             if system.DRYRUN:
                 system.debug("Would save %s", short(path))
             else:
-                with open(path, 'wt') as fh:
+                with open(path, "wt") as fh:
                     json.dump(data, fh, sort_keys=True, indent=2)
 
         except Exception as e:
@@ -224,7 +224,7 @@ class JsonSerializable:
             return default
 
         try:
-            with open(path, 'rt') as fh:
+            with open(path, "rt") as fh:
                 data = json.load(fh)
                 if default is not None and type(data) != type(default):
                     system.debug("Wrong type %s for %s, expecting %s" % (type(data), short(path), type(default)))
@@ -444,7 +444,6 @@ class Settings:
         :param list|None config: Optional configuration files to load
         """
         self.set_base(base)
-        self.cache = meta_cache(self.base.path)
         self.cli = SettingsFile(self, name="cli")
         self.cli.set_contents({})
         self.defaults = SettingsFile(self, name="defaults")
@@ -452,7 +451,7 @@ class Settings:
             default=dict(
                 channel="latest",
                 delivery="symlink",
-                packager="virtualenv",
+                packager="venv",
                 python=system.PYTHON,
             ),
         )
@@ -485,6 +484,8 @@ class Settings:
             self.base = base
         else:
             self.base = FolderBase(base, name="base")
+
+        self.cache = meta_cache(self.base.path)
 
     def set_cli_config(self, entries):
         content = {}
@@ -567,14 +568,14 @@ class Settings:
         """
         :return str: Default packager to use
         """
-        return self.get_value("default.packager", default="virtualenv").lower()
+        return self.get_value("default.packager").lower()
 
     @property
     def default_channel(self):
         """
         :return str: Default channel to use
         """
-        return self.get_value("default.channel", default="latest").lower()
+        return self.get_value("default.channel").lower()
 
     @property
     def index(self):

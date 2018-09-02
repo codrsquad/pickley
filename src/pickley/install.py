@@ -132,6 +132,13 @@ class PexRunner(Runner):
                 return "py2.py3-none" in fname
         return False
 
+    def resolved_python(self, package_name):
+        """
+        :param str package_name: Pypi package name
+        :return pickley.settings.Definition: Associated definition
+        """
+        return SETTINGS.resolved_definition("python", package_name=package_name)
+
     def build(self, script_name, package_name, version, destination):
         """
         :param str script_name: Entry point name
@@ -141,13 +148,26 @@ class PexRunner(Runner):
         :return str|None: None if successful, problem description otherwise
         """
         system.delete_file(destination)
-        python = SETTINGS.resolved_value("python", package_name=package_name)
+        python = self.resolved_python(package_name)
         args = ["-c%s" % script_name, "-o%s" % destination, "%s==%s" % (package_name, version)]
 
-        if python:
-            args.append("--python=%s" % python)
+        if python and python.value:
+            args.append("--python=%s" % python.value)
+
+        explicit_python = python and python.value and python.source is not SETTINGS.defaults
+        shebang = None
+        if explicit_python:
+            shebang = python.value
 
         elif self.is_universal(package_name, version):
-            args.append("--python-shebang=/usr/bin/env python")
+            shebang = "python"
+
+        else:
+            shebang = python.value
+
+        if shebang:
+            if not os.path.isabs(shebang):
+                shebang = "/usr/bin/env %s" % shebang
+            args.append("--python-shebang=%s" % shebang)
 
         return self.run(args)
