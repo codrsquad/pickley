@@ -37,8 +37,8 @@ def brew_uninstall(target):
     output = system.run_program(BREW, "uninstall", "-f", name, fatal=False, logger=system.info)
     if output is None:
         # Failed brew uninstall
+        system.error("Could not uninstall,  please run 'brew uninstall -f %s'" % target)
         return False
 
-    # All good, run 'cleanup' for good measure
-    system.run_program(BREW, "cleanup", fatal=False, logger=system.info)
+    # All good
     return True
