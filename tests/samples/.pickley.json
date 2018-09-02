@@ -1,12 +1,16 @@
 {
   "include": "custom.json",
   "bundle": {
-    "dev": "tox twine"
+    "dev": "tox twine",
+    "dev2": "bundle:dev pipenv"
   },
   "channel": {
     "stable": {
       "tox": "3.2.1",
       "twine": "1.9.0"
     }
+  },
+  "delivery": {
+    "venv": "tox pipenv"
   }
 }

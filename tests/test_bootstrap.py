@@ -23,6 +23,11 @@ def test_bootstrap(_, temp_base):
     output = system.run_program(pickley, "--version")
     assert "version " in output
 
+    # A 2nd call to boostrap() should be a no-op
+    with capture_output() as logged:
+        bootstrap(testing=True)
+        assert not str(logged)
+
 
 @patch("pickley.cli.relaunch")
 @patch("pickley.package.VenvPackager.is_within", return_value=True)

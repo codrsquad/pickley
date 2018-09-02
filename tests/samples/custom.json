@@ -4,6 +4,7 @@
       "virtualenv": "16.0.0"
     }
   },
+  "index": "https://pypi.org/",
   "select": {
     "virtualenv": {
       "delivery": "wrap",

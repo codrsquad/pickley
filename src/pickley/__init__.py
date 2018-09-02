@@ -65,6 +65,7 @@ class system:
     AUDIT_HANDLER = None
     DEBUG_HANDLER = None
     TESTING = "pytest" in sys.argv[0]
+    PROGRAM = sys.argv[0]
 
     DEFAULT_CHANNEL = "latest"
     DEFAULT_DELIVERY = "symlink"

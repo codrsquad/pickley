@@ -53,7 +53,6 @@ tree <base>
 
 import json
 import os
-import sys
 
 import six
 
@@ -383,13 +382,11 @@ class SettingsFile:
             if isinstance(main, dict):
                 for name, values in main.items():
                     if isinstance(values, dict):
-                        values = values.keys()
+                        if package_name in values:
+                            return Definition(name, self, "%s.%s" % (key, name))
                     elif hasattr(values, "split"):
-                        values = values.split()
-                    else:
-                        continue
-                    if package_name in values:
-                        return Definition(name, self, "%s.%s" % (key, name))
+                        if package_name in values.split():
+                            return Definition(name, self, "%s.%s" % (key, name))
         return self.get_definition("default.%s" % key)
 
     def get_definition(self, key):
@@ -466,7 +463,7 @@ class Settings:
         if not base:
             base = os.environ.get("PICKLEY_ROOT")
         if not base:
-            base = system.parent_folder(sys.argv[0])
+            base = system.parent_folder(system.PROGRAM)
             if system.DOT_PICKLEY in base:
                 # Don't consider bootstrapped .pickley/... as installation base
                 i = base.index(system.DOT_PICKLEY)
@@ -560,20 +557,6 @@ class Settings:
         return default
 
     @property
-    def default_packager(self):
-        """
-        :return str: Default packager to use
-        """
-        return self.get_value("default.packager").lower()
-
-    @property
-    def default_channel(self):
-        """
-        :return str: Default channel to use
-        """
-        return self.get_value("default.channel").lower()
-
-    @property
     def index(self):
         """
         :return str: Optional pypi index to use
@@ -587,6 +570,8 @@ class Settings:
         """
         result = []
         if names:
+            if hasattr(names, "split"):
+                names = names.split()
             for name in names:
                 if name.startswith("bundle:"):
                     bundle = self.get_value("bundle.%s" % name[7:])
@@ -595,13 +580,6 @@ class Settings:
                         continue
                 result.append(name)
         return system.flattened(result)
-
-    def package_delivery(self, package_name):
-        """
-        :param str package_name: Package name
-        :return Definition: Delivery mode to use
-        """
-        return self.resolved_definition("delivery", package_name=package_name)
 
     def package_channel(self, package_name):
         """
@@ -630,12 +608,9 @@ class Settings:
         if os.path.isdir(self.cache.path):
             for fname in os.listdir(self.cache.path):
                 fpath = os.path.join(self.cache.path, fname)
-                if not os.path.isdir(fpath):
-                    continue
-                fpath = os.path.join(fpath, ".current.json")
-                if not os.path.exists(fpath):
-                    continue
-                result.append(fname)
+                if os.path.isdir(fpath):
+                    if os.path.exists(os.path.join(fpath, ".current.json")):
+                        result.append(fname)
         return result
 
     def represented(self):

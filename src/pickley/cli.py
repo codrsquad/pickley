@@ -120,8 +120,6 @@ def bootstrap(testing=False):
     p.refresh_desired()
     if not p.desired.valid:
         system.abort("Can't bootstrap %s: %s", p.name, p.desired.problem)
-    if p.current.equivalent(p.desired):
-        return
 
     # Re-install ourselves with correct packager
     system.debug("Bootstrapping %s with %s", system.PICKLEY, p.implementation_name)
