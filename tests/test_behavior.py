@@ -132,3 +132,8 @@ def test_pex_runner(temp_base):
         p.effective_run = failed_run
         system.DRYRUN = False
         assert "Failed run" in p.run()
+
+
+def test_bad_copy(temp_base):
+    assert "does not exist, can't copy" in verify_abort(system.copy_file, "foo", "bar")
+    assert "No bin folder in venv" in verify_abort(system.relocate_venv, temp_base, "bar")

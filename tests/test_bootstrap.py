@@ -38,12 +38,12 @@ def test_second_bootstrap(_, __, temp_base):
 
     with capture_output(dryrun=True) as logged:
         bootstrap(testing=True)
-        assert "Would move " in logged
+        assert "Would relocate venv " in logged
         assert "Would bootstrap pickley" in logged
 
     with capture_output() as logged:
         bootstrap(testing=True)
-        assert "Moving " in logged
+        assert "Relocating venv " in logged
         assert "Bootstraped pickley" in logged
 
     # Verify it still works

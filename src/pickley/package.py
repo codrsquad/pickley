@@ -1,5 +1,4 @@
 import os
-import shutil
 import sys
 import time
 import zipfile
@@ -177,12 +176,7 @@ class DeliveryCopy(DeliveryMethod):
     """
 
     def _install(self, packager, target, source):
-        system.ensure_folder(target)
-        if os.path.isdir(source):
-            shutil.copytree(source, target, symlinks=False)
-        else:
-            shutil.copy(source, target)
-        shutil.copystat(source, target)  # Make sure last modification time is preserved
+        system.copy_file(source, target)
 
 
 class VersionMeta(JsonSerializable):
@@ -653,7 +647,7 @@ class VenvPackager(Packager):
         working_folder = install_folder
         if self.is_within(venv, working_folder):
             # Create venv in a different folder, to support the bootstrap case
-            working_folder = "%s.tmp" % install_folder
+            working_folder = "%s.work" % install_folder
 
         python = SETTINGS.resolved_value("python", package_name=self.name)
         pip = os.path.join(working_folder, "bin", "pip")
@@ -661,13 +655,8 @@ class VenvPackager(Packager):
         system.run_program(pip, "--disable-pip-version-check", "install", "%s==%s" % (self.name, version), "-i", SETTINGS.index)
 
         if install_folder != working_folder:
-            system.run_program(system.PYTHON, venv, "--relocatable", working_folder, "-p", python)
-            system.delete_file(install_folder)
-            if system.DRYRUN:
-                system.debug("Would move %s -> %s", short(working_folder), short(install_folder))
-            else:
-                system.debug("Moving %s -> %s", short(working_folder), short(install_folder))
-                shutil.move(working_folder, install_folder)
+            system.relocate_venv(working_folder, install_folder)
+            system.delete_file(working_folder)
 
         self.refresh_entry_points(install_folder, version)
         self.perform_delivery(version, "%s/{name}" % os.path.join(install_folder, "bin"))

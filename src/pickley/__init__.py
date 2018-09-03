@@ -50,6 +50,36 @@ def python_interpreter():
         return sys.executable
 
 
+def relocate_venv_file(path, source, destination):
+    """
+    :param str path: Path of file to relocate (in 'source')
+    :param str source: Where venv used to be
+    :param str destination: Where venv is relocated
+    :return bool: True if file with 'path' was modified
+    """
+    if not path or not os.path.isfile(path) or os.path.islink(path) or os.path.getsize(path) > 8192:
+        # No need to relocate if symlink, or size bigger than 8k (binary)
+        return False
+
+    lines = []
+    modified = False
+    with open(path, "rt") as fh:
+        for line in fh:
+            if source in line:
+                line = line.replace(source, destination)
+                modified = True
+            lines.append(line)
+
+    if not modified or not lines:
+        return False
+
+    with open(path, "wt") as fh:
+        for line in lines:
+            fh.write(line)
+
+    return True
+
+
 class system:
     """
     Functionality for the whole app, easily importable via one name
@@ -222,6 +252,20 @@ class system:
             raise
 
     @classmethod
+    def copy_file(cls, source, destination):
+        """Copy source -> destination"""
+        if source and destination:
+            if not os.path.exists(source):
+                cls.abort("%s does not exist, can't copy to %s", short(source), short(destination))
+            cls.ensure_folder(destination)
+            cls.delete_file(destination)
+            if os.path.isdir(source):
+                shutil.copytree(source, destination, symlinks=True)
+            else:
+                shutil.copy(source, destination)
+            shutil.copystat(source, destination)  # Make sure last modification time is preserved
+
+    @classmethod
     def delete_file(cls, path):
         """ Delete file/folder with 'path' """
         islink = path and os.path.islink(path)
@@ -242,6 +286,32 @@ class system:
         except Exception as e:
             cls.error("Can't delete %s: %s", short(path), e)
             raise
+
+    @classmethod
+    def relocate_venv(cls, source, destination):
+        """
+        :param str source: Folder where current venv is
+        :param str destination: Folder where to relocate venv to
+        """
+        if source and destination:
+            if cls.DRYRUN:
+                cls.debug("Would relocate venv %s -> %s", short(source), short(destination))
+                return
+
+            if not os.path.isdir(os.path.join(source, "bin")):
+                system.abort("No bin folder in venv %s", short(source))
+
+            cls.debug("Relocating venv %s -> %s", short(source), short(destination))
+            temp_dest = "%s.relocate" % destination
+            cls.copy_file(source, temp_dest)
+
+            bin_folder = os.path.join(temp_dest, "bin")
+            for name in os.listdir(bin_folder):
+                fpath = os.path.join(bin_folder, name)
+                relocate_venv_file(fpath, source, destination)
+
+            system.delete_file(destination)
+            shutil.move(temp_dest, destination)
 
     @classmethod
     def make_executable(cls, path):
