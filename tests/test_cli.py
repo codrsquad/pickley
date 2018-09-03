@@ -102,7 +102,11 @@ def test_install(temp_base):
 
     expect_failure("install six", "'six' is not a CLI", base=temp_base)
 
-    expect_success("install tox", "Installed tox", base=temp_base)
+    # Install tox, but add a few files + a bogus previous entry point to test cleanup
+    system.touch(SETTINGS.base.full_path("tox-foo"))
+    system.touch(SETTINGS.cache.full_path("tox", "tox-0.0.0"))
+    system.write_contents(SETTINGS.cache.full_path("tox", ".entry-points.json"), '["tox-foo"]\n')
+    expect_success("install tox", "Installed tox", "tox-foo", "tox-0.0.0", base=temp_base)
     assert system.is_executable(tox)
     output = run_program(tox, "--version")
     assert "tox" in output

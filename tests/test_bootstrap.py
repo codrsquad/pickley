@@ -15,8 +15,15 @@ from .conftest import verify_abort
 def test_bootstrap(_, temp_base):
     SETTINGS.cli.contents["delivery"] = "wrap"
     pickley = os.path.join(temp_base, system.PICKLEY)
+
+    with capture_output(dryrun=True) as logged:
+        bootstrap(testing=True)
+        assert "Would move venv " in logged
+        assert "Would bootstrap pickley" in logged
+
     with capture_output() as logged:
         bootstrap(testing=True)
+        assert "Moving venv " in logged
         assert "Bootstraped pickley" in logged
 
     # Verify it works
@@ -27,28 +34,6 @@ def test_bootstrap(_, temp_base):
     with capture_output() as logged:
         bootstrap(testing=True)
         assert not str(logged)
-
-
-@patch("pickley.cli.relaunch")
-@patch("pickley.package.VenvPackager.is_within", return_value=True)
-def test_second_bootstrap(_, __, temp_base):
-    # Simulate a 2nd bootstrap, this will have to use a relocatable venv
-    SETTINGS.cli.contents["delivery"] = "wrap"
-    pickley = os.path.join(temp_base, system.PICKLEY)
-
-    with capture_output(dryrun=True) as logged:
-        bootstrap(testing=True)
-        assert "Would relocate venv " in logged
-        assert "Would bootstrap pickley" in logged
-
-    with capture_output() as logged:
-        bootstrap(testing=True)
-        assert "Relocating venv " in logged
-        assert "Bootstraped pickley" in logged
-
-    # Verify it still works
-    output = system.run_program(pickley, "--version")
-    assert "version " in output
 
 
 @patch("pickley.cli.relaunch")

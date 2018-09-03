@@ -11,7 +11,7 @@ from pickley.settings import SETTINGS
 
 TESTS = system.parent_folder(__file__)
 PROJECT = system.parent_folder(TESTS)
-INEXISTING_FILE = "does/not/exist"
+INEXISTING_FILE = "/dev/null/foo/bar"
 
 
 def sample_path(*relative):

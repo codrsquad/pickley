@@ -148,15 +148,14 @@ class PexRunner(Runner):
         python = self.resolved_python(package_name)
         args = ["-c%s" % script_name, "-o%s" % destination, "%s==%s" % (package_name, version)]
 
-        if python and python.value:
-            args.append("--python=%s" % python.value)
-
+        # Note: 'python.source' being 'SETTINGS.defaults' is the same as it being 'system.PYTHON'
+        # Writing it this way is easier to change in tests
         explicit_python = python and python.value and python.source is not SETTINGS.defaults
-        shebang = None
         if explicit_python:
             shebang = python.value
+            args.append("--python=%s" % python.value)
 
-        elif self.is_universal(package_name, version):
+        elif not python or self.is_universal(package_name, version):
             shebang = "python"
 
         else:

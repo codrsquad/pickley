@@ -3,7 +3,7 @@ import time
 
 from mock import patch
 
-from pickley import capture_output, short, system
+from pickley import capture_output, system
 from pickley.install import PexRunner
 from pickley.package import DeliveryCopy, DeliveryMethod, DeliverySymlink, DeliveryWrap, Packager, PexPackager, VenvPackager, VersionMeta
 from pickley.settings import Definition, SETTINGS
@@ -11,31 +11,7 @@ from pickley.settings import Definition, SETTINGS
 from .conftest import INEXISTING_FILE, verify_abort
 
 
-def test_cleanup(temp_base):
-    checked = SETTINGS.cache.full_path("tox", ".checked")
-    system.touch(checked)
-    system.touch(SETTINGS.cache.full_path("tox", "tox-1.0", "bin"))
-    system.touch(SETTINGS.cache.full_path("tox", "tox-2.0", "bin"))
-    system.touch(SETTINGS.cache.full_path("tox", "tox-3.0", "bin"))
-    p = VenvPackager("tox")
-    p.cleanup()
-    assert sorted(os.listdir(SETTINGS.cache.full_path("tox"))) == [".checked", "tox-3.0"]
-
-    # Plus a few edge cases
-    with capture_output(dryrun=True) as logged:
-        system.delete_file(temp_base)
-        system.make_executable(checked)
-        assert "Would delete" in logged
-        assert "Would make %s executable" % short(checked) in logged
-
-
 def test_delivery(temp_base):
-    with capture_output() as logged:
-        deliver = DeliveryMethod()
-        deliver.install(None, None, INEXISTING_FILE)
-        assert deliver._install(None, None, None) is None
-        assert INEXISTING_FILE in logged
-
     # Test copy folder
     deliver = DeliveryCopy()
     target = os.path.join(temp_base, "t1")
@@ -54,24 +30,29 @@ def test_delivery(temp_base):
     deliver.install(None, target, source)
     assert os.path.isfile(target)
 
-    with capture_output() as logged:
-        deliver = DeliverySymlink()
-        deliver.install(None, None, __file__)
-        assert "Failed symlink" in logged
+    p = VenvPackager("tox")
+    assert str(p) == "venv tox"
+    target = os.path.join(temp_base, "tox")
+    source = os.path.join(temp_base, "tox-source")
+    system.touch(source)
+    deliver = DeliveryWrap()
+    deliver.install(p, target, source)
+    assert system.is_executable(target)
 
-    with capture_output() as logged:
-        p = VenvPackager("tox")
-        assert str(p) == "venv tox"
-        target = os.path.join(temp_base, "tox")
-        source = os.path.join(temp_base, "tox-source")
-        system.touch(source)
-        deliver = DeliveryWrap()
-        deliver.install(p, target, source)
-        assert system.is_executable(target)
+    # Cover edge case for make_executable():
+    system.make_executable(target)
+    assert system.is_executable(target)
 
-        # Cover edge case for make_executable():
-        system.make_executable(target)
-        assert system.is_executable(target)
+
+def test_bogus_delivery():
+    deliver = DeliveryMethod()
+    assert "does not exist" in verify_abort(deliver.install, None, None, INEXISTING_FILE)
+
+    # Edge case: exercise empty implementation parent
+    assert deliver._install(None, None, None) is None
+
+    deliver = DeliverySymlink()
+    assert "Failed symlink" in verify_abort(deliver.install, None, None, __file__)
 
 
 def test_packager():
@@ -117,17 +98,17 @@ def test_versions(_, __, temp_base):
     assert "No delivery type configured" in verify_abort(p.perform_delivery, "0.0.0", "foo")
 
     # Without pip cache
-    assert p.get_entry_points(p.pip.cache, "0.0.0") is None
+    assert p.get_entry_points(p.build_folder, "0.0.0") is None
 
     # With an empty pip cache
-    system.ensure_folder(p.pip.cache, folder=True)
-    assert p.get_entry_points(p.pip.cache, "0.0.0") is None
+    system.ensure_folder(p.build_folder, folder=True)
+    assert p.get_entry_points(p.build_folder, "0.0.0") is None
 
     # With a bogus wheel
     with capture_output() as logged:
-        whl = os.path.join(p.pip.cache, "foo-0.0.0-py2.py3-none-any.whl")
+        whl = os.path.join(p.build_folder, "foo-0.0.0-py2.py3-none-any.whl")
         system.touch(whl)
-        assert p.get_entry_points(p.pip.cache, "0.0.0") is None
+        assert p.get_entry_points(p.build_folder, "0.0.0") is None
         assert "Can't read wheel" in logged
         system.delete_file(whl)
 
@@ -144,25 +125,22 @@ def test_versions(_, __, temp_base):
     assert "Could not determine version" in verify_abort(p.package)
 
     # Provide a minimal setup.py
-    with open(setup_py, "wt") as fh:
-        fh.write("from setuptools import setup\n")
-        fh.write("setup(name='foo', version='0.0.0')\n")
+    system.write_contents(setup_py, "from setuptools import setup\nsetup(name='foo', version='0.0.0')\n")
 
     # Package project without entry points
     p.get_entry_points = lambda *_: None
-    p.pip.wheel = lambda *_: None
-    assert "is not a CLI" in verify_abort(p.package)
+    assert "is not a CLI" in verify_abort(p.refresh_entry_points, temp_base, "1.0")
 
     # Simulate presence of entry points
     p.get_entry_points = lambda *_: ["foo"]
 
     # Simulate pip wheel failure
-    p.pip.wheel = lambda *_: "failed"
+    p.pip_wheel = lambda *_: "failed"
     assert "pip wheel failed" in verify_abort(p.package)
 
     # Simulate pex failure
-    p.pip.wheel = lambda *_: None
-    p.pex.build = lambda *_: "failed"
+    p.pip_wheel = lambda *_: None
+    p.pex_build = lambda *_: "failed"
     assert "pex command failed" in verify_abort(p.package)
 
     SETTINGS.cli.set_contents({})
@@ -194,14 +172,14 @@ def test_shebang():
     p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
     with capture_output() as logged:
         p.build(None, None, None, None)
-        assert "--python=/some-python" in logged
+        assert "--python=" not in logged
         assert "--python-shebang=/usr/bin/env python" in logged
 
     # Default python, relative path
     p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
     with capture_output() as logged:
         p.build(None, None, None, None)
-        assert "--python=some-python" in logged
+        assert "--python=" not in logged
         assert "--python-shebang=/usr/bin/env python" in logged
 
     # Explicit python, absolute path
@@ -225,14 +203,14 @@ def test_shebang():
     p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
     with capture_output() as logged:
         p.build(None, None, None, None)
-        assert "--python=/some-python" in logged
+        assert "--python=" not in logged
         assert "--python-shebang=/some-python" in logged
 
     # Default python, relative path
     p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
     with capture_output() as logged:
         p.build(None, None, None, None)
-        assert "--python=some-python" in logged
+        assert "--python=" not in logged
         assert "--python-shebang=/usr/bin/env some-python" in logged
 
     # Explicit python, absolute path

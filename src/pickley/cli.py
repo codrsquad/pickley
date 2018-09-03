@@ -45,7 +45,7 @@ def packager_option(**kwargs):
     return _option(packager_option, "-p", name="packager", type=click.Choice(PACKAGERS.names()), callback=_callback, **kwargs)
 
 
-def get_packager(name, packager=None, cache=None):
+def get_packager(name, packager=None):
     """
     :param str name: Name of pypi package
     :param Packager|None packager:
@@ -61,7 +61,7 @@ def get_packager(name, packager=None, cache=None):
         if not pkg:
             system.abort("Unknown packager '%s'" % definition)
     if issubclass(pkg, Packager):
-        return pkg(name, cache=cache)
+        return pkg(name)
     system.abort("Invalid packager implementation for '%s': %s", name, pkg.__class__.__name__)
 
 
@@ -124,7 +124,6 @@ def bootstrap(testing=False):
     # Re-install ourselves with correct packager
     system.debug("Bootstrapping %s with %s", system.PICKLEY, p.implementation_name)
     p.install(bootstrap=True)
-    p.cleanup()
     relaunch()
 
 
@@ -195,7 +194,6 @@ def check(verbose, packages):
                 code = 1
             else:
                 system.info(p.current.representation(verbose, note="is installed"))
-            p.cleanup()
 
     sys.exit(code)
 
@@ -233,7 +231,6 @@ def install(packager, force, packages):
     for name in packages:
         p = get_packager(name, packager)
         p.install(force=force)
-        p.cleanup()
 
     sys.exit(0)
 
@@ -268,9 +265,10 @@ def package(dist, build, packager, folder):
         if not name:
             system.abort("Could not determine package name from %s", short(setup_py))
 
-    p = get_packager(name, packager, cache=build)
-    p.set_dist_folder(dist)
-    p.set_source_folder(folder)
+    p = get_packager(name, packager)
+    p.dist_folder = system.resolved_path(dist)
+    p.build_folder = system.resolved_path(build)
+    p.source_folder = system.resolved_path(folder)
     if hasattr(p, "package"):
         r = p.package()
         system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))

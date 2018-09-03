@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess  # nosec
 import sys
+import time
 
 import six
 
@@ -52,9 +53,9 @@ def python_interpreter():
 
 def relocate_venv_file(path, source, destination):
     """
-    :param str path: Path of file to relocate (in 'source')
+    :param str path: Path of file to relocate (change mentions of 'source' to 'destination')
     :param str source: Where venv used to be
-    :param str destination: Where venv is relocated
+    :param str destination: Where venv is moved to
     :return bool: True if file with 'path' was modified
     """
     if not path or not os.path.isfile(path) or os.path.islink(path) or os.path.getsize(path) > 8192:
@@ -63,19 +64,30 @@ def relocate_venv_file(path, source, destination):
 
     lines = []
     modified = False
-    with open(path, "rt") as fh:
-        for line in fh:
-            if source in line:
-                line = line.replace(source, destination)
-                modified = True
-            lines.append(line)
+    try:
+        with io.open(path, "rt") as fh:
+            for line in fh:
+                if source in line:
+                    line = line.replace(source, destination)
+                    modified = True
+                lines.append(line)
+
+    except Exception as e:
+        if "utf-8" in str(e):
+            return False
+
+        system.abort("Can't relocate venv file %s: %s", short(path), e)
 
     if not modified or not lines:
         return False
 
-    with open(path, "wt") as fh:
-        for line in lines:
-            fh.write(line)
+    try:
+        with io.open(path, "wt") as fh:
+            for line in lines:
+                fh.write(line)
+
+    except Exception as e:
+        system.abort("Can't relocate venv file %s: %s", short(path), e)
 
     return True
 
@@ -145,6 +157,9 @@ class system:
         :param path: Path to file to touch
         """
         if path:
+            if system.DRYRUN:
+                cls.debug("Would touch %s", short(path))
+                return
             cls.ensure_folder(path)
             with open(path, "at"):
                 os.utime(path, None)
@@ -255,15 +270,59 @@ class system:
     def copy_file(cls, source, destination):
         """Copy source -> destination"""
         if source and destination:
+            if cls.DRYRUN:
+                cls.debug("Would copy %s -> %s", short(source), short(destination))
+                return
+
             if not os.path.exists(source):
                 cls.abort("%s does not exist, can't copy to %s", short(source), short(destination))
+
             cls.ensure_folder(destination)
             cls.delete_file(destination)
+
             if os.path.isdir(source):
                 shutil.copytree(source, destination, symlinks=True)
             else:
                 shutil.copy(source, destination)
+
             shutil.copystat(source, destination)  # Make sure last modification time is preserved
+
+    @classmethod
+    def move_file(cls, source, destination):
+        """Move source -> destination"""
+        if source and destination:
+            if cls.DRYRUN:
+                cls.debug("Would move %s -> %s", short(source), short(destination))
+                return
+
+            if not os.path.exists(source):
+                cls.abort("%s does not exist, can't move to %s", short(source), short(destination))
+
+            cls.ensure_folder(destination)
+            cls.delete_file(destination)
+            shutil.move(source, destination)
+
+    @classmethod
+    def move_venv(cls, source, destination):
+        """
+        :param str source: Folder where current venv is
+        :param str destination: Folder where to move and relocate venv to
+        """
+        if source and destination:
+            if cls.DRYRUN:
+                cls.debug("Would move venv %s -> %s", short(source), short(destination))
+                return
+
+            bin_folder = os.path.join(source, "bin")
+            if not os.path.isdir(bin_folder):
+                system.abort("No bin folder in venv %s, can't move to %s", short(source), short(destination))
+
+            cls.debug("Moving venv %s -> %s", short(source), short(destination))
+            for name in os.listdir(bin_folder):
+                fpath = os.path.join(bin_folder, name)
+                relocate_venv_file(fpath, source, destination)
+
+            cls.move_file(source, destination)
 
     @classmethod
     def delete_file(cls, path):
@@ -286,32 +345,6 @@ class system:
         except Exception as e:
             cls.error("Can't delete %s: %s", short(path), e)
             raise
-
-    @classmethod
-    def relocate_venv(cls, source, destination):
-        """
-        :param str source: Folder where current venv is
-        :param str destination: Folder where to relocate venv to
-        """
-        if source and destination:
-            if cls.DRYRUN:
-                cls.debug("Would relocate venv %s -> %s", short(source), short(destination))
-                return
-
-            if not os.path.isdir(os.path.join(source, "bin")):
-                system.abort("No bin folder in venv %s", short(source))
-
-            cls.debug("Relocating venv %s -> %s", short(source), short(destination))
-            temp_dest = "%s.relocate" % destination
-            cls.copy_file(source, temp_dest)
-
-            bin_folder = os.path.join(temp_dest, "bin")
-            for name in os.listdir(bin_folder):
-                fpath = os.path.join(bin_folder, name)
-                relocate_venv_file(fpath, source, destination)
-
-            system.delete_file(destination)
-            shutil.move(temp_dest, destination)
 
     @classmethod
     def make_executable(cls, path):
@@ -342,6 +375,23 @@ class system:
         :return bool: True if file exists and is executable
         """
         return path and os.path.isfile(path) and os.access(path, os.X_OK)
+
+    @classmethod
+    def write_contents(cls, path, contents):
+        """
+        :param str path: Path to file
+        :param str contents: Contents to write
+        """
+        if not path or not contents:
+            return
+
+        if cls.DRYRUN:
+            cls.debug("Would write %s bytes to %s", len(contents), short(path))
+
+        cls.ensure_folder(path)
+        cls.debug("Writing %s bytes to %s", len(contents), short(path))
+        with open(path, "wt") as fh:
+            fh.write(contents)
 
     @classmethod
     def which(cls, program):
@@ -485,6 +535,64 @@ class cd:
 
     def __exit__(self, *_):
         os.chdir(self.current_folder)
+
+
+class ping_lock:
+    """
+    Allows to manage .work/ folder with a .ping lock file
+    Several pickley processes could be attempting to auto upgrade a package at the same time
+    With this class, we make it so:
+    - first process "grabs a lock" via a .ping file (lock based on existence of file, and its age)
+    - lock consists of creating a .work/.ping file, and deleting .work/ folder once installation completes
+    - other processes will avoid trying their own upgrade during that time
+    - the lock remains valid for an hour, after that we consider that previous upgrade attempt failed in the background and left the files behind
+    """
+
+    def __init__(self, folder, seconds=60 * 60, message=None):
+        """
+        :param str folder: Target installation folder (<base>/.pickley/<name>/.work)
+        :param float seconds: Number of seconds ping file is valid for (default: 1 hour)
+        :param str|None message: Message to report as error if lock acquiring fails
+        """
+        self.folder = folder
+        self.seconds = seconds
+        self.message = message
+        self.ping = os.path.join(self.folder, ".ping")
+
+    def is_young(self, seconds=None):
+        """
+        :param float|None seconds: Number of seconds .ping is considered young (default: self.seconds)
+        :return bool: True if .ping file exists, and is younger than 'seconds'
+        """
+        if not os.path.exists(self.ping):
+            return False
+        mtime = os.path.getmtime(self.ping)
+        if seconds is None:
+            seconds = self.seconds
+        cutoff = time.time() - seconds
+        return mtime >= cutoff
+
+    def touch(self):
+        """Touch the .ping file"""
+        system.touch(self.ping)
+
+    def __enter__(self):
+        """
+        Grab a folder/.ping lock if possible, abort otherwise with 'message'
+        """
+        if self.is_young():
+            if self.message:
+                system.error(self.message)
+            system.abort("If that is incorrect, please delete %s", short(self.ping))
+        system.delete_file(self.folder)
+        self.touch()
+        return self
+
+    def __exit__(self, *_):
+        """
+        Delete folder (with its .ping file)
+        """
+        system.delete_file(self.folder)
 
 
 class capture_output:
