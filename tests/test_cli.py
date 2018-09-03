@@ -94,7 +94,7 @@ def test_install(temp_base):
     expect_failure("check tox", "is not installed", base=temp_base)
     expect_failure("check bogus_", "can't determine latest version", base=temp_base)
 
-    expect_success("settings -d", "base: %s" % short(temp_base), "cache: %s" % short(SETTINGS.base.full_path(system.DOT_PICKLEY)), base=temp_base)
+    expect_success("settings -d", "base: %s" % short(temp_base), "meta: %s" % short(SETTINGS.base.full_path(system.DOT_PICKLEY)), base=temp_base)
 
     expect_success("-n -cdelivery=wrap install tox", "Would wrap", "Would install tox", base=temp_base)
     expect_success("-n -cdelivery=symlink install tox", "Would symlink", "Would install tox", base=temp_base)
@@ -104,8 +104,8 @@ def test_install(temp_base):
 
     # Install tox, but add a few files + a bogus previous entry point to test cleanup
     system.touch(SETTINGS.base.full_path("tox-foo"))
-    system.touch(SETTINGS.cache.full_path("tox", "tox-0.0.0"))
-    system.write_contents(SETTINGS.cache.full_path("tox", ".entry-points.json"), '["tox-foo"]\n')
+    system.touch(SETTINGS.meta.full_path("tox", "tox-0.0.0"))
+    system.write_contents(SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-foo"]\n')
     expect_success("install tox", "Installed tox", "tox-foo", "tox-0.0.0", base=temp_base)
     assert system.is_executable(tox)
     output = run_program(tox, "--version")

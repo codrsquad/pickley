@@ -59,20 +59,17 @@ class Runner:
         """
         :return dict: Optional customized env vars to use
         """
-        return None
 
     def effective_run(self, args):
         """
         :param list args: Args to run with
         :return int: Exit code
         """
-        return 1
 
     def prelude_args(self):
         """
         :return list|None: Arguments to pass to invoked module for all invocations
         """
-        pass
 
 
 class PipRunner(Runner):

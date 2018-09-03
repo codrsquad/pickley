@@ -308,7 +308,7 @@ class system:
         :param str source: Folder where current venv is
         :param str destination: Folder where to move and relocate venv to
         """
-        if source and destination:
+        if source and destination and source != destination:
             if cls.DRYRUN:
                 cls.debug("Would move venv %s -> %s", short(source), short(destination))
                 return

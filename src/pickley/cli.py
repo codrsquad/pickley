@@ -12,7 +12,7 @@ import click
 
 from pickley import cd, short, system
 from pickley.package import Packager, PACKAGERS, VenvPackager
-from pickley.settings import meta_cache, SETTINGS
+from pickley.settings import meta_folder, SETTINGS
 
 
 def _option(func, *args, **kwargs):
@@ -49,7 +49,6 @@ def get_packager(name, packager=None):
     """
     :param str name: Name of pypi package
     :param Packager|None packager:
-    :param str|None cache: Optional custom cache folder to use
     :return Packager: Packager to use
     """
     pkg = packager
@@ -69,7 +68,7 @@ def setup_audit_log():
     """Log to <base>/audit.log"""
     if system.DRYRUN or system.AUDIT_HANDLER:
         return
-    path = SETTINGS.cache.full_path("audit.log")
+    path = SETTINGS.meta.full_path("audit.log")
     system.ensure_folder(path)
     system.AUDIT_HANDLER = RotatingFileHandler(path, maxBytes=500 * 1024, backupCount=1)
     system.AUDIT_HANDLER.setLevel(logging.DEBUG)
@@ -248,7 +247,7 @@ def package(dist, build, packager, folder):
     build = system.resolved_path(build)
     folder = system.resolved_path(folder)
 
-    SETTINGS.cache = meta_cache(build)
+    SETTINGS.meta = meta_folder(build)
     setup_audit_log()
     bootstrap()
 
@@ -269,12 +268,9 @@ def package(dist, build, packager, folder):
     p.dist_folder = system.resolved_path(dist)
     p.build_folder = system.resolved_path(build)
     p.source_folder = system.resolved_path(folder)
-    if hasattr(p, "package"):
-        r = p.package()
-        system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))
-        sys.exit(0)
-
-    system.abort("Packaging folders via '%s' is not supported", p.implementation_name)  # pragma: no cover
+    r = p.package()
+    system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))
+    sys.exit(0)
 
 
 @main.command()
@@ -293,7 +289,3 @@ def settings(diagnostics):
         system.info("")
 
     system.info(SETTINGS.represented())
-
-
-if __name__ == "__main__":  # pragma: no cover
-    main()  # Only useful for convenient debugging

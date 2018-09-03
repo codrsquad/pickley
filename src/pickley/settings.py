@@ -68,7 +68,7 @@ def same_type(t1, t2):
     return type(t1) == type(t2)
 
 
-def meta_cache(path):
+def meta_folder(path):
     """
     :param str path: Path to folder to use
     :return FolderBase: Associated object
@@ -483,7 +483,7 @@ class Settings:
         else:
             self.base = FolderBase(base, name="base")
 
-        self.cache = meta_cache(self.base.path)
+        self.meta = meta_folder(self.base.path)
 
     def set_cli_config(self, entries):
         content = {}
@@ -610,9 +610,9 @@ class Settings:
     def current_names(self):
         """Yield names of currently installed packages"""
         result = []
-        if os.path.isdir(self.cache.path):
-            for fname in os.listdir(self.cache.path):
-                fpath = os.path.join(self.cache.path, fname)
+        if os.path.isdir(self.meta.path):
+            for fname in os.listdir(self.meta.path):
+                fpath = os.path.join(self.meta.path, fname)
                 if os.path.isdir(fpath):
                     if os.path.exists(os.path.join(fpath, ".current.json")):
                         result.append(fname)
@@ -625,7 +625,7 @@ class Settings:
         result = [
             "settings:",
             "  base: %s" % short(self.base.path),
-            "  cache: %s" % short(self.cache.path),
+            "  meta: %s" % short(self.meta.path),
         ]
         if self.index:
             result.append("  index: %s" % self.index)

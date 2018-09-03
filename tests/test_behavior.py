@@ -3,32 +3,12 @@ import sys
 import time
 
 import pytest
-import six
-import virtualenv
 from mock import patch
 
 from pickley import capture_output, ImplementationMap, ping_lock, python_interpreter, relocate_venv_file, system
 from pickley.install import add_paths, PexRunner, Runner
-from pickley.package import find_entry_points, find_site_packages
 
 from .conftest import INEXISTING_FILE, verify_abort
-
-
-def test_find():
-    assert find_entry_points("", "", "") is None
-    assert find_entry_points(INEXISTING_FILE, "foo", "1.0") is None
-    entry_points = find_entry_points(sys.prefix, "virtualenv", virtualenv.__version__)
-    assert find_entry_points(sys.prefix, "virtualenv", virtualenv.__version__ + ".0") == entry_points
-
-    if virtualenv.__version__.endswith(".0"):
-        assert entry_points == find_entry_points(sys.prefix, "virtualenv", virtualenv.__version__[:-2])
-
-    assert find_entry_points(sys.prefix, "virtualenv", virtualenv.__version__ + ".0.0") is None
-
-    if six.__version__.endswith(".0"):
-        assert find_entry_points(sys.prefix, "six", six.__version__[:-2]) is None
-
-    assert find_site_packages(INEXISTING_FILE) is None
 
 
 def test_flattened():
@@ -161,8 +141,7 @@ def test_pex_runner(temp_base):
         p = Runner(temp_base)
 
         # Edge cases
-        assert p.effective_run(None)
-        assert p.prelude_args() is None
+        p.effective_run = lambda *_: 1
         assert p.run() is None
 
         p.effective_run = failed_run

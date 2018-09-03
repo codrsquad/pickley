@@ -30,48 +30,6 @@ exec "{source}" $*
 """
 
 
-def find_site_packages(folder):
-    """
-    :param str folder: Folder to examine
-    :return str|None: Path to lib/site-packages subfolder, if there is one
-    """
-    if os.path.basename(folder) != "lib":
-        folder = os.path.join(folder, "lib")
-    if os.path.isdir(folder):
-        for name in os.listdir(folder):
-            sp = os.path.join(folder, name, "site-packages")
-            if os.path.isdir(sp):
-                return sp
-    return None
-
-
-def find_entry_points(folder, name, version):
-    """
-    :param str folder: Folder to examine
-    :param str name: Name of pypi package
-    :param str version: Version of package
-    :return str|None: Path to entry_points.txt file found, if there is one
-    """
-    if not folder or not name or not version:
-        return None
-    sp = find_site_packages(folder)
-    if not sp:
-        return None
-    ep = os.path.join(sp, "%s-%s.dist-info" % (name, version), "entry_points.txt")
-    if os.path.exists(ep):
-        return ep
-    if version.endswith(".0"):
-        # Try without trailing ".0", as that sometimes gets simplified away by some version parsers
-        ep = os.path.join(sp, "%s-%s.dist-info" % (name, version[:-2]), "entry_points.txt")
-        if os.path.exists(ep):
-            return ep
-    # Finally, try also adding ".0", in case something simplified it away before we got 'version'
-    ep = os.path.join(sp, "%s-%s.0.dist-info" % (name, version), "entry_points.txt")
-    if os.path.exists(ep):
-        return ep
-    return None
-
-
 class DeliveryMethod:
     """
     Various implementation of delivering the actual executables
@@ -118,7 +76,6 @@ class DeliveryMethod:
         :param str target: Full path of executable to deliver (<base>/<entry_point>)
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
-        pass
 
 
 @DELIVERERS.register
@@ -143,7 +100,7 @@ class DeliveryWrap(DeliveryMethod):
     """
 
     def _install(self, packager, target, source):
-        ping = SETTINGS.cache.full_path(packager.name, ".ping")
+        ping = SETTINGS.meta.full_path(packager.name, ".ping")
         pickley = SETTINGS.base.full_path(system.PICKLEY)
 
         # Touch the .ping file so runs within 1 minute benefit from not having to check for upgrades
@@ -185,7 +142,7 @@ class VersionMeta(JsonSerializable):
         """
         self._name = name
         if suffix:
-            self._path = SETTINGS.cache.full_path(self.name, ".%s.json" % suffix)
+            self._path = SETTINGS.meta.full_path(self.name, ".%s.json" % suffix)
 
     def __repr__(self):
         return self.representation()
@@ -318,7 +275,7 @@ class Packager(object):
         self.current = VersionMeta(self.name, "current")
         self.latest = VersionMeta(self.name, system.DEFAULT_CHANNEL)
         self.desired = VersionMeta(self.name)
-        self.dist_folder = SETTINGS.cache.full_path(self.name, ".work")
+        self.dist_folder = SETTINGS.meta.full_path(self.name, ".work")
         self.build_folder = os.path.join(self.dist_folder, "build")
         self.source_folder = None
 
@@ -341,7 +298,7 @@ class Packager(object):
 
     @property
     def entry_points_path(self):
-        return SETTINGS.cache.full_path(self.name, ".entry-points.json")
+        return SETTINGS.meta.full_path(self.name, ".entry-points.json")
 
     @property
     def entry_points(self):
@@ -372,7 +329,24 @@ class Packager(object):
         :param str version: Version of package
         :return list|None: Determine entry points for pypi package with 'self.name'
         """
-        system.abort("get_entry_points not implemented for %s", self.implementation_name)
+        if not os.path.isdir(self.build_folder):
+            return None
+
+        prefix = "%s-%s-" % (self.name, version)
+        for fname in os.listdir(self.build_folder):
+            if fname.startswith(prefix) and fname.endswith(".whl"):
+                wheel_path = os.path.join(self.build_folder, fname)
+                try:
+                    with zipfile.ZipFile(wheel_path, "r") as wheel:
+                        for fname in wheel.namelist():
+                            if os.path.basename(fname) == "entry_points.txt":
+                                with wheel.open(fname) as fh:
+                                    return read_entry_points(fh)
+
+                except Exception as e:
+                    system.error("Can't read wheel %s: %s", wheel_path, e, exc_info=e)
+
+        return None
 
     def refresh_current(self):
         """Refresh self.current"""
@@ -409,6 +383,48 @@ class Packager(object):
             return
         self.desired.invalidate("can't determine %s version" % configured.channel)
 
+    def pip_wheel(self, version):
+        """
+        Run pip wheel
+
+        :param str version: Version to use
+        :return str: None if successful, error message otherwise
+        """
+        pip = PipRunner(self.build_folder)
+        return pip.wheel(self.source_folder if self.source_folder else "%s==%s" % (self.name, version))
+
+    def package(self, version=None):
+        """
+        :param str|None version: If provided, append version as suffix to produced pex
+        :return list|None: List of produced packages (files), if successful
+        """
+        if not version and not self.source_folder:
+            system.abort("Need either source_folder or version in order to package")
+
+        if not version:
+            setup_py = os.path.join(self.source_folder, "setup.py")
+            if not os.path.isfile(setup_py):
+                system.abort("No setup.py in %s", short(self.source_folder))
+            version = system.run_program(sys.executable, setup_py, "--version", fatal=False)
+            if not version:
+                system.abort("Could not determine version from %s", short(setup_py))
+
+        error = self.pip_wheel(version)
+        if error:
+            system.abort("pip wheel failed: %s", error)
+
+        self.refresh_entry_points(self.build_folder, version)
+        system.ensure_folder(self.dist_folder, folder=True)
+        template = "{name}" if self.source_folder else "{name}-{version}"
+        return self.effective_package(template, version)
+
+    def effective_package(self, template, version=None):
+        """
+        :param str|None version: If provided, append version as suffix to produced pex
+        :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
+        :return list|None: List of produced packages (files), if successful
+        """
+
     def install(self, force=False, bootstrap=False):
         """
         :param bool force: If True, re-install even if package is already installed
@@ -427,7 +443,7 @@ class Packager(object):
             prev_entry_points = self.entry_points or []
             installed = self.effective_install(self.desired.version)
 
-            target = SETTINGS.cache.full_path(self.name)
+            target = SETTINGS.meta.full_path(self.name)
             if os.path.isdir(target):
                 for name in os.listdir(target):
                     if not name.startswith("."):
@@ -453,12 +469,11 @@ class Packager(object):
         :param str version: Effective version to install
         :return list: Full path to installed files/folders
         """
-        system.abort("Not implemented")
 
-    def perform_delivery(self, version, source):
+    def perform_delivery(self, version, template):
         """
         :param str version: Version being delivered
-        :param str source: Template describing where source is coming from, example: {cache}/{name}-{version}
+        :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
         deliverer_definition = DELIVERERS.resolved(self.name)
         if not deliverer_definition:
@@ -472,53 +487,15 @@ class Packager(object):
             target = SETTINGS.base.full_path(name)
             if self.name != system.PICKLEY and not self.current.file_exists:
                 uninstall_existing(target)
-            path = source.format(cache=SETTINGS.cache.full_path(self.name), name=name, version=version)
+            path = template.format(meta=SETTINGS.meta.full_path(self.name), name=name, version=version)
             deliverer().install(self, target, path)
 
 
-class WheelBasedPackager(Packager):
-    """
-    Common implementation for wheel-based packagers
-    """
-
-    def get_entry_points(self, folder, version):
-        """
-        :param str folder: Folder where to look for entry points
-        :param str version: Version of package
-        :return list|None: Determine entry points for pypi package with 'self.name'
-        """
-        if not os.path.isdir(self.build_folder):
-            return None
-        prefix = "%s-%s-" % (self.name, version)
-        for fname in os.listdir(self.build_folder):
-            if fname.startswith(prefix) and fname.endswith(".whl"):
-                wheel_path = os.path.join(self.build_folder, fname)
-                try:
-                    with zipfile.ZipFile(wheel_path, "r") as wheel:
-                        for fname in wheel.namelist():
-                            if os.path.basename(fname) == "entry_points.txt":
-                                with wheel.open(fname) as fh:
-                                    return read_entry_points(fh)
-                except Exception as e:
-                    system.error("Can't read wheel %s: %s", wheel_path, e, exc_info=e)
-        return None
-
-
 @PACKAGERS.register
-class PexPackager(WheelBasedPackager):
+class PexPackager(Packager):
     """
     Package/install via pex (https://pypi.org/project/pex/)
     """
-
-    def pip_wheel(self, version):
-        """
-        Run pip wheel
-
-        :param str version: Version to use
-        :return str: None if successful, error message otherwise
-        """
-        pip = PipRunner(self.build_folder)
-        return pip.wheel(self.source_folder if self.source_folder else "%s==%s" % (self.name, version))
 
     def pex_build(self, name, version, dest):
         """
@@ -532,31 +509,15 @@ class PexPackager(WheelBasedPackager):
         pex = PexRunner(self.build_folder)
         return pex.build(name, self.name, version, dest)
 
-    def package(self, version=None):
+    def effective_package(self, template, version=None):
         """
         :param str|None version: If provided, append version as suffix to produced pex
+        :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         :return list|None: List of produced packages (files), if successful
         """
-        if not version and not self.source_folder:
-            system.abort("Need either source_folder or version in order to package")
-
-        if not version:
-            setup_py = os.path.join(self.source_folder, "setup.py")
-            if not os.path.isfile(setup_py):
-                system.abort("No setup.py in %s", short(self.source_folder))
-            version = system.run_program(sys.executable, setup_py, "--version", fatal=False)
-            if not version:
-                system.abort("Could not determine version from %s", short(setup_py))
-
-        error = self.pip_wheel(version)
-        if error:
-            system.abort("pip wheel failed: %s", error)
-
-        self.refresh_entry_points(self.build_folder, version)
         result = []
-        system.ensure_folder(self.dist_folder, folder=True)
         for name in self.entry_points:
-            dest = name if self.source_folder else "%s-%s" % (name, version)
+            dest = template.format(name=name, version=version)
             dest = os.path.join(self.dist_folder, dest)
 
             error = self.pex_build(name, version, dest)
@@ -575,10 +536,10 @@ class PexPackager(WheelBasedPackager):
         packaged = self.package(version=version)
         for path in packaged:
             name = os.path.basename(path)
-            target = SETTINGS.cache.full_path(self.name, name)
+            target = SETTINGS.meta.full_path(self.name, name)
             system.move_file(path, target)
             result.append(target)
-        self.perform_delivery(version, "{cache}/{name}-{version}")
+        self.perform_delivery(version, "{meta}/{name}-{version}")
         return result
 
 
@@ -588,46 +549,42 @@ class VenvPackager(Packager):
     Install via virtualenv (https://pypi.org/project/virtualenv/)
     """
 
-    def get_entry_points(self, folder, version):
-        """
-        :param str folder: Folder where to look for entry points
-        :param str version: Version of package
-        :return list|None: Determine entry points for pypi package with 'self.name'
-        """
-        ep = find_entry_points(folder, self.name, version)
-        if ep:
-            with open(ep, "rt") as fh:
-                return read_entry_points(fh)
-        return None
-
     def virtualenv_path(self):
         venv = virtualenv.__file__
         if venv and venv.endswith(".pyc"):
             venv = venv[:-1]
         return venv
 
-    def effective_install(self, version):
+    def effective_package(self, template, version=None):
         """
-        :param str version: Effective version to install
-        :return list: Full path to installed files/folders
+        :param str|None version: If provided, append version as suffix to produced pex
+        :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
+        :return list|None: List of produced packages (files), if successful
         """
         venv = self.virtualenv_path()
         if not venv:
             system.abort("Can't determine path to virtualenv.py")
 
-        working_folder = os.path.join(self.dist_folder, "%s-%s" % (self.name, version))
+        working_folder = os.path.join(self.dist_folder, template.format(name=self.name, version=version))
         python = SETTINGS.resolved_value("python", package_name=self.name)
         if python == system.PYTHON:
             python = None
         pip = os.path.join(working_folder, "bin", "pip")
         system.run_program(system.PYTHON, venv, "-p", python, working_folder)
-        system.run_program(pip, "install", "-i", SETTINGS.index, "%s==%s" % (self.name, version))
+        system.run_program(pip, "install", "-i", SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))
 
-        self.refresh_entry_points(working_folder, version)
+        return [working_folder]
 
-        install_folder = SETTINGS.cache.full_path(self.name, "%s-%s" % (self.name, version))
-        system.move_venv(working_folder, install_folder)
-
-        self.perform_delivery(version, "%s/{name}" % os.path.join(install_folder, "bin"))
-
-        return [install_folder]
+    def effective_install(self, version):
+        """
+        :param str version: Effective version to install
+        :return list: Full path to installed files/folders
+        """
+        result = []
+        packaged = self.package(version=version)
+        for path in packaged:
+            target = SETTINGS.meta.full_path(self.name, os.path.basename(path))
+            system.move_venv(path, target)
+            result.append(target)
+            self.perform_delivery(version, os.path.join(target, "bin", "{name}"))
+        return result

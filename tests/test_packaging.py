@@ -5,7 +5,7 @@ from mock import patch
 
 from pickley import capture_output, system
 from pickley.install import PexRunner
-from pickley.package import DeliveryCopy, DeliveryMethod, DeliverySymlink, DeliveryWrap, Packager, PexPackager, VenvPackager, VersionMeta
+from pickley.package import DeliveryCopy, DeliveryMethod, DeliverySymlink, DeliveryWrap, PexPackager, VenvPackager, VersionMeta
 from pickley.settings import Definition, SETTINGS
 
 from .conftest import INEXISTING_FILE, verify_abort
@@ -48,17 +48,8 @@ def test_bogus_delivery():
     deliver = DeliveryMethod()
     assert "does not exist" in verify_abort(deliver.install, None, None, INEXISTING_FILE)
 
-    # Edge case: exercise empty implementation parent
-    assert deliver._install(None, None, None) is None
-
     deliver = DeliverySymlink()
     assert "Failed symlink" in verify_abort(deliver.install, None, None, __file__)
-
-
-def test_packager():
-    p = Packager("tox")
-    assert "not implemented" in verify_abort(p.get_entry_points, ".", "1.0")
-    assert "Not implemented" in verify_abort(p.effective_install, "1.0")
 
 
 def test_version_meta():
@@ -97,10 +88,10 @@ def test_versions(_, __, temp_base):
     assert "can't determine stable version" in verify_abort(p.install)
     assert "No delivery type configured" in verify_abort(p.perform_delivery, "0.0.0", "foo")
 
-    # Without pip cache
+    # Without a build fodler
     assert p.get_entry_points(p.build_folder, "0.0.0") is None
 
-    # With an empty pip cache
+    # With an empty build fodler
     system.ensure_folder(p.build_folder, folder=True)
     assert p.get_entry_points(p.build_folder, "0.0.0") is None
 
@@ -152,7 +143,7 @@ def test_configured_version(*_):
     p = VenvPackager("foo")
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo 1.0 (as venv, source: test)"
-    assert "Can't determine path to virtualenv.py" in verify_abort(p.effective_install, "1.0")
+    assert "Can't determine path to virtualenv.py" in verify_abort(p.effective_package, "{name}", "1.0")
 
 
 def pydef(value, source="test"):
