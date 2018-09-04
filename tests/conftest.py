@@ -39,5 +39,5 @@ def temp_base():
 
     os.chdir(old_cwd)
     SETTINGS.set_base(old_base)
-    SETTINGS.cli.set_contents({})
+    SETTINGS.set_cli_config()
     shutil.rmtree(path)

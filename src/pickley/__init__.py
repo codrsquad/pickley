@@ -543,9 +543,17 @@ class ImplementationMap:
     def resolved(self, package_name):
         """
         :param str package_name: Name of pypi package
-        :return Definition: Corresponding implementation name to use
+        :return: Corresponding implementation to use
         """
-        return self.settings.resolved_definition(self.key, package_name=package_name)
+        definition = self.settings.resolved_definition(self.key, package_name=package_name)
+        if not definition or not definition.value:
+            system.abort("No %s type configured for %s", self.key, package_name)
+
+        implementation = self.get(definition.value)
+        if not implementation:
+            system.abort("Unknown %s type '%s'", self.key, definition.value)
+
+        return implementation(package_name)
 
 
 class CurrentFolder:

@@ -40,6 +40,9 @@ class DeliveryMethod:
     Various implementation of delivering the actual executables
     """
 
+    def __init__(self, package_name):
+        self.package_name = package_name
+
     @classmethod
     def class_implementation_name(cls):
         """
@@ -50,13 +53,12 @@ class DeliveryMethod:
     @property
     def implementation_name(self):
         """
-        :return str: Identifier for this packager type
+        :return str: Identifier for this delivery type
         """
         return self.__class__.class_implementation_name()
 
-    def install(self, packager, target, source):
+    def install(self, target, source):
         """
-        :param Packager packager: Associated packager
         :param str target: Full path of executable to deliver (<base>/<entry_point>)
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
@@ -70,14 +72,13 @@ class DeliveryMethod:
 
         try:
             system.debug("Delivery: %s %s -> %s", self.implementation_name, short(target), short(source))
-            self._install(packager, target, source)
+            self._install(target, source)
 
         except Exception as e:
             system.abort("Failed %s %s: %s", self.implementation_name, short(target), e)
 
-    def _install(self, packager, target, source):
+    def _install(self, target, source):
         """
-        :param Packager packager: Associated packager
         :param str target: Full path of executable to deliver (<base>/<entry_point>)
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
@@ -89,7 +90,7 @@ class DeliverySymlink(DeliveryMethod):
     Deliver via symlink
     """
 
-    def _install(self, packager, target, source):
+    def _install(self, target, source):
         if os.path.isabs(source) and os.path.isabs(target):
             parent = system.parent_folder(target)
             if system.parent_folder(source).startswith(parent):
@@ -104,11 +105,11 @@ class DeliveryWrap(DeliveryMethod):
     Deliver via a small wrap that ensures target executable is up-to-date
     """
 
-    def _install(self, packager, target, source):
-        ping = PingLock(SETTINGS.meta.full_path(packager.name))
+    def _install(self, target, source):
+        ping = PingLock(SETTINGS.meta.full_path(self.package_name))
         ping.touch()
 
-        if packager.name == system.PICKLEY:
+        if self.package_name == system.PICKLEY:
             # Important: call pickley auto-upgrade from souce, and not wrapper in order to avoid infinite recursion
             pickley = source
         else:
@@ -116,7 +117,7 @@ class DeliveryWrap(DeliveryMethod):
 
         contents = WRAPPER_CONTENTS.lstrip().format(
             pickley=system.quoted(pickley),
-            name=system.quoted(packager.name),
+            name=system.quoted(self.package_name),
             source=system.quoted(source),
         )
         system.write_contents(target, contents)
@@ -129,7 +130,7 @@ class DeliveryCopy(DeliveryMethod):
     Deliver by copy
     """
 
-    def _install(self, packager, target, source):
+    def _install(self, target, source):
         system.copy_file(source, target)
 
 
@@ -381,18 +382,19 @@ class Packager(object):
 
     def refresh_desired(self):
         """Refresh self.desired"""
-        configured = SETTINGS.version(self.name)
-        if configured.value:
-            self.desired.set_version(
-                configured.value, str(configured.source), channel=configured.channel, packager=self.implementation_name
-            )
+        channel = SETTINGS.resolved_definition("channel", package_name=self.name)
+        v = SETTINGS.get_definition("channel.%s.%s" % (channel.value, self.name))
+        if v and v.value:
+            self.desired.set_version(v.value, str(v.source), channel=v.channel, packager=self.implementation_name)
             return
-        if configured.channel == system.DEFAULT_CHANNEL:
+
+        if channel.value == system.DEFAULT_CHANNEL:
             self.refresh_latest()
             self.desired.set(self.latest)
             self.desired.packager = self.implementation_name
             return
-        self.desired.invalidate("can't determine %s version" % configured.channel)
+
+        self.desired.invalidate("can't determine %s version" % channel.value)
 
     def pip_wheel(self, version):
         """
@@ -501,20 +503,13 @@ class Packager(object):
         :param str version: Version being delivered
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
-        deliverer_definition = DELIVERERS.resolved(self.name)
-        if not deliverer_definition:
-            system.abort("No delivery type configured for %s", self.name)
-
-        deliverer = DELIVERERS.get(deliverer_definition.value)
-        if not deliverer:
-            system.abort("Unknown delivery type '%s'", deliverer_definition)
-
+        deliverer = DELIVERERS.resolved(self.name)
         for name in self.entry_points:
             target = SETTINGS.base.full_path(name)
             if self.name != system.PICKLEY and not self.current.file_exists:
                 uninstall_existing(target)
             path = template.format(meta=SETTINGS.meta.full_path(self.name), name=name, version=version)
-            deliverer().install(self, target, path)
+            deliverer.install(target, path)
 
 
 @PACKAGERS.register

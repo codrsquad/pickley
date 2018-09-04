@@ -134,7 +134,7 @@ Packaging
     changedir = {envdir}
     usedevelop = True
     deps = pickley
-    commands = pickley package -ppex {toxinidir}
+    commands = pickley -ppex package {toxinidir}
                python ./dist/foo --version
 
 
@@ -153,7 +153,7 @@ See ``pickley package --help`` for options, by default:
 
 You can run a package from anywhere, for example this will drop a tox pex package in ``./root/apps/myapps``::
 
-    pickley package tox -ppex -droot/apps/myapps
+    pickley -ppex package tox -droot/apps/myapps
 
 
 Features

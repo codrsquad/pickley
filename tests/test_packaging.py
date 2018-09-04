@@ -13,21 +13,21 @@ from .conftest import INEXISTING_FILE, verify_abort
 
 def test_delivery(temp_base):
     # Test copy folder
-    deliver = DeliveryCopy()
+    deliver = DeliveryCopy("tox")
     target = os.path.join(temp_base, "t1")
     source = os.path.join(temp_base, "t1-source")
     source_file = os.path.join(source, "foo")
     system.touch(source_file)
-    deliver.install(None, target, source)
+    deliver.install(target, source)
     assert os.path.isdir(target)
     assert os.path.isfile(os.path.join(target, "foo"))
 
     # Test copy file
-    deliver = DeliveryCopy()
+    deliver = DeliveryCopy("tox")
     target = os.path.join(temp_base, "t2")
     source = os.path.join(temp_base, "t2-source")
     system.touch(source)
-    deliver.install(None, target, source)
+    deliver.install(target, source)
     assert os.path.isfile(target)
 
     p = VenvPackager("tox")
@@ -35,8 +35,8 @@ def test_delivery(temp_base):
     target = os.path.join(temp_base, "tox")
     source = os.path.join(temp_base, "tox-source")
     system.touch(source)
-    deliver = DeliveryWrap()
-    deliver.install(p, target, source)
+    deliver = DeliveryWrap("tox")
+    deliver.install(target, source)
     assert system.is_executable(target)
 
     # Cover edge case for make_executable():
@@ -45,11 +45,11 @@ def test_delivery(temp_base):
 
 
 def test_bogus_delivery():
-    deliver = DeliveryMethod()
-    assert "does not exist" in verify_abort(deliver.install, None, None, INEXISTING_FILE)
+    deliver = DeliveryMethod("foo")
+    assert "does not exist" in verify_abort(deliver.install, None, INEXISTING_FILE)
 
-    deliver = DeliverySymlink()
-    assert "Failed symlink" in verify_abort(deliver.install, None, None, __file__)
+    deliver = DeliverySymlink("foo")
+    assert "Failed symlink" in verify_abort(deliver.install, None, __file__)
 
 
 def test_version_meta():
@@ -86,7 +86,6 @@ def test_versions(_, __, temp_base):
     assert p.desired.representation() == "foo: can't determine stable version"
 
     assert "can't determine stable version" in verify_abort(p.install)
-    assert "No delivery type configured" in verify_abort(p.perform_delivery, "0.0.0", "foo")
 
     # Without a build fodler
     assert p.get_entry_points(p.build_folder, "0.0.0") is None
@@ -134,16 +133,21 @@ def test_versions(_, __, temp_base):
     p.pex_build = lambda *_: "failed"
     assert "pex command failed" in verify_abort(p.package)
 
-    SETTINGS.cli.set_contents({})
+    SETTINGS.set_cli_config()
 
 
-@patch("pickley.settings.SETTINGS.version", return_value=Definition("1.0", "test", "channel.stable.foo"))
 @patch("pickley.package.VenvPackager.virtualenv_path", return_value=None)
-def test_configured_version(*_):
+def test_configured_version(_):
+    p = VenvPackager("foo")
+    assert "Can't determine path to virtualenv.py" in verify_abort(p.effective_package, None)
+
+
+@patch("pickley.settings.SETTINGS.resolved_definition", return_value=Definition("stable", "test", None))
+@patch("pickley.settings.SETTINGS.get_definition", return_value=Definition("1.0", "test", None))
+def test_channel(*_):
     p = VenvPackager("foo")
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo 1.0 (as venv, source: test)"
-    assert "Can't determine path to virtualenv.py" in verify_abort(p.effective_package, "{name}", "1.0")
 
 
 def pydef(value, source="test"):

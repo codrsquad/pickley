@@ -50,10 +50,21 @@ def expect_failure(args, *messages, **kwargs):
 
 
 def test_help():
-    expect_success("--help", "Package manager for python CLIs", "-q, --quiet",  "-b, --base PATH")
-    expect_success("check --help", "check [OPTIONS] [PACKAGES]...")
-    expect_success("install --help", "install [OPTIONS] PACKAGES...")
-    expect_success("package --help", "package [OPTIONS] FOLDER", "-b, --build", "-d, --dist", "--packager")
+    expect_success(
+        "--help",  # Run --help
+        "--version",  # Verify that below flags are mentioned in output
+        "--debug",
+        "-q, --quiet",
+        "-n, --dryrun",
+        "-b, --base PATH",
+        "--python PATH",
+        "-d, --delivery",
+        "-p, --packager",
+    )
+    expect_success("auto-upgrade --help", "auto-upgrade [OPTIONS] PACKAGE")
+    expect_success("check --help", "check [OPTIONS] [PACKAGES]...", "-v, --verbose")
+    expect_success("install --help", "install [OPTIONS] PACKAGES...", "-f, --force")
+    expect_success("package --help", "package [OPTIONS] FOLDER", "-b, --build", "-d, --dist")
 
 
 def test_version():
@@ -72,7 +83,7 @@ def test_package(temp_base):
     pickley = SETTINGS.base.full_path("pickley")
 
     # Package pickley as pex
-    expect_success(["package", "-d", ".", PROJECT], "Packaged %s successfully" % short(PROJECT))
+    expect_success(["-ppex", "package", "-d", ".", PROJECT], "Packaged %s successfully" % short(PROJECT))
 
     # Verify that it packaged OK
     assert system.is_executable(pickley)
@@ -105,9 +116,9 @@ def test_install(temp_base):
         "meta: %s" % short(SETTINGS.base.full_path(system.DOT_PICKLEY)), base=temp_base,
     )
 
-    expect_success("--dryrun -cdelivery=wrap install tox", "Would wrap", "Would install tox", base=temp_base)
-    expect_success("--dryrun -cdelivery=symlink install tox", "Would symlink", "Would install tox", base=temp_base)
-    expect_failure("--dryrun -cdelivery=foo install tox", "Unknown delivery type 'foo'", base=temp_base)
+    expect_success("--dryrun --delivery wrap install tox", "Would wrap", "Would install tox", base=temp_base)
+    expect_success("--dryrun --delivery symlink install tox", "Would symlink", "Would install tox", base=temp_base)
+    expect_failure("--dryrun --delivery foo install tox", "invalid choice: foo", base=temp_base)
 
     expect_failure("install six", "'six' is not a CLI", base=temp_base)
 
@@ -115,7 +126,7 @@ def test_install(temp_base):
     system.touch(SETTINGS.base.full_path("tox-foo"))
     system.touch(SETTINGS.meta.full_path("tox", "tox-0.0.0"))
     system.write_contents(SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-foo"]\n')
-    expect_success("-cdelivery=wrap install tox", "Installed tox", "tox-foo", "tox-0.0.0", base=temp_base)
+    expect_success("--delivery wrap install tox", "Installed tox", "tox-foo", "tox-0.0.0", base=temp_base)
     assert system.is_executable(tox)
     output = run_program(tox, "--version")
     assert "tox" in output
@@ -134,7 +145,7 @@ def test_install(temp_base):
     p.latest.save()
     expect_failure("check", "tox", "can be upgraded to 10000.0", base=temp_base)
 
-    expect_success("install twine -ppex", "Installed twine", base=temp_base)
+    expect_success("-ppex install twine", "Installed twine", base=temp_base)
 
     expect_success("list", "tox", "twine", base=temp_base)
     expect_success("list --verbose", "tox", "twine", base=temp_base)

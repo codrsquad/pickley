@@ -443,7 +443,7 @@ class Settings:
         """
         self.set_base(base)
         self.cli = SettingsFile(self, name="cli")
-        self.cli.set_contents({})
+        self.set_cli_config()
         self.defaults = SettingsFile(self, name="defaults")
         self.defaults.set_contents(
             default=dict(
@@ -485,12 +485,8 @@ class Settings:
 
         self.meta = meta_folder(self.base.path)
 
-    def set_cli_config(self, entries):
-        content = {}
-        for entry in entries:
-            key, _, value = entry.partition("=")
-            content[key.strip()] = value.strip()
-        self.cli.set_contents(content)
+    def set_cli_config(self, **entries):
+        self.cli.set_contents(entries)
 
     def add(self, paths, base=None):
         """
@@ -585,27 +581,6 @@ class Settings:
                         continue
                 result.append(name)
         return system.flattened(result)
-
-    def package_channel(self, package_name):
-        """
-        :param str package_name: Package name
-        :return Definition: Channel to use to determine versions for 'package_name'
-        """
-        return self.resolved_definition("channel", package_name=package_name)
-
-    def version(self, package_name, channel=None):
-        """
-        :param str package_name: Package name to lookup version for
-        :param Definition|None channel: Alternative channel to use
-        :return Definition: Configured version
-        """
-        if not channel:
-            channel = self.package_channel(package_name)
-        definition = self.get_definition("channel.%s.%s" % (channel.value, package_name))
-        if not definition:
-            definition = Definition(None, channel.source, channel.key)
-        definition.channel = channel.value
-        return definition
 
     def current_names(self):
         """Yield names of currently installed packages"""

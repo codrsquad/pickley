@@ -38,6 +38,8 @@ settings:
           tox: 3.2.1
           twine: 1.9.0
       delivery:
+        copy:
+          dict_sample: this is just for testing dict() lookup
         venv: tox pipenv
       include: [custom.json]
       index: https://pypi.org/
@@ -91,15 +93,9 @@ def test_custom_settings():
     p = s.base.full_path("foo/bar")
     assert s.base.relative_path(p) == "foo/bar"
 
-    d = s.version("tox")
-    assert d.channel == "stable"
-    assert d.value == "3.2.1"
-    assert str(d) == "3.2.1"
-    assert repr(d) == "3.2.1 from %s/.pickley.json:channel.stable.tox [stable]" % short(s.base.path)
-
-    d = s.version("virtualenv")
-    assert d.channel == "alpha"
-    assert d.value == "16.0.0"
+    d = s.resolved_definition("delivery", package_name="dict_sample")
+    assert str(d) == "copy"
+    assert repr(d) == "copy from %s/.pickley.json:delivery.copy" % short(s.base.path)
 
     assert s.resolved_value("delivery", package_name="tox") == "venv"
     assert s.resolved_value("delivery", package_name="virtualenv") == "wrap"

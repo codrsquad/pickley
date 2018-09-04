@@ -7,6 +7,7 @@ from mock import patch
 
 from pickley import CaptureOutput, ImplementationMap, PingLock, PingLockException, python_interpreter, relocate_venv_file, system
 from pickley.install import add_paths, PexRunner, Runner
+from pickley.settings import Settings
 
 from .conftest import INEXISTING_FILE, verify_abort
 
@@ -98,9 +99,13 @@ def test_real_run():
 
 def test_implementation_map():
     # Check that an implementation without a class_implementation_name() function works
-    m = ImplementationMap(None, "custom")
+    s = Settings()
+    m = ImplementationMap(s, "custom")
     m.register(ImplementationMap)
     assert len(m.names()) == 1
+    assert "No custom type configured" in verify_abort(m.resolved, "foo")
+    s.set_cli_config(custom="bar")
+    assert "Unknown custom type" in verify_abort(m.resolved, "foo")
 
 
 def test_capture_env():

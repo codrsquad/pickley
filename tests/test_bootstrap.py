@@ -5,10 +5,8 @@ import pytest
 from mock import patch
 
 from pickley import CaptureOutput, PingLockException, system
-from pickley.cli import bootstrap, get_packager, relaunch
-from pickley.settings import Definition, SETTINGS
-
-from .conftest import verify_abort
+from pickley.cli import bootstrap, relaunch
+from pickley.settings import SETTINGS
 
 
 @patch("pickley.cli.relaunch")
@@ -41,27 +39,6 @@ def test_bootstrap_in_progress(_):
     with CaptureOutput() as logged:
         assert bootstrap(testing=True) is None
         assert not str(logged)
-
-
-@patch("pickley.cli.relaunch")
-@patch("pickley.settings.SETTINGS.version", return_value=Definition(None, None, None))
-def test_bootstrap_no_version(*_):
-    assert "Can't bootstrap" in verify_abort(bootstrap, testing=True)
-
-
-@patch("pickley.package.PACKAGERS.resolved", return_value=Definition(None, None, None))
-def test_packager_unknown(_):
-    assert "Unknown packager 'None'" in verify_abort(get_packager, None)
-
-
-@patch("pickley.package.PACKAGERS.resolved", return_value=None)
-def test_packager_missing(_):
-    assert "No packager configured" in verify_abort(get_packager, None)
-
-
-@patch("pickley.package.PACKAGERS.get", return_value=Definition)
-def test_packager_bogus(_):
-    assert "Invalid packager implementation" in verify_abort(get_packager, None)
 
 
 @patch("pickley.system.run_program")

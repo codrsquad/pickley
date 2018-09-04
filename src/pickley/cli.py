@@ -11,57 +11,8 @@ from logging.handlers import RotatingFileHandler
 import click
 
 from pickley import CurrentFolder, PingLock, PingLockException, short, system
-from pickley.package import Packager, PACKAGERS, VenvPackager
+from pickley.package import DELIVERERS, PACKAGERS, VenvPackager
 from pickley.settings import meta_folder, SETTINGS
-
-
-def _option(func, *args, **kwargs):
-    """
-    :param function func: Function defining this option
-    :param list *args: Optional extra short flag name
-    :param dict **kwargs: Optional attr overrides provided by caller
-    :return function: Click decorator
-    """
-
-    def decorator(f):
-        name = kwargs.pop("name", func.__name__)
-        kwargs.setdefault("help", func.__doc__)
-        kwargs.setdefault("required", False)
-        if not kwargs.get("is_flag"):
-            kwargs.setdefault("show_default", True)
-        if not name.startswith("-"):
-            name = "--%s" % name
-        return click.option(name, *args, **kwargs)(f)
-
-    return decorator
-
-
-def packager_option(**kwargs):
-    """Packager to use"""
-
-    def _callback(ctx, param, value):
-        return PACKAGERS.get(value)
-
-    return _option(packager_option, "-p", name="packager", type=click.Choice(PACKAGERS.names()), callback=_callback, **kwargs)
-
-
-def get_packager(name, packager=None):
-    """
-    :param str name: Name of pypi package
-    :param Packager|None packager:
-    :return Packager: Packager to use
-    """
-    pkg = packager
-    if not pkg:
-        definition = PACKAGERS.resolved(name)
-        if not definition:
-            system.abort("No packager configured for %s" % name)
-        pkg = PACKAGERS.get(definition.value)
-        if not pkg:
-            system.abort("Unknown packager '%s'" % definition)
-    if issubclass(pkg, Packager):
-        return pkg(name)
-    system.abort("Invalid packager implementation for '%s': %s", name, pkg.__class__.__name__)
 
 
 def setup_audit_log():
@@ -132,8 +83,10 @@ def bootstrap(testing=False):
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode, do not output anything")
 @click.option("--dryrun", "-n", is_flag=True, help="Perform a dryrun")
 @click.option("--base", "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
-@click.option("--config", "-c", metavar="KEY=VALUE", multiple=True, help="Override configuration")
-def main(debug, quiet, dryrun, base, config):
+@click.option("--python", metavar="PATH", help="Python interpreter to use")
+@click.option("--delivery", "-d", type=click.Choice(DELIVERERS.names()), help="Delivery method to use")
+@click.option("--packager", "-p", type=click.Choice(PACKAGERS.names()), help="Packager to use")
+def main(debug, quiet, dryrun, base, python, delivery, packager):
     """
     Package manager for python CLIs
     """
@@ -150,7 +103,7 @@ def main(debug, quiet, dryrun, base, config):
             system.abort("Can't use %s as base: folder does not exist", short(base))
         SETTINGS.set_base(base)
 
-    SETTINGS.set_cli_config(config)
+    SETTINGS.set_cli_config(python=python, delivery=delivery, packager=packager)
     SETTINGS.add(system.config_paths(system.TESTING))
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
@@ -179,7 +132,7 @@ def check(verbose, packages):
 
     else:
         for name in packages:
-            p = get_packager(name)
+            p = PACKAGERS.resolved(name)
             p.refresh_current()
             p.refresh_desired()
             if not p.desired.valid:
@@ -210,16 +163,15 @@ def list(verbose):
 
     else:
         for name in packages:
-            p = get_packager(name)
+            p = PACKAGERS.resolved(name)
             p.refresh_current()
             system.info(p.current.representation(verbose))
 
 
 @main.command()
-@packager_option()
 @click.option("--force", "-f", is_flag=True, help="Force installation, even if already installed")
 @click.argument("packages", nargs=-1, required=True)
-def install(packager, force, packages):
+def install(force, packages):
     """
     Install a package from pypi
     """
@@ -228,16 +180,15 @@ def install(packager, force, packages):
 
     packages = SETTINGS.resolved_packages(packages)
     for name in packages:
-        p = get_packager(name, packager)
+        p = PACKAGERS.resolved(name)
         p.install(force=force)
 
 
 @main.command()
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
 @click.option("--build", "-b", default="./build", show_default=True, help="Folder to use as build cache")
-@packager_option(default="pex")
 @click.argument("folder", required=True)
-def package(dist, build, packager, folder):
+def package(dist, build, folder):
     """
     Package a project from source checkout
     """
@@ -262,7 +213,7 @@ def package(dist, build, packager, folder):
         if not name:
             system.abort("Could not determine package name from %s", short(setup_py))
 
-    p = get_packager(name, packager)
+    p = PACKAGERS.resolved(name)
     p.dist_folder = system.resolved_path(dist)
     p.build_folder = system.resolved_path(build)
     p.source_folder = system.resolved_path(folder)
@@ -294,7 +245,7 @@ def auto_upgrade(package):
     """
     Auto-upgrade a package
     """
-    p = get_packager(package)
+    p = PACKAGERS.resolved(package)
     p.refresh_current()
     if not p.current.valid:
         system.abort("%s is not currently installed", package)
