@@ -16,7 +16,6 @@ import six
 LOG = logging.getLogger(__name__)
 SECONDS_IN_ONE_MINUTE = 60
 SECONDS_IN_ONE_HOUR = 60 * SECONDS_IN_ONE_MINUTE
-SECONDS_IN_ONE_DAY = 24 * SECONDS_IN_ONE_HOUR
 
 
 def decode(value):
@@ -49,6 +48,22 @@ def python_interpreter():
         return os.path.join(prefix, "bin", "python")
     else:
         return sys.executable
+
+
+def pickley_program():
+    """
+    :return str: Path to pickley executable, with special case for test runs
+    """
+    path = sys.argv[0]
+    path = "/dev/null/pytest" if "pycharm" in path.lower() else path
+    return path
+
+
+def is_test_run():
+    """
+    :return bool: True if we're running via pytest (or pycharm test)
+    """
+    return "pytest" in pickley_program().lower()
 
 
 def relocate_venv_file(path, source, destination):
@@ -106,12 +121,15 @@ class system:
     PYTHON = python_interpreter()
     AUDIT_HANDLER = None
     DEBUG_HANDLER = None
-    TESTING = "pytest" in sys.argv[0]
-    PROGRAM = sys.argv[0]
+    TESTING = is_test_run()
+    PROGRAM = pickley_program()
 
     DEFAULT_CHANNEL = "latest"
     DEFAULT_DELIVERY = "symlink"
     DEFAULT_PACKAGER = "venv"
+
+    CHECK_UPGRADE_DELAY = 10 * SECONDS_IN_ONE_MINUTE
+    INSTALL_TIMEOUT = SECONDS_IN_ONE_HOUR
 
     @classmethod
     def debug(cls, message, *args, **kwargs):
@@ -455,6 +473,17 @@ class system:
             system.abort("%s failed: %s", os.path.basename(program), e, exc_info=e)
 
     @classmethod
+    def quoted(cls, text):
+        """
+        :param str text: Text to optionally quote
+        :return str: Quoted if 'text' contains spaces
+        """
+        if text and " " in text:
+            sep = "'" if '"' in text else '"'
+            return "%s%s%s" % (sep, text, sep)
+        return text
+
+    @classmethod
     def represented_args(cls, args, base=None, separator=" ", shorten=True):
         """
         :param list|tuple args: Arguments to represent
@@ -467,11 +496,7 @@ class system:
         for text in args:
             if shorten:
                 text = short(text, base=base)
-            if not text or " " in text:
-                sep = "'" if '"' in text else '"'
-                result.append("%s%s%s" % (sep, text, sep))
-            else:
-                result.append(text)
+            result.append(cls.quoted(text))
         return separator.join(result)
 
 
@@ -523,7 +548,7 @@ class ImplementationMap:
         return self.settings.resolved_definition(self.key, package_name=package_name)
 
 
-class cd:
+class CurrentFolder:
     """Context manager for changing the current working directory"""
 
     def __init__(self, destination):
@@ -537,7 +562,14 @@ class cd:
         os.chdir(self.current_folder)
 
 
-class ping_lock:
+class PingLockException(Exception):
+    """Raised when ping lock can't be acquired"""
+
+    def __init__(self, ping_path):
+        self.ping_path = ping_path
+
+
+class PingLock:
     """
     Allows to manage .work/ folder with a .ping lock file
     Several pickley processes could be attempting to auto upgrade a package at the same time
@@ -545,18 +577,16 @@ class ping_lock:
     - first process "grabs a lock" via a .ping file (lock based on existence of file, and its age)
     - lock consists of creating a .work/.ping file, and deleting .work/ folder once installation completes
     - other processes will avoid trying their own upgrade during that time
-    - the lock remains valid for an hour, after that we consider that previous upgrade attempt failed in the background and left the files behind
+    - the lock remains valid for an hour, after that previous upgrade attempt is considered failed (lock re-acquired)
     """
 
-    def __init__(self, folder, seconds=60 * 60, message=None):
+    def __init__(self, folder, seconds=system.INSTALL_TIMEOUT):
         """
         :param str folder: Target installation folder (<base>/.pickley/<name>/.work)
         :param float seconds: Number of seconds ping file is valid for (default: 1 hour)
-        :param str|None message: Message to report as error if lock acquiring fails
         """
         self.folder = folder
         self.seconds = seconds
-        self.message = message
         self.ping = os.path.join(self.folder, ".ping")
 
     def is_young(self, seconds=None):
@@ -578,12 +608,10 @@ class ping_lock:
 
     def __enter__(self):
         """
-        Grab a folder/.ping lock if possible, abort otherwise with 'message'
+        Grab a folder/.ping lock if possible, raise PingLockException if not
         """
         if self.is_young():
-            if self.message:
-                system.error(self.message)
-            system.abort("If that is incorrect, please delete %s", short(self.ping))
+            raise PingLockException(self.ping)
         system.delete_file(self.folder)
         self.touch()
         return self
@@ -595,14 +623,14 @@ class ping_lock:
         system.delete_file(self.folder)
 
 
-class capture_output:
+class CaptureOutput:
     """
     Context manager allowing to temporarily grab stdout/stderr output.
     Output is captured and made available only for the duration of the context.
 
     Sample usage:
 
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         ... do something that generates output ...
         assert "some message" in logged
     """
@@ -679,13 +707,9 @@ class capture_output:
                 del os.environ[key]
 
         for key, value in self.old_env.items():
-            if value:
-                if value != os.environ.get(key):
-                    system.debug("Restoring env %s=%s", key, value)
-                    os.environ[key] = value
-            elif key in os.environ:
-                system.debug("Removing env %s", key)
-                del os.environ[key]
+            if value != os.environ.get(key):
+                system.debug("Restoring env %s=%s", key, value)
+                os.environ[key] = value
 
         if self.dryrun is not None:
             system.DRYRUN = self.dryrun

@@ -5,7 +5,7 @@ import time
 import pytest
 from mock import patch
 
-from pickley import capture_output, ImplementationMap, ping_lock, python_interpreter, relocate_venv_file, system
+from pickley import CaptureOutput, ImplementationMap, PingLock, PingLockException, python_interpreter, relocate_venv_file, system
 from pickley.install import add_paths, PexRunner, Runner
 
 from .conftest import INEXISTING_FILE, verify_abort
@@ -27,7 +27,7 @@ def test_flattened():
 
 def test_file_operations(temp_base):
     system.touch("foo")
-    with capture_output(dryrun=True) as logged:
+    with CaptureOutput(dryrun=True) as logged:
         system.copy_file("foo", "bar")
         system.move_file("foo", "bar")
         system.delete_file("foo")
@@ -41,15 +41,13 @@ def test_file_operations(temp_base):
 
     work = os.path.join(temp_base, "work")
     system.ensure_folder(work, folder=True)
-    with capture_output() as logged:
-        with ping_lock(work, seconds=1) as lock:
+    with CaptureOutput() as logged:
+        with PingLock(work, seconds=1) as lock:
             assert lock.is_young()
-            with pytest.raises(SystemExit):
-                with ping_lock(work, seconds=1, message="testing"):
+            with pytest.raises(PingLockException):
+                with PingLock(work, seconds=10):
                     pass
-            assert "testing" in logged
-            assert "If that is incorrect, please delete" in logged
-            time.sleep(1)
+            time.sleep(1.2)
             assert not lock.is_young()
 
 
@@ -107,11 +105,13 @@ def test_implementation_map():
 
 def test_capture_env():
     env = dict(PATH=None, JAVA_HOME="/some-place/java")
-    with capture_output() as logged:
-        with capture_output(env=env):
+    with CaptureOutput() as logged:
+        with CaptureOutput(env=env):
+            os.environ["ENV_ADDED"] = "testing"
             assert "PATH" not in os.environ
             assert os.environ.get("JAVA_HOME") == "/some-place/java"
         assert "PATH" in os.environ
+        assert "Cleaning up env ENV_ADDED" in logged
         assert "Removing env PATH" in logged
         assert "Customizing env JAVA_HOME=/some-place/java" in logged
         assert "Restoring env PATH=" in logged
@@ -131,7 +131,7 @@ def failed_run(*_):
 
 
 def test_pex_runner(temp_base):
-    with capture_output(dryrun=True):
+    with CaptureOutput(dryrun=True):
         p = PexRunner(os.path.join(temp_base, "foo"))
         assert not p.is_universal("tox", "1.0")
 

@@ -1,8 +1,9 @@
 import os
 
 from click.testing import CliRunner
+from mock import patch
 
-from pickley import short, system
+from pickley import PingLockException, short, system
 from pickley.cli import main
 from pickley.package import VenvPackager
 from pickley.settings import SETTINGS
@@ -22,6 +23,9 @@ def run_cli(args, **kwargs):
     if base and "-b" not in args and "--base" not in args:
         args = ["-b", base] + args
     result = runner.invoke(main, args=args)
+    if "--dryrun" in args:
+        # Restore default non-dryrun state after a --dryrun test
+        system.DRYRUN = False
     return result
 
 
@@ -84,6 +88,7 @@ def test_install(temp_base):
 
     expect_failure("-b foo/bar settings", "Can't use", "as base", "folder does not exist")
 
+    expect_failure("auto-upgrade foo", "not currently installed")
     expect_failure("package foo/bar", "Folder", "does not exist")
     expect_failure(["package", temp_base], "No setup.py")
     system.touch(os.path.join(temp_base, "setup.py"))
@@ -94,11 +99,15 @@ def test_install(temp_base):
     expect_failure("check tox", "is not installed", base=temp_base)
     expect_failure("check bogus_", "can't determine latest version", base=temp_base)
 
-    expect_success("settings -d", "base: %s" % short(temp_base), "meta: %s" % short(SETTINGS.base.full_path(system.DOT_PICKLEY)), base=temp_base)
+    expect_success(
+        "settings -d",
+        "base: %s" % short(temp_base),
+        "meta: %s" % short(SETTINGS.base.full_path(system.DOT_PICKLEY)), base=temp_base,
+    )
 
-    expect_success("-n -cdelivery=wrap install tox", "Would wrap", "Would install tox", base=temp_base)
-    expect_success("-n -cdelivery=symlink install tox", "Would symlink", "Would install tox", base=temp_base)
-    expect_failure("-n -cdelivery=foo install tox", "Unknown delivery type 'foo'", base=temp_base)
+    expect_success("--dryrun -cdelivery=wrap install tox", "Would wrap", "Would install tox", base=temp_base)
+    expect_success("--dryrun -cdelivery=symlink install tox", "Would symlink", "Would install tox", base=temp_base)
+    expect_failure("--dryrun -cdelivery=foo install tox", "Unknown delivery type 'foo'", base=temp_base)
 
     expect_failure("install six", "'six' is not a CLI", base=temp_base)
 
@@ -106,10 +115,14 @@ def test_install(temp_base):
     system.touch(SETTINGS.base.full_path("tox-foo"))
     system.touch(SETTINGS.meta.full_path("tox", "tox-0.0.0"))
     system.write_contents(SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-foo"]\n')
-    expect_success("install tox", "Installed tox", "tox-foo", "tox-0.0.0", base=temp_base)
+    expect_success("-cdelivery=wrap install tox", "Installed tox", "tox-foo", "tox-0.0.0", base=temp_base)
     assert system.is_executable(tox)
     output = run_program(tox, "--version")
     assert "tox" in output
+
+    expect_success("auto-upgrade tox", "Skipping auto-upgrade", base=temp_base)
+    system.delete_file(SETTINGS.meta.full_path("tox", ".ping"))
+    expect_success("auto-upgrade tox", "already installed", base=temp_base)
 
     expect_success("install tox", "already installed", base=temp_base)
     expect_success("check", "tox", "is installed", base=temp_base)
@@ -130,3 +143,10 @@ def test_install(temp_base):
     system.delete_file(p.current._path)
     system.touch(p.current._path)
     expect_failure("check", "tox", "Invalid json file", "is not installed", base=temp_base)
+
+
+@patch("pickley.package.VersionMeta.valid", return_value=True)
+@patch("pickley.package.Packager.internal_install", side_effect=PingLockException(".ping"))
+def test_auto_upgrade_locked(*_):
+    expect_failure("--dryrun install foo", "installed by another process")
+    expect_success("--dryrun auto-upgrade foo", "installed by another process")

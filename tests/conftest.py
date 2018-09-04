@@ -4,7 +4,7 @@ from tempfile import mkdtemp
 
 import pytest
 
-from pickley import capture_output, system
+from pickley import CaptureOutput, system
 from pickley.cli import setup_debug_log
 from pickley.settings import SETTINGS
 
@@ -20,7 +20,7 @@ def sample_path(*relative):
 
 def verify_abort(func, *args, **kwargs):
     exception = kwargs.pop('exception', SystemExit)
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         with pytest.raises(exception):
             func(*args, **kwargs)
         return str(logged)

@@ -4,7 +4,7 @@ import os
 from pex.bin.pex import main as pex_main
 from pip._internal import main as pip_main
 
-from pickley import capture_output, system
+from pickley import CaptureOutput, system
 from pickley.settings import SETTINGS
 
 
@@ -46,7 +46,7 @@ class Runner:
 
         system.ensure_folder(self.cache, folder=True)
         system.debug("Running %s %s", self.name, system.represented_args(args))
-        with capture_output(self.cache, env=self.custom_env()) as captured:
+        with CaptureOutput(self.cache, env=self.custom_env()) as captured:
             try:
                 exit_code = self.effective_run(args)
             except SystemExit as e:

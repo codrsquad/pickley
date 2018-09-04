@@ -4,7 +4,7 @@ import sys
 import pytest
 from mock import patch
 
-from pickley import capture_output, system
+from pickley import CaptureOutput, PingLockException, system
 from pickley.cli import bootstrap, get_packager, relaunch
 from pickley.settings import Definition, SETTINGS
 
@@ -16,12 +16,12 @@ def test_bootstrap(_, temp_base):
     SETTINGS.cli.contents["delivery"] = "wrap"
     pickley = os.path.join(temp_base, system.PICKLEY)
 
-    with capture_output(dryrun=True) as logged:
+    with CaptureOutput(dryrun=True) as logged:
         bootstrap(testing=True)
         assert "Would move venv " in logged
         assert "Would bootstrap pickley" in logged
 
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         bootstrap(testing=True)
         assert "Moving venv " in logged
         assert "Bootstraped pickley" in logged
@@ -31,8 +31,15 @@ def test_bootstrap(_, temp_base):
     assert "version " in output
 
     # A 2nd call to boostrap() should be a no-op
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         bootstrap(testing=True)
+        assert not str(logged)
+
+
+@patch("pickley.package.Packager.internal_install", side_effect=PingLockException(".ping"))
+def test_bootstrap_in_progress(_):
+    with CaptureOutput() as logged:
+        assert bootstrap(testing=True) is None
         assert not str(logged)
 
 

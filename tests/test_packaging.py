@@ -3,7 +3,7 @@ import time
 
 from mock import patch
 
-from pickley import capture_output, system
+from pickley import CaptureOutput, system
 from pickley.install import PexRunner
 from pickley.package import DeliveryCopy, DeliveryMethod, DeliverySymlink, DeliveryWrap, PexPackager, VenvPackager, VersionMeta
 from pickley.settings import Definition, SETTINGS
@@ -96,7 +96,7 @@ def test_versions(_, __, temp_base):
     assert p.get_entry_points(p.build_folder, "0.0.0") is None
 
     # With a bogus wheel
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         whl = os.path.join(p.build_folder, "foo-0.0.0-py2.py3-none-any.whl")
         system.touch(whl)
         assert p.get_entry_points(p.build_folder, "0.0.0") is None
@@ -161,28 +161,28 @@ def test_shebang():
 
     # Default python, absolute path
     p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         p.build(None, None, None, None)
         assert "--python=" not in logged
         assert "--python-shebang=/usr/bin/env python" in logged
 
     # Default python, relative path
     p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         p.build(None, None, None, None)
         assert "--python=" not in logged
         assert "--python-shebang=/usr/bin/env python" in logged
 
     # Explicit python, absolute path
     p.resolved_python = pydef("/some-python")
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         p.build(None, None, None, None)
         assert "--python=/some-python" in logged
         assert "--python-shebang=/some-python" in logged
 
     # Explicit python, relative path
     p.resolved_python = pydef("some-python")
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         p.build(None, None, None, None)
         assert "--python=some-python" in logged
         assert "--python-shebang=/usr/bin/env some-python" in logged
@@ -192,28 +192,28 @@ def test_shebang():
 
     # Default python, absolute path
     p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         p.build(None, None, None, None)
         assert "--python=" not in logged
         assert "--python-shebang=/some-python" in logged
 
     # Default python, relative path
     p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         p.build(None, None, None, None)
         assert "--python=" not in logged
         assert "--python-shebang=/usr/bin/env some-python" in logged
 
     # Explicit python, absolute path
     p.resolved_python = pydef("/some-python")
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         p.build(None, None, None, None)
         assert "--python=/some-python" in logged
         assert "--python-shebang=/some-python" in logged
 
     # Explicit python, relative path
     p.resolved_python = pydef("some-python")
-    with capture_output() as logged:
+    with CaptureOutput() as logged:
         p.build(None, None, None, None)
         assert "--python=some-python" in logged
         assert "--python-shebang=/usr/bin/env some-python" in logged

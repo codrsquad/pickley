@@ -10,7 +10,7 @@ from logging.handlers import RotatingFileHandler
 
 import click
 
-from pickley import cd, short, system
+from pickley import CurrentFolder, PingLock, PingLockException, short, system
 from pickley.package import Packager, PACKAGERS, VenvPackager
 from pickley.settings import meta_folder, SETTINGS
 
@@ -116,17 +116,17 @@ def bootstrap(testing=False):
     if p.current.packager == p.implementation_name:
         # We're already packaged correctly, no need to bootstrap
         return
-    p.refresh_desired()
-    if not p.desired.valid:
-        system.abort("Can't bootstrap %s: %s", p.name, p.desired.problem)
 
-    # Re-install ourselves with correct packager
-    system.debug("Bootstrapping %s with %s", system.PICKLEY, p.implementation_name)
-    p.install(bootstrap=True)
-    relaunch()
+    try:
+        # Re-install ourselves with correct packager
+        p.internal_install(bootstrap=True)
+        relaunch()
+
+    except PingLockException:
+        return
 
 
-@click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=160), epilog=__doc__)
+@click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=140), epilog=__doc__)
 @click.version_option()
 @click.option("--debug", is_flag=True, help="Show debug logs")
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode, do not output anything")
@@ -141,8 +141,8 @@ def main(debug, quiet, dryrun, base, config):
         debug = True
     if debug:
         quiet = False
-    system.DRYRUN = dryrun
-    system.QUIET = quiet
+    system.DRYRUN = bool(dryrun)
+    system.QUIET = bool(quiet)
 
     if base:
         base = system.resolved_path(base)
@@ -231,8 +231,6 @@ def install(packager, force, packages):
         p = get_packager(name, packager)
         p.install(force=force)
 
-    sys.exit(0)
-
 
 @main.command()
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
@@ -258,7 +256,7 @@ def package(dist, build, packager, folder):
     if not os.path.exists(setup_py):
         system.abort("No setup.py in %s", short(folder))
 
-    with cd(folder):
+    with CurrentFolder(folder):
         # Some setup.py's assume their working folder is the folder where they're in
         name = system.run_program(sys.executable, setup_py, "--name", fatal=False)
         if not name:
@@ -270,7 +268,6 @@ def package(dist, build, packager, folder):
     p.source_folder = system.resolved_path(folder)
     r = p.package()
     system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))
-    sys.exit(0)
 
 
 @main.command()
@@ -289,3 +286,30 @@ def settings(diagnostics):
         system.info("")
 
     system.info(SETTINGS.represented())
+
+
+@main.command(name="auto-upgrade")
+@click.argument("package", required=True)
+def auto_upgrade(package):
+    """
+    Auto-upgrade a package
+    """
+    p = get_packager(package)
+    p.refresh_current()
+    if not p.current.valid:
+        system.abort("%s is not currently installed", package)
+
+    ping = PingLock(SETTINGS.meta.full_path(package), seconds=system.CHECK_UPGRADE_DELAY)
+    if ping.is_young():
+        # We checked for auto-upgrade recently, no need to check again yet
+        system.debug("Skipping auto-upgrade, checked recently")
+        sys.exit(0)
+    ping.touch()
+
+    setup_audit_log()
+    try:
+        p.internal_install()
+
+    except PingLockException:
+        system.debug("Skipping auto-upgrade, %s is currently being installed by another process" % package)
+        sys.exit(0)
