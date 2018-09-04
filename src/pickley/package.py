@@ -445,7 +445,7 @@ class Packager(object):
     def package(self, version=None):
         """
         :param str|None version: If provided, append version as suffix to produced pex
-        :return list|None: List of produced packages (files), if successful
+        :return list: List of produced packages (files), if successful
         """
         if not version and not self.source_folder:
             system.abort("Need either source_folder or version in order to package")
@@ -471,7 +471,7 @@ class Packager(object):
         """
         :param str|None version: If provided, append version as suffix to produced pex
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
-        :return list|None: List of produced packages (files), if successful
+        :return list: List of produced packages (files), if successful
         """
 
     def install(self, force=False):
@@ -570,7 +570,7 @@ class PexPackager(Packager):
         """
         :param str|None version: If provided, append version as suffix to produced pex
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
-        :return list|None: List of produced packages (files), if successful
+        :return list: List of produced packages (files), if successful
         """
         result = []
         for name in self.entry_points:
@@ -616,7 +616,7 @@ class VenvPackager(Packager):
         """
         :param str|None version: If provided, append version as suffix to produced pex
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
-        :return list|None: List of produced packages (files), if successful
+        :return list: List of produced packages (files), if successful
         """
         venv = self.virtualenv_path()
         if not venv:
