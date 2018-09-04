@@ -122,6 +122,40 @@ The above means:
 See CONFIG_ for more info.
 
 
+Packaging
+=========
+
+**pickley** can also be used to easily package your CLI project for delivery, example tox_ section for a project called ``foo``::
+
+
+    # Package ourselves up, this will produce a .tox/package/dist/foo executable ready to go
+    [testenv:package]
+    basepython = python
+    changedir = {envdir}
+    usedevelop = True
+    deps = pickley
+    commands = pickley package -ppex {toxinidir}
+               python ./dist/foo --version
+
+
+pickley packages itself like this for example.
+See ``pickley package --help`` for options, by default:
+
+- Produced package(s) (one per entry point) are dropped in ``./dist`` (configurable via ``--dist`` or ``-d``)
+
+- Used wheels are dropped in ``./build`` (configurable via ``--build`` or ``-b``)
+
+- We run ``./dist/foo --version`` here as a sanity check against our freshly produced package
+
+- Using tox's ``changedir = {envdir}`` allows to simplify invocations
+  (relative paths are relative to ``{envdir}``, which is ``.tox/package`` in this case)
+
+
+You can run a package from anywhere, for example this will drop a tox pex package in ``./root/apps/myapps``::
+
+    pickley package tox -ppex -droot/apps/myapps
+
+
 Features
 ========
 
