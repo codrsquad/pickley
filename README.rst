@@ -1,5 +1,5 @@
-Automate install/upgrade/packaging of standalone python CLIs
-============================================================
+Automate installation of standalone python CLIs
+===============================================
 
 .. image:: https://img.shields.io/pypi/v/pickley.svg
     :target: https://pypi.org/project/pickley/
@@ -21,10 +21,109 @@ Automate install/upgrade/packaging of standalone python CLIs
 Overview
 ========
 
-**pickley** allows to install and keep up-to-date standalone pip-installable python CLIs such as twine, tox, etc.
+**pickley** allows to install and keep up-to-date standalone pip-installable python CLIs such as tox_, twine_, etc.
 A bit like brew_ or apt_, but based solely on pypi_
 
-Features:
+It can work out of the box, **without any configuration**:
+
+- **pickley** will install in the same folder it's running from (drop it in ``/usr/local/bin`` or ``~/.local/bin`` for example)
+
+-  All pypi packages with ``console_scripts`` entry point(s) can be immediately installed
+
+- Latest non-prerelease pypi version will be used, no automatic updates (you can run ``pickley install ...`` any time to upgrade)
+
+With **some configuration**, the following becomes possible:
+
+- You can create "channels" such as "stable" and choose which version you want installed
+
+- You can use the **wrap** delivery method, which will make all your installed CLIs auto-upgrade themselves
+
+- You can have the installed packages produced as **pex** or **venv**
+
+
+Example
+=======
+
+Once you have pickley_, you can get other python CLIs and use them as standalone programs, for example::
+
+    # One-liner to grab pickley, and drop it in /usr/local/bin
+    $ curl -sLo /usr/local/bin/pickley `curl -s https://pypi.org/pypi/pickley/json | grep -Eo '"download_url":"([^"]+)"' | cut -d'"' -f4`
+
+    $ which pickley
+    /usr/local/bin/pickley
+
+    $ pickley install tox twine
+    Installed tox 3.2.1
+    Installed twine 1.11
+
+    $ which tox
+    /usr/local/bin/tox
+
+    $ tox --version
+    tox version 3.2.1
+
+    $ pickley list
+    base: /usr/local/bin
+    tox 3.2.1
+    twine 1.11
+
+
+Configuration
+=============
+
+**pickley** loads 2 configuration files (if they're present, ``<base>`` refers to the folder where **pickley** resides):
+
+- ``~/.config/pickley.json``: convenient for user-based settings
+
+- ``<base>/pickley.json``: useful if you have several people using the same **pickley** installation
+
+- Other config files can be included, via an ``include`` directive
+
+Config files are json as their name implies, here's an example::
+
+    {
+      "index": "https://pypi-mirror.mycompany.net/pypi",
+      "include": "foo.json",
+      "bundle": {
+        "dev": "tox twine"
+      },
+      "channel": {
+        "stable": {
+          "tox": "3.2.1",
+          "twine": "1.11"
+        }
+      },
+      "default": {
+        "delivery": "wrap"
+      },
+      "select": {
+        "delivery": {
+          "symlink": "twine"
+        }
+      }
+    }
+
+
+The above means:
+
+- Use a custom pypi index
+
+- Include a secondary config file (relative paths are relative to config file stating the ``include``)
+
+- Define a "bundle" called ``dev`` (convenience for installing multiple things at once via ``pickley install bundle:dev``)
+
+- Define a channel called "stable" specifying which versions of which pypi packages should be used
+
+- Use the ``wrap`` delivery mode by default (which will create a self-upgrading wrapper,
+  checking for new versions and auto-installing them every time you invoke corresponding command)
+
+- Customize delivery mode for ``twine`` (use regular ``symlink`` here in this case, instead of default auto-upgrading ``wrap``)
+
+See CONFIG_ for more info.
+
+
+Features
+========
 
 - Any pypi_ package that has ``console_scripts`` entry point can be installed and kept up-to-date
 
@@ -48,27 +147,32 @@ Features:
     - ``package``: can be used to simplify packaging of python project via pex_ or shiv_, for internal use
 
 
-Example
-=======
+Installation
+============
 
-Once you have pickley_, you can get other python CLIs and use them as standalone programs, for example::
+Install from github releases
+----------------------------
 
-    $ which pickley
-    ~/.local/bin/pickley
+- Go to https://github.com/zsimic/pickley/releases/latest
+- Download pickley from there (1st link), and drop it in ``~/.local/bin`` for example (or any folder in your PATH)
 
-    $ pickley install twine
-    Installed twine 1.11
+bash one-line install
+---------------------
 
-    $ which twine
-    ~/.local/bin/twine
+Run::
 
-    $ twine --version
-    twine version 1.11.0
+    curl -sLo ~/.local/bin/pickley `curl -s https://pypi.org/pypi/pickley/json | grep -Eo '"download_url":"([^"]+)"' | cut -d'"' -f4`
 
-    $ pickley list
-    base: ~/.local/bin
-    tox 3.1.2
-    twine 1.11
+
+Install from source
+-------------------
+
+Run (you will need tox_)::
+
+    git clone https://github.com/zsimic/pickley.git
+    cd pickley
+    tox -e package
+    cp .tox/package/pickley ~/.local/bin/
 
 
 .. _pickley: https://pypi.org/project/pickley/
@@ -87,38 +191,8 @@ Once you have pickley_, you can get other python CLIs and use them as standalone
 
 .. _apt: https://en.wikipedia.org/wiki/APT_(Debian)
 
-
-Installation
-============
-
-Install from github releases
-----------------------------
-
-- Go to https://github.com/zsimic/pickley/releases/latest
-- Download pickley from there (1st link), and drop it in ``~/.local/bin`` for example (a folder in your PATH)
-
-Install via bash script
------------------------
-
-Run::
-
-    pickley_latest=`curl -s https://github.com/zsimic/pickley/releases/latest | egrep -o 'tag/[^"]+' | sed 's!tag/!!'`
-    curl -sLo ~/.local/bin/pickley https://github.com/zsimic/pickley/releases/download/$pickley_latest/pickley
-
-    curl -sLo ~/.local/bin/pickley https://github.com/zsimic/pickley/releases/download/`curl -s https://github.com/zsimic/pickley/releases/latest | egrep -o 'tag/[^"]+' | sed 's!tag/!!'`/pickley
-
-    u=https://github.com/zsimic/pickley/releases curl -sLo ./pickley $u/download/`curl -s $u/latest | egrep -o 'tag/[^"]+' | cut -d/ -f2`/pickley
-
-
-Install from source
--------------------
-
-Run (you will need tox_)::
-
-    git clone https://github.com/zsimic/pickley.git
-    cd pickley
-    tox -e package
-    cp .tox/package/pickley ~/.local/bin/
-
-
 .. _tox: https://pypi.org/project/tox/
+
+.. _twine: https://pypi.org/project/twine/
+
+.. _CONFIG: CONFIG.rst
