@@ -480,7 +480,7 @@ class Settings:
         self.meta = meta_folder(self.base.path)
 
     def set_cli_config(self, **entries):
-        self.cli.set_contents(entries)
+        self.cli.set_contents(dict((k, v) for k, v in entries.items() if v))
 
     def add(self, paths, base=None):
         """
