@@ -142,12 +142,21 @@ def test_configured_version(_):
     assert "Can't determine path to virtualenv.py" in verify_abort(p.effective_package, None)
 
 
-@patch("pickley.settings.SETTINGS.resolved_definition", return_value=Definition("stable", "test", None))
-@patch("pickley.settings.SETTINGS.get_definition", return_value=Definition("1.0", "test", None))
-def test_channel(*_):
+def get_definition(key, package_name=None):
+    if key == "channel":
+        return Definition("stable", "test", key)
+    if key.startswith("channel.stable."):
+        return Definition("1.0", "test", key)
+    if key == "delivery":
+        return Definition("wrap", "test", key)
+    return None
+
+
+@patch("pickley.settings.SettingsFile.get_definition", side_effect=get_definition)
+def test_channel(_):
     p = VenvPackager("foo")
     p.refresh_desired()
-    assert p.desired.representation(verbose=True) == "foo 1.0 (as venv, source: test)"
+    assert p.desired.representation(verbose=True) == "foo 1.0 (as venv wrap, channel: stable, source: test:channel.stable.foo)"
 
 
 def pydef(value, source="test"):

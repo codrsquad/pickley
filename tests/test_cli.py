@@ -137,7 +137,7 @@ def test_install(temp_base):
 
     expect_success("install tox", "already installed", base=temp_base)
     expect_success("check", "tox", "is installed", base=temp_base)
-    expect_success("check --verbose", "tox", "is installed (as venv, channel: ", base=temp_base)
+    expect_success("check --verbose", "tox", "is installed (as venv wrap, channel: ", base=temp_base)
 
     p = VenvPackager("tox")
     p.refresh_latest()

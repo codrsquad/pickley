@@ -273,21 +273,15 @@ class Definition(object):
     def __init__(self, value, source, key):
         """
         :param value: Actual value
-        :param SettingsFilesource source: Where value was defined
+        :param SettingsFile source: Where value was defined
         :param str key: Under what key it was defined
         """
         self.value = value
         self.source = source
         self.key = key
-        self.channel = None
 
     def __repr__(self):
-        channel = " [%s]" % self.channel if self.channel else ""
-        source = " from %s:%s" % (short(self.source.path), self.key)
-        return "%s%s%s" % (self.value, source, channel)
-
-    def __str__(self):
-        return str(self.value)
+        return "%s:%s" % (short(self.source), self.key)
 
 
 class SettingsFile:

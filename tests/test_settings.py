@@ -94,8 +94,7 @@ def test_custom_settings():
     assert s.base.relative_path(p) == "foo/bar"
 
     d = s.resolved_definition("delivery", package_name="dict_sample")
-    assert str(d) == "copy"
-    assert repr(d) == "copy from %s/.pickley.json:delivery.copy" % short(s.base.path)
+    assert str(d) == "%s/.pickley.json:delivery.copy" % short(s.base.path)
 
     assert s.resolved_value("delivery", package_name="tox") == "venv"
     assert s.resolved_value("delivery", package_name="virtualenv") == "wrap"

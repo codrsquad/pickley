@@ -165,6 +165,8 @@ class VersionMeta(JsonSerializable):
     _name = None                    # type: str # Associated pypi package name
     channel = ""                    # type: str # Channel (stable, latest, ...) via which this version was determined
     packager = ""                   # type: str # Packager used
+    delivery = ""                   # type: str # Delivery method used
+    python = ""                     # type: str # Python interpreter used
     source = ""                     # type: str # Description of where definition came from
     timestamp = None                # type: float # Epoch when version was determined (useful to cache "expensive" calls to pypi)
     version = ""                    # type: str # Effective version
@@ -195,8 +197,13 @@ class VersionMeta(JsonSerializable):
         notice = ""
         if verbose:
             notice = []
-            if self.packager:
-                notice.append("as %s" % self.packager)
+            if self.packager or self.delivery:
+                info = "as"
+                if self.packager:
+                    info = "%s %s" % (info, self.packager)
+                if self.delivery:
+                    info = "%s %s" % (info, self.delivery)
+                notice.append(info)
             if self.channel:
                 notice.append("channel: %s" % self.channel)
             if self.source and self.source != SETTINGS.index:
@@ -250,30 +257,37 @@ class VersionMeta(JsonSerializable):
             return False
         return True
 
-    def set_version(self, version, source, channel="", packager=""):
+    def set_version(self, version, source, channel=""):
         """
         :param str version: Effective version
         :param str source: Description of where version determination came from
         :param str channel: Channel (stable, latest, ...) via which this version was determined
-        :param str packager: Packager (pex, venv, ...) used
         """
         self.version = version
         self.source = source
         self.channel = channel
-        self.packager = packager
         self.timestamp = time.time()
 
-    def set(self, other):
-        """
-        :param VersionMeta other:
-        """
-        self._problem = other._problem
-        self.channel = other.channel
-        if other.packager:
-            self.packager = other.packager
-        self.source = other.source
-        self.timestamp = other.timestamp
-        self.version = other.version
+    def set(self, *others):
+        for other in others:
+            if isinstance(other, VersionMeta):
+                self._problem = other._problem
+                self.channel = other.channel
+                if other.packager:
+                    self.packager = other.packager
+                if other.delivery:
+                    self.delivery = other.delivery
+                if other.python:
+                    self.python = other.python
+                self.source = other.source
+                self.timestamp = other.timestamp
+                self.version = other.version
+            elif isinstance(other, Packager):
+                self.packager = other.implementation_name
+                delivery = DELIVERERS.resolved(other.name)
+                if isinstance(delivery, DeliveryMethod):
+                    self.delivery = delivery.implementation_name
+                self.python = SETTINGS.resolved_value("python", other.name)
 
     def invalidate(self, problem):
         """
@@ -407,13 +421,13 @@ class Packager(object):
         channel = SETTINGS.resolved_definition("channel", package_name=self.name)
         v = SETTINGS.get_definition("channel.%s.%s" % (channel.value, self.name))
         if v and v.value:
-            self.desired.set_version(v.value, str(v.source), channel=v.channel, packager=self.implementation_name)
+            self.desired.set_version(v.value, str(v), channel=channel.value)
+            self.desired.set(self)
             return
 
         if channel.value == system.DEFAULT_CHANNEL:
             self.refresh_latest()
-            self.desired.set(self.latest)
-            self.desired.packager = self.implementation_name
+            self.desired.set(self, self.latest)
             return
 
         self.desired.invalidate("can't determine %s version" % channel.value)
@@ -508,7 +522,7 @@ class Packager(object):
                     # Entry point was removed by package
                     system.delete_file(SETTINGS.base.full_path(name))
 
-            self.current.set(self.desired)
+            self.current.set(self, self.desired)
             self.current.save()
 
             msg = "Would %s" % intent if system.DRYRUN else "%sed" % (intent.title())
