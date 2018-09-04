@@ -132,7 +132,7 @@ Packaging
     [testenv:package]
     basepython = python
     changedir = {envdir}
-    usedevelop = True
+    skip_install = True
     deps = pickley
     commands = pickley -ppex package {toxinidir}
                python ./dist/foo --version
@@ -141,7 +141,7 @@ Packaging
 pickley packages itself like this for example.
 See ``pickley package --help`` for options, by default:
 
-- Produced package(s) (one per entry point) are dropped in ``./dist`` (configurable via ``--dist`` or ``-d``)
+- Produced package(s) (one per entry point) are dropped by default in ``./dist`` (configurable via ``--dist`` or ``-d``)
 
 - Used wheels are dropped in ``./build`` (configurable via ``--build`` or ``-b``)
 
@@ -150,10 +150,11 @@ See ``pickley package --help`` for options, by default:
 - Using tox's ``changedir = {envdir}`` allows to simplify invocations
   (relative paths are relative to ``{envdir}``, which is ``.tox/package`` in this case)
 
+- Using ``skip_install = True`` just for speedup (the project itself is not needed withing the 'pacakage' tox env)
 
-You can run a package from anywhere, for example this will drop a tox pex package in ``./root/apps/myapps``::
+You can run the ``package`` command from anywhere, for example this will drop a pex package in ``./root/apps/myproject``::
 
-    pickley -ppex package tox -droot/apps/myapps
+    pickley -ppex package path/to/myproject -droot/apps/myproject
 
 
 Features
