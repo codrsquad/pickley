@@ -230,10 +230,10 @@ def settings(diagnostics):
     setup_audit_log()
     if diagnostics:
         system.info("python interpreter: %s", short(system.PYTHON))
-        system.info("sys.argv          : %s", system.represented_args(sys.argv))
         system.info("sys.executable    : %s", short(sys.executable))
         system.info("sys.prefix        : %s", short(getattr(sys, "prefix", None)))
         system.info("sys.real_prefix   : %s", short(getattr(sys, "real_prefix", None)))
+        system.info("meta              : %s" % short(SETTINGS.meta.path))
         system.info("")
 
     system.info(SETTINGS.represented())

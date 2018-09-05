@@ -25,8 +25,8 @@ LEGACY_SAMPLE = """
 EXPECTED_REPRESENTATION = """
 settings:
   base: {base}
-  meta: {base}/.pickley
   index: https://pypi.org/
+
   config:
     - cli: # empty
     - {base}/.pickley.json:

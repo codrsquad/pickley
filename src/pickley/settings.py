@@ -614,10 +614,10 @@ class Settings:
         result = [
             "settings:",
             "  base: %s" % short(self.base.path),
-            "  meta: %s" % short(self.meta.path),
         ]
         if self.index:
             result.append("  index: %s" % self.index)
+        result.append("")
         result.append("  config:")
         result.append(self.cli.represented())
         for child in self.children:
