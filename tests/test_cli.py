@@ -110,11 +110,7 @@ def test_install(temp_base):
     expect_failure("check tox", "is not installed", base=temp_base)
     expect_failure("check bogus_", "can't determine latest version", base=temp_base)
 
-    expect_success(
-        "settings -d",
-        "base: %s" % short(temp_base),
-        "meta: %s" % short(SETTINGS.base.full_path(system.DOT_PICKLEY)), base=temp_base,
-    )
+    expect_success("settings -d", "base: %s" % short(temp_base))
 
     expect_success("--dryrun --delivery wrap install tox", "Would wrap", "Would install tox", base=temp_base)
     expect_success("--dryrun --delivery symlink install tox", "Would symlink", "Would install tox", base=temp_base)
