@@ -57,10 +57,12 @@ settings:
         - bogus7.json
         - bogus8.json
         - bogus9.json
+      install_timeout: 120
       select:
         virtualenv:
           delivery: wrap
           packager: pex
+      version_check_delay: 60
     - {base}/bogus.json: # empty
     - {base}/bogus2.json: # empty
     - {base}/bogus3.json: # empty
@@ -74,8 +76,10 @@ settings:
       default:
         channel: latest
         delivery: symlink
+        install_timeout: 1800
         packager: venv
         python: {python}
+        version_check_delay: 600
 """
 
 
@@ -116,6 +120,9 @@ def test_custom_settings():
     d = s.get_definition("packager")
     assert d.value == "copy"
     assert d.source is s.cli
+
+    assert s.install_timeout == 120
+    assert s.version_check_delay == 60
 
 
 def test_settings_base():
@@ -188,3 +195,13 @@ def test_serialization():
     j = JsonSerializable.from_json("/dev/null/foo")
     assert str(j) == "/dev/null/foo"
     j.save()  # Warns: Couldn't save...
+
+
+def test_duration():
+    assert system.to_int(None, default=60) == 60
+    assert system.to_int("") is None
+    assert system.to_int("foo") is None
+    assert system.to_int("1m") is None
+
+    assert system.to_int(50) == 50
+    assert system.to_int("50") == 50

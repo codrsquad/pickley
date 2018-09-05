@@ -5,10 +5,12 @@
     }
   },
   "include": ["bogus.json", "bogus2.json", "bogus3.json", "bogus4.json", "bogus5.json", "bogus6.json", "bogus7.json", "bogus8.json", "bogus9.json"],
+  "install_timeout": 120,
   "select": {
     "virtualenv": {
       "delivery": "wrap",
       "packager": "pex"
     }
-  }
+  },
+  "version_check_delay": 60
 }

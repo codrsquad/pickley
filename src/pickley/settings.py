@@ -59,6 +59,10 @@ import six
 from pickley import short, system
 
 
+DEFAULT_INSTALL_TIMEOUT = 1800
+DEFAULT_VERSION_CHECK_DELAY = 600
+
+
 def same_type(t1, t2):
     """
     :return bool: True if 't1' and 't2' are of equivalent types
@@ -443,8 +447,10 @@ class Settings:
             default=dict(
                 channel=system.DEFAULT_CHANNEL,
                 delivery=system.DEFAULT_DELIVERY,
+                install_timeout=DEFAULT_INSTALL_TIMEOUT,
                 packager=system.DEFAULT_PACKAGER,
                 python=system.PYTHON,
+                version_check_delay=DEFAULT_VERSION_CHECK_DELAY,
             ),
         )
         self.config = config
@@ -481,6 +487,20 @@ class Settings:
 
     def set_cli_config(self, **entries):
         self.cli.set_contents(dict((k, v) for k, v in entries.items() if v))
+
+    @property
+    def version_check_delay(self):
+        """
+        :return float: How many seconds to wait before checking for upgrades again
+        """
+        return system.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY)
+
+    @property
+    def install_timeout(self):
+        """
+        :return float: How many seconds to give an installation to complete before assuming it failed
+        """
+        return system.to_int(self.get_value("install_timeout"), default=DEFAULT_INSTALL_TIMEOUT)
 
     def add(self, paths, base=None):
         """

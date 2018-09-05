@@ -128,7 +128,7 @@ class DeliveryWrap(DeliveryMethod):
 
     def _install(self, target, source):
         # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-        ping = PingLock(SETTINGS.meta.full_path(self.package_name))
+        ping = PingLock(SETTINGS.meta.full_path(self.package_name), seconds=SETTINGS.version_check_delay)
         ping.touch()
 
         if self.package_name == system.PICKLEY:
@@ -304,7 +304,7 @@ class VersionMeta(JsonSerializable):
         if not self.valid or not self.timestamp:
             return self.valid
         try:
-            return (time.time() - self.timestamp) < system.CHECK_UPGRADE_DELAY
+            return (time.time() - self.timestamp) < SETTINGS.version_check_delay
         except Exception:
             return False
 
@@ -490,7 +490,7 @@ class Packager(object):
         :param bool force: If True, re-install even if package is already installed
         :param bool bootstrap: Bootstrap mode
         """
-        with PingLock(self.dist_folder):
+        with PingLock(self.dist_folder, seconds=SETTINGS.install_timeout):
             intent = "bootstrap" if bootstrap else "install"
             self.refresh_desired()
             if not self.desired.valid:

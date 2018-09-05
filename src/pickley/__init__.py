@@ -14,8 +14,6 @@ import six
 
 
 LOG = logging.getLogger(__name__)
-SECONDS_IN_ONE_MINUTE = 60
-SECONDS_IN_ONE_HOUR = 60 * SECONDS_IN_ONE_MINUTE
 
 
 def decode(value):
@@ -127,9 +125,6 @@ class system:
     DEFAULT_CHANNEL = "latest"
     DEFAULT_DELIVERY = "symlink"
     DEFAULT_PACKAGER = "venv"
-
-    CHECK_UPGRADE_DELAY = 10 * SECONDS_IN_ONE_MINUTE
-    INSTALL_TIMEOUT = SECONDS_IN_ONE_HOUR
 
     @classmethod
     def debug(cls, message, *args, **kwargs):
@@ -499,6 +494,18 @@ class system:
             result.append(cls.quoted(text))
         return separator.join(result)
 
+    @classmethod
+    def to_int(cls, text, default=None):
+        """
+        :param str|int|float text: Value to convert
+        :param int|float|None default: Default to use if 'text' can't be parsed
+        :return float:
+        """
+        try:
+            return float(text)
+        except Exception:
+            return default
+
 
 class ImplementationMap:
     """
@@ -588,7 +595,7 @@ class PingLock:
     - the lock remains valid for an hour, after that previous upgrade attempt is considered failed (lock re-acquired)
     """
 
-    def __init__(self, folder, seconds=system.INSTALL_TIMEOUT):
+    def __init__(self, folder, seconds):
         """
         :param str folder: Target installation folder (<base>/.pickley/<name>/.work)
         :param float seconds: Number of seconds ping file is valid for (default: 1 hour)

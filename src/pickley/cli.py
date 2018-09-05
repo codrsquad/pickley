@@ -250,7 +250,7 @@ def auto_upgrade(package):
     if not p.current.valid:
         system.abort("%s is not currently installed", package)
 
-    ping = PingLock(SETTINGS.meta.full_path(package), seconds=system.CHECK_UPGRADE_DELAY)
+    ping = PingLock(SETTINGS.meta.full_path(package), seconds=SETTINGS.version_check_delay)
     if ping.is_young():
         # We checked for auto-upgrade recently, no need to check again yet
         system.debug("Skipping auto-upgrade, checked recently")
