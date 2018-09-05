@@ -457,18 +457,18 @@ class Settings:
         self.cli.set_contents(dict((k, v) for k, v in entries.items() if v))
 
     @property
-    def version_check_delay(self):
-        """
-        :return float: How many seconds to wait before checking for upgrades again
-        """
-        return system.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY)
-
-    @property
     def install_timeout(self):
         """
         :return float: How many seconds to give an installation to complete before assuming it failed
         """
         return system.to_int(self.get_value("install_timeout"), default=DEFAULT_INSTALL_TIMEOUT)
+
+    @property
+    def version_check_delay(self):
+        """
+        :return float: How many seconds to wait before checking for upgrades again
+        """
+        return system.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY)
 
     def load_config(self, testing=None):
         """

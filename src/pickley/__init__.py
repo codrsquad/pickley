@@ -12,10 +12,16 @@ import time
 from logging.handlers import RotatingFileHandler
 
 import six
+from pkg_resources import get_distribution
 
 
 LOG = logging.getLogger(__name__)
 HOME = os.path.expanduser("~")
+
+try:
+    __version__ = get_distribution(__name__).version
+except Exception:
+    __version__ = '0.0.0'
 
 
 def decode(value):
