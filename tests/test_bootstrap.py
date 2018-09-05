@@ -5,23 +5,23 @@ import pytest
 from mock import patch
 
 from pickley import CaptureOutput, PingLockException, system
-from pickley.cli import bootstrap, relaunch
+from pickley.cli import bootstrap
 from pickley.settings import SETTINGS
 
 
-@patch("pickley.cli.relaunch")
+@patch("pickley.system.relaunch")
 def test_bootstrap(_, temp_base):
     SETTINGS.cli.contents["delivery"] = "wrap"
     pickley = os.path.join(temp_base, system.PICKLEY)
 
     with CaptureOutput(dryrun=True) as logged:
         bootstrap(testing=True)
-        assert "Would move venv " in logged
+        assert "Would move " in logged
         assert "Would bootstrap pickley" in logged
 
     with CaptureOutput() as logged:
         bootstrap(testing=True)
-        assert "Moving venv " in logged
+        assert "Relocating venv " in logged
         assert "Bootstraped pickley" in logged
 
     # Verify it works
@@ -44,7 +44,8 @@ def test_bootstrap_in_progress(_):
 @patch("pickley.system.run_program")
 def test_relaunch(run_program):
     with pytest.raises(SystemExit):
-        relaunch()
-    system.OUTPUT = True
+        system.relaunch()
+    # Restore system.output
+    system.output = True
     assert run_program.call_count == 1
     assert list(run_program.call_args_list[0][0]) == sys.argv

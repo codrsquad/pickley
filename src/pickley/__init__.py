@@ -9,11 +9,13 @@ import shutil
 import subprocess  # nosec
 import sys
 import time
+from logging.handlers import RotatingFileHandler
 
 import six
 
 
 LOG = logging.getLogger(__name__)
+HOME = os.path.expanduser("~")
 
 
 def decode(value):
@@ -33,7 +35,7 @@ def short(path, base=None):
         return path
     if base:
         path = str(path).replace(base + "/", "")
-    path = str(path).replace(system.HOME, "~")
+    path = str(path).replace(HOME, "~")
     return path
 
 
@@ -48,7 +50,7 @@ def python_interpreter():
         return sys.executable
 
 
-def pickley_program():
+def pickley_program_path():
     """
     :return str: Path to pickley executable, with special case for test runs
     """
@@ -61,7 +63,7 @@ def is_test_run():
     """
     :return bool: True if we're running via pytest (or pycharm test)
     """
-    return "pytest" in pickley_program().lower()
+    return "pytest" in pickley_program_path().lower()
 
 
 def relocate_venv_file(path, source, destination):
@@ -110,46 +112,46 @@ class system:
     Functionality for the whole app, easily importable via one name
     """
 
-    DRYRUN = False
-    OUTPUT = True
-    QUIET = False
     PICKLEY = "pickley"
-    DOT_PICKLEY = ".pickley"
-    HOME = os.path.expanduser("~")
-    PYTHON = python_interpreter()
-    AUDIT_HANDLER = None
-    DEBUG_HANDLER = None
-    TESTING = is_test_run()
-    PROGRAM = pickley_program()
 
-    DEFAULT_CHANNEL = "latest"
-    DEFAULT_DELIVERY = "symlink"
-    DEFAULT_PACKAGER = "venv"
+    dryrun = False
+    output = True
+    quiet = False
+    python = python_interpreter()
+    testing = is_test_run()
+    pickley_program_path = pickley_program_path()
+
+    default_channel = "latest"
+    default_delivery = "symlink"
+    default_packager = "venv"
+
+    _audit_handler = None
+    _debug_handler = None
 
     @classmethod
     def debug(cls, message, *args, **kwargs):
-        if not cls.QUIET:
+        if not cls.quiet:
             LOG.debug(message, *args, **kwargs)
-        if cls.TESTING:
+        if cls.testing:
             print(str(message) % args)
 
     @classmethod
     def info(cls, message, *args, **kwargs):
-        output = kwargs.pop("output", cls.OUTPUT)
+        output = kwargs.pop("output", cls.output)
         LOG.info(message, *args, **kwargs)
-        if (not cls.QUIET and output) or cls.TESTING:
+        if (not cls.quiet and output) or cls.testing:
             print(str(message) % args)
 
     @classmethod
     def warning(cls, message, *args, **kwargs):
         LOG.warning(message, *args, **kwargs)
-        if cls.OUTPUT or cls.TESTING:
+        if cls.output or cls.testing:
             print("WARNING: %s" % (str(message) % args))
 
     @classmethod
     def error(cls, message, *args, **kwargs):
         LOG.error(message, *args, **kwargs)
-        if cls.OUTPUT or cls.TESTING:
+        if cls.output or cls.testing:
             print("ERROR: %s" % (str(message) % args))
 
     @classmethod
@@ -158,11 +160,42 @@ class system:
         sys.exit(1)
 
     @classmethod
-    def config_paths(cls, testing):
-        if testing:
-            return [".pickley.json"]
-        else:
-            return ["~/.config/pickley.json", ".pickley.json"]
+    def relaunch(cls):
+        """
+        Rerun with same args, to pick up freshly bootstrapped installation
+        """
+        cls.output = False
+        cls.run_program(*sys.argv, stdout=sys.stdout, stderr=sys.stderr)
+        if not cls.dryrun:
+            sys.exit(0)
+
+    @classmethod
+    def setup_audit_log(cls, meta):
+        """
+        :param FolderBase meta: Log to <meta>/audit.log
+        """
+        if cls.dryrun or cls._audit_handler:
+            return
+        path = meta.full_path("audit.log")
+        cls.ensure_folder(path)
+        cls._audit_handler = RotatingFileHandler(path, maxBytes=500 * 1024, backupCount=1)
+        cls._audit_handler.setLevel(logging.DEBUG)
+        cls._audit_handler.setFormatter(logging.Formatter("%(asctime)s [%(process)s] %(levelname)s - %(message)s"))
+        logging.root.addHandler(cls._audit_handler)
+        cls.info(":: %s", cls.represented_args(sys.argv), output=False)
+
+    @classmethod
+    def setup_debug_log(cls):
+        """Log to stderr"""
+        # Log to console with --debug or --dryrun
+        if cls._debug_handler:
+            return
+        cls.output = False
+        cls._debug_handler = logging.StreamHandler()
+        cls._debug_handler.setLevel(logging.DEBUG)
+        cls._debug_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+        logging.root.addHandler(cls._debug_handler)
+        logging.root.setLevel(logging.DEBUG)
 
     @classmethod
     def touch(cls, path):
@@ -170,7 +203,7 @@ class system:
         :param path: Path to file to touch
         """
         if path:
-            if system.DRYRUN:
+            if cls.dryrun:
                 cls.debug("Would touch %s", short(path))
                 return
             cls.ensure_folder(path)
@@ -181,7 +214,7 @@ class system:
     def resolved_path(cls, path, base=None):
         """
         :param str path: Path to resolve
-        :param str|None base: Base folder to use for relative paths (default: current working dir)
+        :param str|None base: Base path to use to resolve relative paths (default: current working dir)
         :return str: Absolute path
         """
         if not path:
@@ -270,7 +303,7 @@ class system:
             folder = cls.parent_folder(path)
         if os.path.isdir(folder):
             return
-        if cls.DRYRUN:
+        if cls.dryrun:
             cls.debug("Would create %s", short(folder))
             return
         try:
@@ -282,8 +315,8 @@ class system:
     @classmethod
     def copy_file(cls, source, destination):
         """Copy source -> destination"""
-        if source and destination:
-            if cls.DRYRUN:
+        if source and destination and source != destination:
+            if cls.dryrun:
                 cls.debug("Would copy %s -> %s", short(source), short(destination))
                 return
 
@@ -303,39 +336,24 @@ class system:
     @classmethod
     def move_file(cls, source, destination):
         """Move source -> destination"""
-        if source and destination:
-            if cls.DRYRUN:
+        if source and destination and source != destination:
+            if cls.dryrun:
                 cls.debug("Would move %s -> %s", short(source), short(destination))
                 return
 
             if not os.path.exists(source):
                 cls.abort("%s does not exist, can't move to %s", short(source), short(destination))
 
+            bin_folder = os.path.join(source, "bin")
+            if cls.is_executable(os.path.join(bin_folder, "python")):
+                cls.debug("Relocating venv %s -> %s", short(source), short(destination))
+                for name in os.listdir(bin_folder):
+                    fpath = os.path.join(bin_folder, name)
+                    relocate_venv_file(fpath, source, destination)
+
             cls.ensure_folder(destination)
             cls.delete_file(destination)
             shutil.move(source, destination)
-
-    @classmethod
-    def move_venv(cls, source, destination):
-        """
-        :param str source: Folder where current venv is
-        :param str destination: Folder where to move and relocate venv to
-        """
-        if source and destination and source != destination:
-            if cls.DRYRUN:
-                cls.debug("Would move venv %s -> %s", short(source), short(destination))
-                return
-
-            bin_folder = os.path.join(source, "bin")
-            if not os.path.isdir(bin_folder):
-                system.abort("No bin folder in venv %s, can't move to %s", short(source), short(destination))
-
-            cls.debug("Moving venv %s -> %s", short(source), short(destination))
-            for name in os.listdir(bin_folder):
-                fpath = os.path.join(bin_folder, name)
-                relocate_venv_file(fpath, source, destination)
-
-            cls.move_file(source, destination)
 
     @classmethod
     def delete_file(cls, path):
@@ -344,7 +362,7 @@ class system:
         if not islink and (not path or not os.path.exists(path)):
             return
 
-        if cls.DRYRUN:
+        if cls.dryrun:
             cls.debug("Would delete %s", short(path))
             return
 
@@ -367,7 +385,7 @@ class system:
         if cls.is_executable(path):
             return
 
-        if cls.DRYRUN:
+        if cls.dryrun:
             cls.debug("Would make %s executable", short(path))
             return
 
@@ -398,7 +416,7 @@ class system:
         if not path or not contents:
             return
 
-        if cls.DRYRUN:
+        if cls.dryrun:
             cls.debug("Would write %s bytes to %s", len(contents), short(path))
 
         cls.ensure_folder(path)
@@ -430,7 +448,7 @@ class system:
 
         fatal = kwargs.pop("fatal", True)
         logger = kwargs.pop("logger", cls.debug)
-        dryrun = fatal and cls.DRYRUN
+        dryrun = fatal and cls.dryrun
         message = "Would run" if dryrun else "Running"
         message = "%s: %s %s" % (message, short(full_path or program), cls.represented_args(args))
         logger(message)
@@ -465,7 +483,7 @@ class system:
             return output
 
         except Exception as e:
-            system.abort("%s failed: %s", os.path.basename(program), e, exc_info=e)
+            cls.abort("%s failed: %s", os.path.basename(program), e, exc_info=e)
 
     @classmethod
     def quoted(cls, text):
@@ -705,7 +723,7 @@ class CaptureOutput:
         logging.root.handlers = [self.handler]
 
         if self.dryrun is not None:
-            (system.DRYRUN, self.dryrun) = (bool(self.dryrun), bool(system.DRYRUN))
+            (system.dryrun, self.dryrun) = (bool(self.dryrun), bool(system.dryrun))
 
         return self
 
@@ -727,7 +745,38 @@ class CaptureOutput:
                 os.environ[key] = value
 
         if self.dryrun is not None:
-            system.DRYRUN = self.dryrun
+            system.dryrun = self.dryrun
 
     def __contains__(self, item):
         return item is not None and item in str(self)
+
+
+class FolderBase(object):
+    """
+    This class allows to more easily deal with folders
+    """
+
+    def __init__(self, path, name=None):
+        """
+        :param str path: Path to folder
+        :param str|None name: Name of this folder (defaults to basename of 'path')
+        """
+        self.path = system.resolved_path(path)
+        self.name = name or os.path.basename(path)
+
+    def relative_path(self, path):
+        """
+        :param str path: Path to relativize
+        :return str: 'path' relative to self.path
+        """
+        return os.path.relpath(path, self.path)
+
+    def full_path(self, *relative):
+        """
+        :param list(str) *relative: Relative components
+        :return str: Full path based on self.path
+        """
+        return os.path.join(self.path, *relative)
+
+    def __repr__(self):
+        return "%s: %s" % (self.name, short(self.path))

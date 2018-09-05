@@ -4,7 +4,7 @@ from mock import patch
 
 from pickley import short, system
 from pickley.pypi import latest_pypi_version
-from pickley.settings import add_representation, JsonSerializable, same_type, Settings
+from pickley.settings import add_representation, DOT_PICKLEY, JsonSerializable, same_type, Settings
 
 from .conftest import sample_path
 
@@ -85,7 +85,7 @@ settings:
 
 def test_custom_settings():
     s = Settings(sample_path())
-    s.add(system.config_paths(True))
+    s.load_config(testing=True)
 
     assert str(s) == "[11] base: %s" % short(s.base.path)
     assert str(s.defaults) == "defaults"
@@ -103,14 +103,14 @@ def test_custom_settings():
     assert s.resolved_value("delivery", package_name="tox") == "venv"
     assert s.resolved_value("delivery", package_name="virtualenv") == "wrap"
 
-    assert s.resolved_value("packager", package_name="tox") == system.DEFAULT_PACKAGER
+    assert s.resolved_value("packager", package_name="tox") == system.default_packager
     assert s.resolved_value("packager", package_name="virtualenv") == "pex"
 
     assert s.resolved_packages("bundle:dev") == ["tox", "twine"]
     assert s.get_value("bundle.dev") == ["tox", "twine"]
     assert s.get_value("bundle.dev2") == ["tox", "twine", "pipenv"]
 
-    expected = EXPECTED_REPRESENTATION.format(base=short(s.base.path), python=short(system.PYTHON)).strip()
+    expected = EXPECTED_REPRESENTATION.format(base=short(s.base.path), python=short(system.python)).strip()
     assert s.represented().strip() == expected
 
     s.cli.contents["packager"] = "copy"
@@ -126,21 +126,21 @@ def test_custom_settings():
 
 
 def test_settings_base():
-    old_program = system.PROGRAM
+    old_program = system.pickley_program_path
 
     # Verify that .pickley/... part of base gets ignored
     base = sample_path("foo")
-    system.PROGRAM = os.path.join(base, ".pickley", "bar")
+    system.pickley_program_path = os.path.join(base, DOT_PICKLEY, "pickley-1.0.0", "bin", "pickley")
     s = Settings()
     assert s.base.path == base
 
     # Convenience dev case
     base = sample_path(".venv", "bin", "pickley")
-    system.PROGRAM = base
+    system.pickley_program_path = base
     s = Settings()
     assert s.base.path == sample_path(".venv", "root")
 
-    system.PROGRAM = old_program
+    system.pickley_program_path = old_program
 
 
 def test_same_type():

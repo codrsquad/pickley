@@ -93,8 +93,11 @@ def test_real_run():
     else:
         delattr(sys, "real_prefix")
 
-    assert len(system.config_paths(True)) == 1
-    assert len(system.config_paths(False)) == 2
+    s = Settings()
+    s.load_config(testing=True)
+    assert len(s.config) == 1
+    s.load_config(testing=False)
+    assert len(s.config) == 2
 
 
 def test_implementation_map():
@@ -150,13 +153,12 @@ def test_pex_runner(temp_base):
         assert p.run() is None
 
         p.effective_run = failed_run
-        system.DRYRUN = False
+        system.dryrun = False
         assert "Failed run" in p.run()
 
 
 def test_bad_copy(temp_base):
     assert "does not exist, can't copy" in verify_abort(system.copy_file, "foo", "bar")
-    assert "No bin folder in venv" in verify_abort(system.move_venv, temp_base, "bar")
 
 
 def io_write_fail(name, mode, *_):

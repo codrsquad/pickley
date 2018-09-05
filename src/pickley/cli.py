@@ -6,48 +6,12 @@ import logging
 import logging.config
 import os
 import sys
-from logging.handlers import RotatingFileHandler
 
 import click
 
 from pickley import CurrentFolder, PingLock, PingLockException, short, system
 from pickley.package import DELIVERERS, PACKAGERS, VenvPackager
 from pickley.settings import meta_folder, SETTINGS
-
-
-def setup_audit_log():
-    """Log to <base>/audit.log"""
-    if system.DRYRUN or system.AUDIT_HANDLER:
-        return
-    path = SETTINGS.meta.full_path("audit.log")
-    system.ensure_folder(path)
-    system.AUDIT_HANDLER = RotatingFileHandler(path, maxBytes=500 * 1024, backupCount=1)
-    system.AUDIT_HANDLER.setLevel(logging.DEBUG)
-    system.AUDIT_HANDLER.setFormatter(logging.Formatter("%(asctime)s [%(process)s] %(levelname)s - %(message)s"))
-    logging.root.addHandler(system.AUDIT_HANDLER)
-    system.info(":: %s", system.represented_args(sys.argv), output=False)
-
-
-def setup_debug_log():
-    """Log to stderr"""
-    if system.DEBUG_HANDLER:
-        return
-    system.OUTPUT = False
-    system.DEBUG_HANDLER = logging.StreamHandler()
-    system.DEBUG_HANDLER.setLevel(logging.DEBUG)
-    system.DEBUG_HANDLER.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
-    logging.root.addHandler(system.DEBUG_HANDLER)
-    logging.root.setLevel(logging.DEBUG)
-
-
-def relaunch():
-    """
-    Rerun with same args, to pick up freshly bootstrapped installation
-    """
-    system.OUTPUT = False
-    system.run_program(*sys.argv, stdout=sys.stdout, stderr=sys.stderr)
-    if not system.DRYRUN:
-        sys.exit(0)
 
 
 def bootstrap(testing=False):
@@ -58,7 +22,7 @@ def bootstrap(testing=False):
     however there are some edge cases where running pip from a pex-packaged CLI doesn't work very well
     So, first thing we do is re-package ourselves as a venv on the target machine
     """
-    if not testing and (system.QUIET or getattr(sys, "real_prefix", None)):
+    if not testing and (system.quiet or getattr(sys, "real_prefix", None)):
         # Don't bootstrap in quiet mode, or if we're running from a venv already
         return
 
@@ -71,7 +35,7 @@ def bootstrap(testing=False):
     try:
         # Re-install ourselves with correct packager
         p.internal_install(bootstrap=True)
-        relaunch()
+        system.relaunch()
 
     except PingLockException:
         return
@@ -94,8 +58,8 @@ def main(debug, quiet, dryrun, base, python, delivery, packager):
         debug = True
     if debug:
         quiet = False
-    system.DRYRUN = bool(dryrun)
-    system.QUIET = bool(quiet)
+    system.dryrun = bool(dryrun)
+    system.quiet = bool(quiet)
 
     if base:
         base = system.resolved_path(base)
@@ -104,7 +68,7 @@ def main(debug, quiet, dryrun, base, python, delivery, packager):
         SETTINGS.set_base(base)
 
     SETTINGS.set_cli_config(python=python, delivery=delivery, packager=packager)
-    SETTINGS.add(system.config_paths(system.TESTING))
+    SETTINGS.load_config()
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None
@@ -114,7 +78,7 @@ def main(debug, quiet, dryrun, base, python, delivery, packager):
 
     if debug:
         # Log to console with --debug or --dryrun
-        setup_debug_log()
+        system.setup_debug_log()
 
 
 @main.command()
@@ -124,7 +88,6 @@ def check(verbose, packages):
     """
     Check whether specified packages need an upgrade
     """
-    setup_audit_log()
     code = 0
     packages = SETTINGS.resolved_packages(packages) or SETTINGS.current_names()
     if not packages:
@@ -156,7 +119,6 @@ def list(verbose):
     """
     List installed packages
     """
-    setup_audit_log()
     packages = SETTINGS.current_names()
     if not packages:
         system.info("No packages installed")
@@ -175,7 +137,7 @@ def install(force, packages):
     """
     Install a package from pypi
     """
-    setup_audit_log()
+    system.setup_audit_log(SETTINGS.meta)
     bootstrap()
 
     packages = SETTINGS.resolved_packages(packages)
@@ -197,7 +159,7 @@ def package(dist, build, folder):
     folder = system.resolved_path(folder)
 
     SETTINGS.meta = meta_folder(build)
-    setup_audit_log()
+    system.setup_audit_log(SETTINGS.meta)
     bootstrap()
 
     if not os.path.isdir(folder):
@@ -227,9 +189,8 @@ def settings(diagnostics):
     """
     Show settings
     """
-    setup_audit_log()
     if diagnostics:
-        system.info("python interpreter: %s", short(system.PYTHON))
+        system.info("python interpreter: %s", short(system.python))
         system.info("sys.executable    : %s", short(sys.executable))
         system.info("sys.prefix        : %s", short(getattr(sys, "prefix", None)))
         system.info("sys.real_prefix   : %s", short(getattr(sys, "real_prefix", None)))
@@ -257,7 +218,6 @@ def auto_upgrade(package):
         sys.exit(0)
     ping.touch()
 
-    setup_audit_log()
     try:
         p.internal_install()
 

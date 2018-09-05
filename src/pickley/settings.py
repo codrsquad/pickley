@@ -56,9 +56,10 @@ import os
 
 import six
 
-from pickley import short, system
+from pickley import FolderBase, short, system
 
 
+DOT_PICKLEY = ".pickley"
 DEFAULT_INSTALL_TIMEOUT = 1800
 DEFAULT_VERSION_CHECK_DELAY = 600
 
@@ -77,7 +78,7 @@ def meta_folder(path):
     :param str path: Path to folder to use
     :return FolderBase: Associated object
     """
-    return FolderBase(os.path.join(path, system.DOT_PICKLEY), name="meta")
+    return FolderBase(os.path.join(path, DOT_PICKLEY), name="meta")
 
 
 def add_representation(result, data, indent=""):
@@ -206,7 +207,7 @@ class JsonSerializable:
         try:
             path = system.resolved_path(path)
             system.ensure_folder(path)
-            if system.DRYRUN:
+            if system.dryrun:
                 system.debug("Would save %s", short(path))
             else:
                 with open(path, "wt") as fh:
@@ -236,37 +237,6 @@ class JsonSerializable:
         except Exception as e:
             system.warning("Invalid json file %s: %s" % (short(path), e))
             return default
-
-
-class FolderBase(object):
-    """
-    This class allows to more easily deal with folders
-    """
-
-    def __init__(self, path, name=None):
-        """
-        :param str path: Path to folder
-        :param str|None name: Name of this folder (defaults to basename of 'path')
-        """
-        self.path = system.resolved_path(path)
-        self.name = name or os.path.basename(path)
-
-    def relative_path(self, path):
-        """
-        :param str path: Path to relativize
-        :return str: 'path' relative to self.path
-        """
-        return os.path.relpath(path, self.path)
-
-    def full_path(self, *relative):
-        """
-        :param list(str) *relative: Relative components
-        :return str: Full path based on self.path
-        """
-        return os.path.join(self.path, *relative)
-
-    def __repr__(self):
-        return "%s: %s" % (self.name, short(self.path))
 
 
 class Definition(object):
@@ -434,10 +404,9 @@ class Settings:
     Collection of settings files
     """
 
-    def __init__(self, base=None, config=None):
+    def __init__(self, base=None):
         """
         :param str|None base: Base folder to use
-        :param list|None config: Optional configuration files to load
         """
         self.set_base(base)
         self.cli = SettingsFile(self, name="cli")
@@ -445,18 +414,17 @@ class Settings:
         self.defaults = SettingsFile(self, name="defaults")
         self.defaults.set_contents(
             default=dict(
-                channel=system.DEFAULT_CHANNEL,
-                delivery=system.DEFAULT_DELIVERY,
+                channel=system.default_channel,
+                delivery=system.default_delivery,
                 install_timeout=DEFAULT_INSTALL_TIMEOUT,
-                packager=system.DEFAULT_PACKAGER,
-                python=system.PYTHON,
+                packager=system.default_packager,
+                python=system.python,
                 version_check_delay=DEFAULT_VERSION_CHECK_DELAY,
             ),
         )
-        self.config = config
+        self.config = None
         self.paths = []
         self.children = []
-        self.add(config)
 
     def __repr__(self):
         return "[%s] %s" % (len(self.children), self.base)
@@ -468,10 +436,10 @@ class Settings:
         if not base:
             base = os.environ.get("PICKLEY_ROOT")
         if not base:
-            base = system.parent_folder(system.PROGRAM)
-            if system.DOT_PICKLEY in base:
+            base = system.parent_folder(system.pickley_program_path)
+            if DOT_PICKLEY in base:
                 # Don't consider bootstrapped .pickley/... as installation base
-                i = base.index(system.DOT_PICKLEY)
+                i = base.index(DOT_PICKLEY)
                 base = base[:i].rstrip("/")
             elif ".venv" in base:
                 # Convenience for development
@@ -502,22 +470,34 @@ class Settings:
         """
         return system.to_int(self.get_value("install_timeout"), default=DEFAULT_INSTALL_TIMEOUT)
 
+    def load_config(self, testing=None):
+        """
+        :param bool|None testing: If True load test config, otherwise regular config (defaults to system.testing)
+        """
+        self.paths = []
+        self.children = []
+        if testing is None:
+            testing = system.testing
+        if testing:
+            self.config = [".pickley.json"]
+        else:
+            self.config = ["~/.config/pickley.json", ".pickley.json"]
+        self.add(self.config)
+
     def add(self, paths, base=None):
         """
         :param list(str) paths: Paths to files to consider as settings
-        :param str base: Base path to use to resolve relative paths
+        :param str|None base: Base path to use to resolve relative paths (default: current working dir)
         """
-        if not paths:
-            return
-        for path in paths:
-            path = system.resolved_path(path, base=base or self.base.path)
-            if path in self.paths:
-                return
-            settings_file = SettingsFile(self, path)
-            self.paths.append(path)
-            self.children.append(settings_file)
-            if settings_file.include:
-                self.add(settings_file.include, base=settings_file.folder)
+        if paths:
+            for path in paths:
+                path = system.resolved_path(path, base=base or self.base.path)
+                if path not in self.paths:
+                    settings_file = SettingsFile(self, path)
+                    self.paths.append(path)
+                    self.children.append(settings_file)
+                    if settings_file.include:
+                        self.add(settings_file.include, base=settings_file.folder)
 
     def resolved_definition(self, key, package_name=None):
         """

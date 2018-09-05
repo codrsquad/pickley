@@ -84,7 +84,7 @@ class DeliveryMethod:
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
         system.delete_file(target)
-        if system.DRYRUN:
+        if system.dryrun:
             system.debug("Would %s %s (source: %s)", self.implementation_name, short(target), short(source))
             return
 
@@ -321,7 +321,7 @@ class Packager(object):
         self.name = name
         self._entry_points = None
         self.current = VersionMeta(self.name, "current")
-        self.latest = VersionMeta(self.name, system.DEFAULT_CHANNEL)
+        self.latest = VersionMeta(self.name, system.default_channel)
         self.desired = VersionMeta(self.name)
         self.dist_folder = SETTINGS.meta.full_path(self.name, ".work")
         self.build_folder = os.path.join(self.dist_folder, "build")
@@ -356,7 +356,7 @@ class Packager(object):
         if self._entry_points is None:
             self._entry_points = JsonSerializable.get_json(self.entry_points_path)
             if self._entry_points is None:
-                self._entry_points = [self.name] if system.DRYRUN else []
+                self._entry_points = [self.name] if system.dryrun else []
         return self._entry_points
 
     def refresh_entry_points(self, folder, version):
@@ -364,7 +364,7 @@ class Packager(object):
         :param str folder: Folder where to look for entry points
         :param str version: Version of package
         """
-        if system.DRYRUN:
+        if system.dryrun:
             return
         self._entry_points = self.get_entry_points(folder, version)
         if not self._entry_points:
@@ -409,7 +409,7 @@ class Packager(object):
             return
 
         version = latest_pypi_version(SETTINGS.index, self.name)
-        self.latest.set_version(version, SETTINGS.index or "pypi", channel=system.DEFAULT_CHANNEL)
+        self.latest.set_version(version, SETTINGS.index or "pypi", channel=system.default_channel)
         if version:
             self.latest.save()
 
@@ -425,7 +425,7 @@ class Packager(object):
             self.desired.set(self)
             return
 
-        if channel.value == system.DEFAULT_CHANNEL:
+        if channel.value == system.default_channel:
             self.refresh_latest()
             self.desired.set(self, self.latest)
             return
@@ -502,6 +502,7 @@ class Packager(object):
                     system.info(self.desired.representation(verbose=True, note="is already installed"))
                 return
 
+            system.setup_audit_log(SETTINGS.meta)
             if bootstrap:
                 system.debug("Bootstrapping %s with %s", system.PICKLEY, self.implementation_name)
 
@@ -525,7 +526,7 @@ class Packager(object):
             self.current.set(self, self.desired)
             self.current.save()
 
-            msg = "Would %s" % intent if system.DRYRUN else "%sed" % (intent.title())
+            msg = "Would %s" % intent if system.dryrun else "%sed" % (intent.title())
             system.info("%s %s", msg, self.desired.representation(verbose=True))
 
     def effective_install(self, version):
@@ -624,10 +625,10 @@ class VenvPackager(Packager):
 
         working_folder = os.path.join(self.dist_folder, template.format(name=self.name, version=version))
         python = SETTINGS.resolved_value("python", package_name=self.name)
-        if python == system.PYTHON:
+        if python == system.python:
             python = None
         pip = os.path.join(working_folder, "bin", "pip")
-        system.run_program(system.PYTHON, venv, "-p", python, working_folder)
+        system.run_program(system.python, venv, "-p", python, working_folder)
         system.run_program(pip, "install", "-i", SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))
 
         return [working_folder]
@@ -641,7 +642,7 @@ class VenvPackager(Packager):
         packaged = self.package(version=version)
         for path in packaged:
             target = SETTINGS.meta.full_path(self.name, os.path.basename(path))
-            system.move_venv(path, target)
+            system.move_file(path, target)
             result.append(target)
             self.perform_delivery(version, os.path.join(target, "bin", "{name}"))
         return result

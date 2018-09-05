@@ -5,7 +5,6 @@ from tempfile import mkdtemp
 import pytest
 
 from pickley import CaptureOutput, system
-from pickley.cli import setup_debug_log
 from pickley.settings import SETTINGS
 
 
@@ -28,7 +27,7 @@ def verify_abort(func, *args, **kwargs):
 
 @pytest.fixture
 def temp_base():
-    setup_debug_log()
+    system.setup_debug_log()
     old_base = SETTINGS.base
     old_cwd = os.getcwd()
 

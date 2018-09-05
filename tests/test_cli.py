@@ -25,7 +25,7 @@ def run_cli(args, **kwargs):
     result = runner.invoke(main, args=args)
     if "--dryrun" in args:
         # Restore default non-dryrun state after a --dryrun test
-        system.DRYRUN = False
+        system.dryrun = False
     return result
 
 
@@ -72,7 +72,7 @@ def test_version():
 
 
 def test_settings():
-    expect_success("settings -d", "settings:", "python interpreter: %s" % short(system.PYTHON), "base: %s" % short(SETTINGS.base.path))
+    expect_success("settings -d", "settings:", "python interpreter: %s" % short(system.python), "base: %s" % short(SETTINGS.base.path))
 
 
 def run_program(program, *args):
