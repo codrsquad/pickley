@@ -356,7 +356,7 @@ class Packager(object):
         if self._entry_points is None:
             self._entry_points = JsonSerializable.get_json(self.entry_points_path)
             if self._entry_points is None:
-                self._entry_points = [self.name] if system.dryrun else []
+                return [self.name] if system.dryrun else []
         return self._entry_points
 
     def refresh_entry_points(self, folder, version):
@@ -367,8 +367,6 @@ class Packager(object):
         if system.dryrun:
             return
         self._entry_points = self.get_entry_points(folder, version)
-        if not self._entry_points:
-            system.abort("'%s' is not a CLI, it has no console_scripts entry points", self.name)
         JsonSerializable.save_json(self._entry_points, self.entry_points_path)
 
     def get_entry_points(self, folder, version):
@@ -506,7 +504,7 @@ class Packager(object):
             if bootstrap:
                 system.debug("Bootstrapping %s with %s", system.PICKLEY, self.implementation_name)
 
-            prev_entry_points = self.entry_points or []
+            prev_entry_points = self.entry_points
             installed = self.effective_install(self.desired.version)
 
             target = SETTINGS.meta.full_path(self.name)
@@ -535,13 +533,22 @@ class Packager(object):
         :return list: Full path to installed files/folders
         """
 
+    def required_entry_points(self):
+        """
+        :return list: Entry points, abort execution if there aren't any
+        """
+        ep = self.entry_points
+        if not ep:
+            system.abort("'%s' is not a CLI, it has no console_scripts entry points", self.name)
+        return ep
+
     def perform_delivery(self, version, template):
         """
         :param str version: Version being delivered
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
         deliverer = DELIVERERS.resolved(self.name)
-        for name in self.entry_points:
+        for name in self.required_entry_points():
             target = SETTINGS.base.full_path(name)
             if self.name != system.PICKLEY and not self.current.file_exists:
                 uninstall_existing(target)
@@ -574,7 +581,7 @@ class PexPackager(Packager):
         :return list: List of produced packages (files), if successful
         """
         result = []
-        for name in self.entry_points:
+        for name in self.required_entry_points():
             dest = template.format(name=name, version=version)
             dest = os.path.join(self.dist_folder, dest)
 

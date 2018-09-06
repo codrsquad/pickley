@@ -20,7 +20,7 @@ HOME = os.path.expanduser("~")
 
 try:
     __version__ = get_distribution(__name__).version
-except Exception:
+except Exception:  # pragma: no cover
     __version__ = '0.0.0'
 
 

@@ -119,7 +119,7 @@ def test_versions(_, __, temp_base):
 
     # Package project without entry points
     p.get_entry_points = lambda *_: None
-    assert "is not a CLI" in verify_abort(p.refresh_entry_points, temp_base, "1.0")
+    assert "is not a CLI" in verify_abort(p.required_entry_points)
 
     # Simulate presence of entry points
     p.get_entry_points = lambda *_: ["foo"]
