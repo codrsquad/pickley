@@ -131,12 +131,13 @@ class system:
     default_delivery = "symlink"
     default_packager = "venv"
 
+    _logging_initialized = False
     _audit_handler = None
     _debug_handler = None
 
     @classmethod
     def debug(cls, message, *args, **kwargs):
-        if not cls.quiet:
+        if not cls.quiet and cls._logging_initialized:
             LOG.debug(message, *args, **kwargs)
         if cls.testing:
             print(str(message) % args)
@@ -144,19 +145,22 @@ class system:
     @classmethod
     def info(cls, message, *args, **kwargs):
         output = kwargs.pop("output", cls.output)
-        LOG.info(message, *args, **kwargs)
+        if cls._logging_initialized:
+            LOG.info(message, *args, **kwargs)
         if (not cls.quiet and output) or cls.testing:
             print(str(message) % args)
 
     @classmethod
     def warning(cls, message, *args, **kwargs):
-        LOG.warning(message, *args, **kwargs)
+        if cls._logging_initialized:
+            LOG.warning(message, *args, **kwargs)
         if cls.output or cls.testing:
             print("WARNING: %s" % (str(message) % args))
 
     @classmethod
     def error(cls, message, *args, **kwargs):
-        LOG.error(message, *args, **kwargs)
+        if cls._logging_initialized:
+            LOG.error(message, *args, **kwargs)
         if cls.output or cls.testing:
             print("ERROR: %s" % (str(message) % args))
 
@@ -188,6 +192,7 @@ class system:
         cls._audit_handler.setLevel(logging.DEBUG)
         cls._audit_handler.setFormatter(logging.Formatter("%(asctime)s [%(process)s] %(levelname)s - %(message)s"))
         logging.root.addHandler(cls._audit_handler)
+        cls._logging_initialized = True
         cls.info(":: %s", cls.represented_args(sys.argv), output=False)
 
     @classmethod
@@ -202,6 +207,7 @@ class system:
         cls._debug_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
         logging.root.addHandler(cls._debug_handler)
         logging.root.setLevel(logging.DEBUG)
+        cls._logging_initialized = True
 
     @classmethod
     def touch(cls, path):
@@ -571,18 +577,29 @@ class ImplementationMap:
         """
         return sorted(self.map.keys())
 
+    def resolved_name(self, package_name):
+        """
+        :param str package_name: Name of pypi package
+        :return str: Corresponding implementation name to use
+        """
+        definition = self.settings.resolved_definition(self.key, package_name=package_name)
+        if not definition or not definition.value:
+            return None
+
+        return definition.value
+
     def resolved(self, package_name):
         """
         :param str package_name: Name of pypi package
         :return: Corresponding implementation to use
         """
-        definition = self.settings.resolved_definition(self.key, package_name=package_name)
-        if not definition or not definition.value:
+        name = self.resolved_name(package_name)
+        if not name:
             system.abort("No %s type configured for %s", self.key, package_name)
 
-        implementation = self.get(definition.value)
+        implementation = self.get(name)
         if not implementation:
-            system.abort("Unknown %s type '%s'", self.key, definition.value)
+            system.abort("Unknown %s type '%s'", self.key, name)
 
         return implementation(package_name)
 

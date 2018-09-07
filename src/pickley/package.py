@@ -5,15 +5,16 @@ import zipfile
 
 import virtualenv
 
-from pickley import ImplementationMap, PingLock, PingLockException, short, system
+import pickley
+from pickley import short, system
 from pickley.install import PexRunner, PipRunner
 from pickley.pypi import latest_pypi_version, read_entry_points
 from pickley.settings import JsonSerializable, SETTINGS
 from pickley.uninstall import uninstall_existing
 
 
-PACKAGERS = ImplementationMap(SETTINGS, "packager")
-DELIVERERS = ImplementationMap(SETTINGS, "delivery")
+PACKAGERS = pickley.ImplementationMap(SETTINGS, "packager")
+DELIVERERS = pickley.ImplementationMap(SETTINGS, "delivery")
 
 GENERIC_WRAPPER = """
 #!/bin/bash
@@ -128,7 +129,7 @@ class DeliveryWrap(DeliveryMethod):
 
     def _install(self, target, source):
         # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-        ping = PingLock(SETTINGS.meta.full_path(self.package_name), seconds=SETTINGS.version_check_delay)
+        ping = pickley.PingLock(SETTINGS.meta.full_path(self.package_name), seconds=SETTINGS.version_check_delay)
         ping.touch()
 
         if self.package_name == system.PICKLEY:
@@ -166,6 +167,7 @@ class VersionMeta(JsonSerializable):
     channel = ""                    # type: str # Channel (stable, latest, ...) via which this version was determined
     packager = ""                   # type: str # Packager used
     delivery = ""                   # type: str # Delivery method used
+    pickley = ""                    # type: str # Pickley version used to perform install
     python = ""                     # type: str # Python interpreter used
     source = ""                     # type: str # Description of where definition came from
     timestamp = None                # type: float # Epoch when version was determined (useful to cache "expensive" calls to pypi)
@@ -179,6 +181,10 @@ class VersionMeta(JsonSerializable):
         self._name = name
         if suffix:
             self._path = SETTINGS.meta.full_path(self.name, ".%s.json" % suffix)
+        self.packager = PACKAGERS.resolved_name(name)
+        self.delivery = DELIVERERS.resolved_name(name)
+        self.pickley = pickley.__version__
+        self.python = SETTINGS.resolved_value("python", name)
 
     def __repr__(self):
         return self.representation()
@@ -197,7 +203,7 @@ class VersionMeta(JsonSerializable):
         notice = ""
         if verbose:
             notice = []
-            if self.packager or self.delivery:
+            if not self._problem and self.version and (self.packager or self.delivery):
                 info = "as"
                 if self.packager:
                     info = "%s %s" % (info, self.packager)
@@ -206,7 +212,7 @@ class VersionMeta(JsonSerializable):
                 notice.append(info)
             if self.channel:
                 notice.append("channel: %s" % self.channel)
-            if self.source and self.source != SETTINGS.index:
+            if notice and self.source and self.source != SETTINGS.index:
                 notice.append("source: %s" % self.source)
             if notice:
                 notice = " (%s)" % ", ".join(notice)
@@ -284,10 +290,6 @@ class VersionMeta(JsonSerializable):
                 self.version = other.version
             elif isinstance(other, Packager):
                 self.packager = other.implementation_name
-                delivery = DELIVERERS.resolved(other.name)
-                if isinstance(delivery, DeliveryMethod):
-                    self.delivery = delivery.implementation_name
-                self.python = SETTINGS.resolved_value("python", other.name)
 
     def invalidate(self, problem):
         """
@@ -479,7 +481,7 @@ class Packager(object):
         try:
             self.internal_install(force=force)
 
-        except PingLockException as e:
+        except pickley.PingLockException as e:
             system.error("%s is currently being installed by another process" % self.name)
             system.abort("If that is incorrect, please delete %s", short(e.ping_path))
 
@@ -488,7 +490,7 @@ class Packager(object):
         :param bool force: If True, re-install even if package is already installed
         :param bool bootstrap: Bootstrap mode
         """
-        with PingLock(self.dist_folder, seconds=SETTINGS.install_timeout):
+        with pickley.PingLock(self.dist_folder, seconds=SETTINGS.install_timeout):
             intent = "bootstrap" if bootstrap else "install"
             self.refresh_desired()
             if not self.desired.valid:

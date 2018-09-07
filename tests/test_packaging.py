@@ -79,7 +79,7 @@ def test_version_meta():
 def test_versions(_, __, temp_base):
     p = PexPackager("foo")
     p.refresh_desired()
-    assert p.desired.representation(verbose=True) == "foo: can't determine latest version (as pex, channel: latest, source: pypi)"
+    assert p.desired.representation(verbose=True) == "foo: can't determine latest version (channel: latest, source: pypi)"
 
     SETTINGS.cli.contents["channel"] = "stable"
     p.refresh_desired()
