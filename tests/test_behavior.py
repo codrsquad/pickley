@@ -100,8 +100,7 @@ def test_real_run():
     assert len(s.config) == 2
 
 
-def test_implementation_map():
-    # Check that an implementation without a class_implementation_name() function works
+def test_missing_implementation():
     s = Settings()
     m = ImplementationMap(s, "custom")
     m.register(ImplementationMap)

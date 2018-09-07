@@ -10,7 +10,7 @@ import sys
 import click
 
 from pickley import CurrentFolder, PingLock, PingLockException, short, system
-from pickley.package import DELIVERERS, PACKAGERS, VenvPackager
+from pickley.package import DELIVERERS, PACKAGERS
 from pickley.settings import meta_folder, SETTINGS
 
 
@@ -26,9 +26,9 @@ def bootstrap(testing=False):
         # Don't bootstrap in quiet mode, or if we're running from a venv already
         return
 
-    p = VenvPackager(system.PICKLEY)
+    p = PACKAGERS.get(system.venv_packager)(system.PICKLEY)
     p.refresh_current()
-    if p.current.packager == p.implementation_name:
+    if p.current.packager == p.registered_name:
         # We're already packaged correctly, no need to bootstrap
         return
 

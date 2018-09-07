@@ -5,7 +5,7 @@ from mock import patch
 
 from pickley import PingLockException, short, system
 from pickley.cli import main
-from pickley.package import VenvPackager
+from pickley.package import PACKAGERS
 from pickley.settings import SETTINGS
 
 from .conftest import PROJECT
@@ -138,7 +138,7 @@ def test_install(temp_base):
     expect_success("check", "tox", "is installed", base=temp_base)
     expect_success("check --verbose", "tox", "is installed (as venv wrap, channel: ", base=temp_base)
 
-    p = VenvPackager("tox")
+    p = PACKAGERS.get(system.venv_packager)("tox")
     p.refresh_latest()
     p.latest.version = "10000.0"
     p.latest.save()

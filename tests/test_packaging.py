@@ -5,7 +5,7 @@ from mock import patch
 
 from pickley import CaptureOutput, system
 from pickley.install import PexRunner
-from pickley.package import DeliveryCopy, DeliveryMethod, DeliverySymlink, DeliveryWrap, PexPackager, VenvPackager, VersionMeta
+from pickley.package import DELIVERERS, PACKAGERS, VersionMeta
 from pickley.settings import Definition, SETTINGS
 
 from .conftest import INEXISTING_FILE, verify_abort
@@ -13,7 +13,7 @@ from .conftest import INEXISTING_FILE, verify_abort
 
 def test_delivery(temp_base):
     # Test copy folder
-    deliver = DeliveryCopy("tox")
+    deliver = DELIVERERS.get("copy")("tox")
     target = os.path.join(temp_base, "t1")
     source = os.path.join(temp_base, "t1-source")
     source_file = os.path.join(source, "foo")
@@ -23,19 +23,28 @@ def test_delivery(temp_base):
     assert os.path.isfile(os.path.join(target, "foo"))
 
     # Test copy file
-    deliver = DeliveryCopy("tox")
+    deliver = DELIVERERS.get("copy")("tox")
     target = os.path.join(temp_base, "t2")
     source = os.path.join(temp_base, "t2-source")
     system.touch(source)
     deliver.install(target, source)
     assert os.path.isfile(target)
 
-    p = VenvPackager("tox")
+    # Test symlink
+    deliver = DELIVERERS.get("symlink")("tox")
+    target = os.path.join(temp_base, "l2")
+    source = os.path.join(temp_base, "l2-source")
+    system.touch(source)
+    deliver.install(target, source)
+    assert os.path.islink(target)
+
+    # Test wrapper
+    p = PACKAGERS.get(system.venv_packager)("tox")
     assert str(p) == "venv tox"
     target = os.path.join(temp_base, "tox")
     source = os.path.join(temp_base, "tox-source")
     system.touch(source)
-    deliver = DeliveryWrap("tox")
+    deliver = DELIVERERS.get("wrap")("tox")
     deliver.install(target, source)
     assert system.is_executable(target)
 
@@ -45,10 +54,8 @@ def test_delivery(temp_base):
 
 
 def test_bogus_delivery():
-    deliver = DeliveryMethod("foo")
+    deliver = DELIVERERS.get(system.default_delivery)("foo")
     assert "does not exist" in verify_abort(deliver.install, None, INEXISTING_FILE)
-
-    deliver = DeliverySymlink("foo")
     assert "Failed symlink" in verify_abort(deliver.install, None, __file__)
 
 
@@ -77,7 +84,7 @@ def test_version_meta():
 @patch("pickley.package.latest_pypi_version", return_value=None)
 @patch("pickley.package.DELIVERERS.resolved", return_value=None)
 def test_versions(_, __, temp_base):
-    p = PexPackager("foo")
+    p = PACKAGERS.get("pex")("foo")
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo: can't determine latest version (channel: latest, source: pypi)"
 
@@ -138,7 +145,7 @@ def test_versions(_, __, temp_base):
 
 @patch("pickley.package.VenvPackager.virtualenv_path", return_value=None)
 def test_configured_version(_):
-    p = VenvPackager("foo")
+    p = PACKAGERS.get(system.venv_packager)("foo")
     assert "Can't determine path to virtualenv.py" in verify_abort(p.effective_package, None)
 
 
@@ -150,13 +157,13 @@ def get_definition(key, package_name=None):
     if key == "delivery":
         return Definition("wrap", "test", key)
     if key == "packager":
-        return Definition("venv", "test", key)
+        return Definition(system.venv_packager, "test", key)
     return None
 
 
 @patch("pickley.settings.SettingsFile.get_definition", side_effect=get_definition)
 def test_channel(_):
-    p = VenvPackager("foo")
+    p = PACKAGERS.get(system.venv_packager)("foo")
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo 1.0 (as venv wrap, channel: stable, source: test:channel.stable.foo)"
 

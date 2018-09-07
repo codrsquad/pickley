@@ -62,22 +62,10 @@ class DeliveryMethod:
     Various implementation of delivering the actual executables
     """
 
+    registered_name = None  # type: str # Injected by ImplementationMap
+
     def __init__(self, package_name):
         self.package_name = package_name
-
-    @classmethod
-    def class_implementation_name(cls):
-        """
-        :return str: Identifier for this delivery type
-        """
-        return cls.__name__.replace("Delivery", "").lower()
-
-    @property
-    def implementation_name(self):
-        """
-        :return str: Identifier for this delivery type
-        """
-        return self.__class__.class_implementation_name()
 
     def install(self, target, source):
         """
@@ -86,18 +74,18 @@ class DeliveryMethod:
         """
         system.delete_file(target)
         if system.dryrun:
-            system.debug("Would %s %s (source: %s)", self.implementation_name, short(target), short(source))
+            system.debug("Would %s %s (source: %s)", self.registered_name, short(target), short(source))
             return
 
         if not os.path.exists(source):
-            system.abort("Can't %s, source %s does not exist", self.implementation_name, short(source))
+            system.abort("Can't %s, source %s does not exist", self.registered_name, short(source))
 
         try:
-            system.debug("Delivery: %s %s -> %s", self.implementation_name, short(target), short(source))
+            system.debug("Delivery: %s %s -> %s", self.registered_name, short(target), short(source))
             self._install(target, source)
 
         except Exception as e:
-            system.abort("Failed %s %s: %s", self.implementation_name, short(target), e)
+            system.abort("Failed %s %s: %s", self.registered_name, short(target), e)
 
     def _install(self, target, source):
         """
@@ -107,7 +95,7 @@ class DeliveryMethod:
 
 
 @DELIVERERS.register
-class DeliverySymlink(DeliveryMethod):
+class DeliveryMethodSymlink(DeliveryMethod):
     """
     Deliver via symlink
     """
@@ -122,7 +110,7 @@ class DeliverySymlink(DeliveryMethod):
 
 
 @DELIVERERS.register
-class DeliveryWrap(DeliveryMethod):
+class DeliveryMethodWrap(DeliveryMethod):
     """
     Deliver via a small wrap that ensures target executable is up-to-date
     """
@@ -148,7 +136,7 @@ class DeliveryWrap(DeliveryMethod):
 
 
 @DELIVERERS.register
-class DeliveryCopy(DeliveryMethod):
+class DeliveryMethodCopy(DeliveryMethod):
     """
     Deliver by copy
     """
@@ -179,7 +167,7 @@ class VersionMeta(JsonSerializable):
 
     # Additional info
     pickley = ""                    # type: str # Pickley version used to perform install
-    timestamp = None                # type: float # Epoch when version was determined (useful to cache "expensive" calls to pypi)
+    timestamp = None                # type: int # Epoch when version was determined (useful to cache "expensive" calls to pypi)
 
     def __init__(self, name, suffix=None):
         """
@@ -201,7 +189,7 @@ class VersionMeta(JsonSerializable):
             self.delivery = DELIVERERS.resolved_name(self._name)
             self.python = SETTINGS.resolved_value("python", self._name)
         self.pickley = pickley.__version__
-        self.timestamp = time.time()
+        self.timestamp = int(time.time())
 
     def representation(self, verbose=False, note=None):
         """
@@ -235,13 +223,6 @@ class VersionMeta(JsonSerializable):
         if note:
             notice = " %s%s" % (note, notice)
         return "%s%s" % (lead, notice)
-
-    @property
-    def name(self):
-        """
-        :return str: Associated pypi package name
-        """
-        return self._name
 
     @property
     def problem(self):
@@ -314,7 +295,7 @@ class VersionMeta(JsonSerializable):
         if not self.valid or not self.timestamp:
             return self.valid
         try:
-            return (time.time() - self.timestamp) < SETTINGS.version_check_delay
+            return (int(time.time()) - self.timestamp) < SETTINGS.version_check_delay
         except Exception:
             return False
 
@@ -323,6 +304,8 @@ class Packager(object):
     """
     Interface of a packager
     """
+
+    registered_name = None  # type: str # Injected by ImplementationMap
 
     def __init__(self, name):
         """
@@ -338,21 +321,7 @@ class Packager(object):
         self.source_folder = None
 
     def __repr__(self):
-        return "%s %s" % (self.implementation_name, self.name)
-
-    @classmethod
-    def class_implementation_name(cls):
-        """
-        :return str: Identifier for this packager type
-        """
-        return cls.__name__.replace("Packager", "").lower()
-
-    @property
-    def implementation_name(self):
-        """
-        :return str: Identifier for this packager type
-        """
-        return self.__class__.class_implementation_name()
+        return "%s %s" % (self.registered_name, self.name)
 
     @property
     def entry_points_path(self):
@@ -511,7 +480,7 @@ class Packager(object):
 
             system.setup_audit_log(SETTINGS.meta)
             if bootstrap:
-                system.debug("Bootstrapping %s with %s", system.PICKLEY, self.implementation_name)
+                system.debug("Bootstrapping %s with %s", system.PICKLEY, self.registered_name)
 
             prev_entry_points = self.entry_points
             installed = self.effective_install(self.desired.version)

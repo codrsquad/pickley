@@ -128,8 +128,8 @@ class system:
     pickley_program_path = pickley_program_path()
 
     latest_channel = "latest"
+    venv_packager = "venv"
     default_delivery = "symlink"
-    default_packager = "venv"
 
     _logging_initialized = False
     _audit_handler = None
@@ -551,17 +551,20 @@ class ImplementationMap:
         self.settings = settings
         self.map = {}
 
-    def register(self, implementation, name=None):
+    def register(self, implementation):
         """
         :param type implementation: Class to register
-        :param str|None name: Name to register as
         """
-        if not name:
-            if hasattr(implementation, "class_implementation_name"):
-                name = implementation.class_implementation_name()
-            else:
-                name = implementation.__name__
-        self.map[name.lower()] = implementation
+        name = implementation.__name__
+        for parent in implementation.__bases__:
+            parent = parent.__name__
+            if name.startswith(parent):
+                name = name[len(parent):]
+            elif name.endswith(parent):
+                name = name[:-len(parent)]
+        name = name.lower()
+        implementation.registered_name = name
+        self.map[name] = implementation
         return implementation
 
     def get(self, name):

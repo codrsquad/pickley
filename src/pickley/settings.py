@@ -417,7 +417,7 @@ class Settings:
                 channel=system.latest_channel,
                 delivery=system.default_delivery,
                 install_timeout=DEFAULT_INSTALL_TIMEOUT,
-                packager=system.default_packager,
+                packager=system.venv_packager,
                 python=system.python,
                 version_check_delay=DEFAULT_VERSION_CHECK_DELAY,
             ),
