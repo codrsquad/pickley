@@ -3,8 +3,6 @@ import sys
 import time
 import zipfile
 
-import virtualenv
-
 import pickley
 from pickley import short, system
 from pickley.install import PexRunner, PipRunner
@@ -247,7 +245,7 @@ class VersionMeta(JsonSerializable):
 
     def equivalent(self, other):
         """
-        :param VersionMeta other: VersionMeta to compare to
+        :param VersionMeta|None other: VersionMeta to compare to
         :return bool: True if 'self' is equivalent to 'other'
         """
         if other is None:
@@ -445,10 +443,11 @@ class Packager(object):
 
     def effective_package(self, template, version=None):
         """
-        :param str|None version: If provided, append version as suffix to produced pex
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
+        :param str|None version: If provided, append version as suffix to produced pex
         :return list: List of produced packages (files), if successful
         """
+        return []
 
     def install(self, force=False):
         """
@@ -554,8 +553,8 @@ class PexPackager(Packager):
 
     def effective_package(self, template, version=None):
         """
-        :param str|None version: If provided, append version as suffix to produced pex
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
+        :param str|None version: If provided, append version as suffix to produced pex
         :return list: List of produced packages (files), if successful
         """
         result = []
@@ -592,28 +591,16 @@ class VenvPackager(Packager):
     Install via virtualenv (https://pypi.org/project/virtualenv/)
     """
 
-    def virtualenv_path(self):
-        venv = virtualenv.__file__
-        if venv and venv.endswith(".pyc"):
-            venv = venv[:-1]
-        return venv
-
     def effective_package(self, template, version=None):
         """
-        :param str|None version: If provided, append version as suffix to produced pex
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
+        :param str|None version: If provided, append version as suffix to produced pex
         :return list: List of produced packages (files), if successful
         """
-        venv = self.virtualenv_path()
-        if not venv:
-            system.abort("Can't determine path to virtualenv.py")
-
         working_folder = os.path.join(self.dist_folder, template.format(name=self.name, version=version))
-        python = SETTINGS.resolved_value("python", package_name=self.name)
-        if python == system.python:
-            python = None
+        system.create_venv(working_folder, python=SETTINGS.resolved_value("python", package_name=self.name))
+
         pip = os.path.join(working_folder, "bin", "pip")
-        system.run_program(system.python, venv, "-p", python, working_folder)
         system.run_program(pip, "install", "-i", SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))
 
         return [working_folder]

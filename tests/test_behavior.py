@@ -53,16 +53,16 @@ def test_file_operations(temp_base):
 
 
 def test_edge_cases():
-    assert system.resolved_path(None) is None
+    assert not system.resolved_path("")
 
-    assert system.write_contents(None, None) is None
+    assert system.write_contents("", "") is None
 
-    assert system.which(None) is None
+    assert system.which("") is None
     assert system.which(INEXISTING_FILE) is None
     assert system.which("foo/bar/baz/not/a/program") is None
     assert system.which("bash")
 
-    system.ensure_folder(None)
+    system.ensure_folder("")
 
     assert "does not exist" in verify_abort(system.move_file, INEXISTING_FILE, "bar")
 

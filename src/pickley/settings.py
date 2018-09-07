@@ -247,7 +247,7 @@ class Definition(object):
     def __init__(self, value, source, key):
         """
         :param value: Actual value
-        :param SettingsFile source: Where value was defined
+        :param source: Where value was defined
         :param str key: Under what key it was defined
         """
         self.value = value
@@ -560,7 +560,7 @@ class Settings:
 
     def resolved_packages(self, names):
         """
-        :param list|tuple names: Names to resolve
+        :param list|tuple|str names: Names to resolve
         :return set: Resolved names
         """
         result = []

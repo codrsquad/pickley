@@ -33,7 +33,7 @@ def decode(value):
 
 def short(path, base=None):
     """
-    :param str path: Path to represent in its short form
+    :param path: Path to represent in its short form
     :param str|None base: Base folder to relativise paths to
     :return str: Short form, using '~' if applicable
     """
@@ -134,6 +134,7 @@ class system:
     _logging_initialized = False
     _audit_handler = None
     _debug_handler = None
+    _virtualenv_path = None
 
     @classmethod
     def debug(cls, message, *args, **kwargs):
@@ -435,6 +436,26 @@ class system:
         cls.debug("Writing %s bytes to %s", len(contents), short(path))
         with open(path, "wt") as fh:
             fh.write(contents)
+
+    @classmethod
+    def virtualenv_path(cls):
+        if cls._virtualenv_path is None:
+            import virtualenv
+            cls._virtualenv_path = virtualenv.__file__
+            if cls._virtualenv_path and cls._virtualenv_path.endswith(".pyc"):
+                cls._virtualenv_path = cls._virtualenv_path[:-1]
+        return cls._virtualenv_path
+
+    @classmethod
+    def create_venv(cls, folder, python=None):
+        """
+        :param str folder: Create a venv in 'folder'
+        :param str|None python: Python interpreter to use (defaults to cls.python)
+        """
+        venv = cls.virtualenv_path()
+        if not venv:
+            cls.abort("Can't determine path to virtualenv.py")
+        cls.run_program(python or cls.python, venv, folder)
 
     @classmethod
     def which(cls, program):

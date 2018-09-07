@@ -5,7 +5,7 @@ from mock import patch
 
 from pickley import CaptureOutput, system
 from pickley.install import PexRunner
-from pickley.package import DELIVERERS, PACKAGERS, VersionMeta
+from pickley.package import DELIVERERS, Packager, PACKAGERS, VersionMeta
 from pickley.settings import Definition, SETTINGS
 
 from .conftest import INEXISTING_FILE, verify_abort
@@ -143,10 +143,10 @@ def test_versions(_, __, temp_base):
     SETTINGS.set_cli_config()
 
 
-@patch("pickley.package.VenvPackager.virtualenv_path", return_value=None)
-def test_configured_version(_):
-    p = PACKAGERS.get(system.venv_packager)("foo")
-    assert "Can't determine path to virtualenv.py" in verify_abort(p.effective_package, None)
+@patch("pickley.system.virtualenv_path", return_value=None)
+def test_no_venv_path(_):
+    assert "Can't determine path to virtualenv.py" in verify_abort(system.create_venv, None)
+    assert not Packager("").effective_package("")  # Edge case
 
 
 def get_definition(key, package_name=None):
@@ -175,7 +175,7 @@ def pydef(value, source="test"):
 
 
 def test_shebang():
-    p = PexRunner(None)
+    p = PexRunner("")
     p.run = lambda *args: system.info("args: %s", system.represented_args(*args))
 
     # Universal wheels
@@ -184,28 +184,28 @@ def test_shebang():
     # Default python, absolute path
     p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
     with CaptureOutput() as logged:
-        p.build(None, None, None, None)
+        p.build("", "", "", "")
         assert "--python=" not in logged
         assert "--python-shebang=/usr/bin/env python" in logged
 
     # Default python, relative path
     p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
     with CaptureOutput() as logged:
-        p.build(None, None, None, None)
+        p.build("", "", "", "")
         assert "--python=" not in logged
         assert "--python-shebang=/usr/bin/env python" in logged
 
     # Explicit python, absolute path
     p.resolved_python = pydef("/some-python")
     with CaptureOutput() as logged:
-        p.build(None, None, None, None)
+        p.build("", "", "", "")
         assert "--python=/some-python" in logged
         assert "--python-shebang=/some-python" in logged
 
     # Explicit python, relative path
     p.resolved_python = pydef("some-python")
     with CaptureOutput() as logged:
-        p.build(None, None, None, None)
+        p.build("", "", "", "")
         assert "--python=some-python" in logged
         assert "--python-shebang=/usr/bin/env some-python" in logged
 
@@ -215,27 +215,27 @@ def test_shebang():
     # Default python, absolute path
     p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
     with CaptureOutput() as logged:
-        p.build(None, None, None, None)
+        p.build("", "", "", "")
         assert "--python=" not in logged
         assert "--python-shebang=/some-python" in logged
 
     # Default python, relative path
     p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
     with CaptureOutput() as logged:
-        p.build(None, None, None, None)
+        p.build("", "", "", "")
         assert "--python=" not in logged
         assert "--python-shebang=/usr/bin/env some-python" in logged
 
     # Explicit python, absolute path
     p.resolved_python = pydef("/some-python")
     with CaptureOutput() as logged:
-        p.build(None, None, None, None)
+        p.build("", "", "", "")
         assert "--python=/some-python" in logged
         assert "--python-shebang=/some-python" in logged
 
     # Explicit python, relative path
     p.resolved_python = pydef("some-python")
     with CaptureOutput() as logged:
-        p.build(None, None, None, None)
+        p.build("", "", "", "")
         assert "--python=some-python" in logged
         assert "--python-shebang=/usr/bin/env some-python" in logged

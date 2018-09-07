@@ -90,8 +90,8 @@ def test_custom_settings():
     assert str(s) == "[11] base: %s" % short(s.base.path)
     assert str(s.defaults) == "defaults"
     assert str(s.base) == "base: %s" % short(s.base.path)
-    assert s.get_definition(None) is None
-    assert s.resolved_definition(None) is None
+    assert s.get_definition("") is None
+    assert s.resolved_definition("") is None
     assert s.resolved_value("foo") is None
 
     p = s.base.full_path("foo/bar")
@@ -152,7 +152,7 @@ def test_same_type():
 
 
 def test_pypi():
-    assert latest_pypi_version(None, None) is None
+    assert latest_pypi_version(None, "") is None
     assert latest_pypi_version(None, "tox")
 
 
@@ -169,7 +169,7 @@ def test_pypi_legacy(*_):
 def test_add_representation():
     # Cover add_representation() edge cases
     r = []
-    add_representation(r, None)
+    add_representation(r, "")
     assert not r
     add_representation(r, "foo")
     assert r == ["- foo"]
@@ -179,7 +179,7 @@ def test_serialization():
     j = JsonSerializable()
     assert str(j) == "no source"
     j.save()  # no-op
-    j.set_from_dict(None, source="test")
+    j.set_from_dict({}, source="test")
     j.some_list = []
     j.some_string = []
     j.set_from_dict(dict(foo="bar", some_list="some_value", some_string="some_value"), source="test")
@@ -189,7 +189,7 @@ def test_serialization():
     j.reset()
     assert not j.some_string
 
-    j = JsonSerializable.from_json(None)
+    j = JsonSerializable.from_json("")
     assert str(j) == "no source"
 
     j = JsonSerializable.from_json("/dev/null/foo")
@@ -198,7 +198,7 @@ def test_serialization():
 
 
 def test_duration():
-    assert system.to_int(None, default=60) == 60
+    assert system.to_int("", default=60) == 60
     assert system.to_int("") is None
     assert system.to_int("foo") is None
     assert system.to_int("1m") is None
