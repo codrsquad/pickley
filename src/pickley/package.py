@@ -162,16 +162,24 @@ class VersionMeta(JsonSerializable):
     Version meta on a given package
     """
 
+    # Dields starting with '_' are not stored to json file
     _problem = None                 # type: str # Detected problem, if any
+    _suffix = None                  # type: str # Suffix of json file where this object is persisted
     _name = None                    # type: str # Associated pypi package name
+
+    # Main info, should be passed from latest -> current etc
+    version = ""                    # type: str # Effective version
     channel = ""                    # type: str # Channel (stable, latest, ...) via which this version was determined
+    source = ""                     # type: str # Description of where definition came from
+
+    # Runtime info, should be set/stored for 'current'
     packager = ""                   # type: str # Packager used
     delivery = ""                   # type: str # Delivery method used
-    pickley = ""                    # type: str # Pickley version used to perform install
     python = ""                     # type: str # Python interpreter used
-    source = ""                     # type: str # Description of where definition came from
+
+    # Additional info
+    pickley = ""                    # type: str # Pickley version used to perform install
     timestamp = None                # type: float # Epoch when version was determined (useful to cache "expensive" calls to pypi)
-    version = ""                    # type: str # Effective version
 
     def __init__(self, name, suffix=None):
         """
@@ -179,15 +187,21 @@ class VersionMeta(JsonSerializable):
         :param str|None suffix: Optional suffix where to store this object
         """
         self._name = name
+        self._suffix = suffix
         if suffix:
-            self._path = SETTINGS.meta.full_path(self.name, ".%s.json" % suffix)
-        self.packager = PACKAGERS.resolved_name(name)
-        self.delivery = DELIVERERS.resolved_name(name)
-        self.pickley = pickley.__version__
-        self.python = SETTINGS.resolved_value("python", name)
+            self._path = SETTINGS.meta.full_path(name, ".%s.json" % suffix)
 
     def __repr__(self):
         return self.representation()
+
+    def _update_dynamic_fields(self):
+        """Update dynamically determined fields"""
+        if self._suffix != system.latest_channel:
+            self.packager = PACKAGERS.resolved_name(self._name)
+            self.delivery = DELIVERERS.resolved_name(self._name)
+            self.python = SETTINGS.resolved_value("python", self._name)
+        self.pickley = pickley.__version__
+        self.timestamp = time.time()
 
     def representation(self, verbose=False, note=None):
         """
@@ -195,11 +209,11 @@ class VersionMeta(JsonSerializable):
         :return str: Human readable representation
         """
         if self._problem:
-            lead = "%s: %s" % (self.name, self._problem)
+            lead = "%s: %s" % (self._name, self._problem)
         elif self.version:
-            lead = "%s %s" % (self.name, self.version)
+            lead = "%s %s" % (self._name, self.version)
         else:
-            lead = "%s: no version" % (self.name)
+            lead = "%s: no version" % (self._name)
         notice = ""
         if verbose:
             notice = []
@@ -263,33 +277,27 @@ class VersionMeta(JsonSerializable):
             return False
         return True
 
-    def set_version(self, version, source, channel=""):
+    def set_version(self, version, channel, source):
         """
         :param str version: Effective version
-        :param str source: Description of where version determination came from
         :param str channel: Channel (stable, latest, ...) via which this version was determined
+        :param str source: Description of where version determination came from
         """
         self.version = version
-        self.source = source
         self.channel = channel
-        self.timestamp = time.time()
+        self.source = source
+        self._update_dynamic_fields()
 
-    def set(self, *others):
-        for other in others:
-            if isinstance(other, VersionMeta):
-                self._problem = other._problem
-                self.channel = other.channel
-                if other.packager:
-                    self.packager = other.packager
-                if other.delivery:
-                    self.delivery = other.delivery
-                if other.python:
-                    self.python = other.python
-                self.source = other.source
-                self.timestamp = other.timestamp
-                self.version = other.version
-            elif isinstance(other, Packager):
-                self.packager = other.implementation_name
+    def set_from(self, other):
+        """
+        :param VersionMeta other: Set this meta from 'other'
+        """
+        if isinstance(other, VersionMeta):
+            self._problem = other._problem
+            self.version = other.version
+            self.channel = other.channel
+            self.source = other.source
+            self._update_dynamic_fields()
 
     def invalidate(self, problem):
         """
@@ -323,7 +331,7 @@ class Packager(object):
         self.name = name
         self._entry_points = None
         self.current = VersionMeta(self.name, "current")
-        self.latest = VersionMeta(self.name, system.default_channel)
+        self.latest = VersionMeta(self.name, system.latest_channel)
         self.desired = VersionMeta(self.name)
         self.dist_folder = SETTINGS.meta.full_path(self.name, ".work")
         self.build_folder = os.path.join(self.dist_folder, "build")
@@ -409,7 +417,7 @@ class Packager(object):
             return
 
         version = latest_pypi_version(SETTINGS.index, self.name)
-        self.latest.set_version(version, SETTINGS.index or "pypi", channel=system.default_channel)
+        self.latest.set_version(version, system.latest_channel, SETTINGS.index or "pypi")
         if version:
             self.latest.save()
 
@@ -421,13 +429,12 @@ class Packager(object):
         channel = SETTINGS.resolved_definition("channel", package_name=self.name)
         v = SETTINGS.get_definition("channel.%s.%s" % (channel.value, self.name))
         if v and v.value:
-            self.desired.set_version(v.value, str(v), channel=channel.value)
-            self.desired.set(self)
+            self.desired.set_version(v.value, channel.value, str(v))
             return
 
-        if channel.value == system.default_channel:
+        if channel.value == system.latest_channel:
             self.refresh_latest()
-            self.desired.set(self, self.latest)
+            self.desired.set_from(self.latest)
             return
 
         self.desired.invalidate("can't determine %s version" % channel.value)
@@ -523,7 +530,7 @@ class Packager(object):
                     # Entry point was removed by package
                     system.delete_file(SETTINGS.base.full_path(name))
 
-            self.current.set(self, self.desired)
+            self.current.set_from(self.desired)
             self.current.save()
 
             msg = "Would %s" % intent if system.dryrun else "%sed" % (intent.title())

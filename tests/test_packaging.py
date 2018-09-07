@@ -149,6 +149,8 @@ def get_definition(key, package_name=None):
         return Definition("1.0", "test", key)
     if key == "delivery":
         return Definition("wrap", "test", key)
+    if key == "packager":
+        return Definition("venv", "test", key)
     return None
 
 

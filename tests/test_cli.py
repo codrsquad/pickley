@@ -92,11 +92,8 @@ def test_package(temp_base):
     assert system.first_line(pickley) == "#!/usr/bin/env python"
 
 
-def test_install(temp_base):
-    tox = SETTINGS.base.full_path("tox")
-    assert not os.path.exists(tox)
-    assert system.first_line(tox) is None
-
+@patch("pickley.pypi.urlopen", side_effect=Exception)
+def test_bogus_install(_, temp_base):
     expect_failure("-b foo/bar settings", "Can't use", "as base", "folder does not exist")
 
     expect_failure("auto-upgrade foo", "not currently installed")
@@ -107,15 +104,21 @@ def test_install(temp_base):
 
     expect_success("check", "No packages installed", base=temp_base)
     expect_success("list", "No packages installed", base=temp_base)
-    expect_failure("check tox", "is not installed", base=temp_base)
     expect_failure("check bogus_", "can't determine latest version", base=temp_base)
 
     expect_success("settings -d", "base: %s" % short(temp_base))
+
+
+def test_install(temp_base):
+    tox = SETTINGS.base.full_path("tox")
+    assert not os.path.exists(tox)
+    assert system.first_line(tox) is None
 
     expect_success("--dryrun --delivery wrap install tox", "Would wrap", "Would install tox", base=temp_base)
     expect_success("--dryrun --delivery symlink install tox", "Would symlink", "Would install tox", base=temp_base)
     expect_failure("--dryrun --delivery foo install tox", "invalid choice: foo", base=temp_base)
 
+    expect_failure("check tox", "is not installed", base=temp_base)
     expect_failure("install six", "'six' is not a CLI", base=temp_base)
 
     # Install tox, but add a few files + a bogus previous entry point to test cleanup

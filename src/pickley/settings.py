@@ -414,7 +414,7 @@ class Settings:
         self.defaults = SettingsFile(self, name="defaults")
         self.defaults.set_contents(
             default=dict(
-                channel=system.default_channel,
+                channel=system.latest_channel,
                 delivery=system.default_delivery,
                 install_timeout=DEFAULT_INSTALL_TIMEOUT,
                 packager=system.default_packager,

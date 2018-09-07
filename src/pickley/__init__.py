@@ -127,7 +127,7 @@ class system:
     testing = is_test_run()
     pickley_program_path = pickley_program_path()
 
-    default_channel = "latest"
+    latest_channel = "latest"
     default_delivery = "symlink"
     default_packager = "venv"
 
