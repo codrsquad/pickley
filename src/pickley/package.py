@@ -23,7 +23,7 @@ if [[ -x {pickley} ]]; then
     nohup {pickley} auto-upgrade {name} &> /dev/null &
 fi
 if [[ -x {source} ]]; then
-    exec {source} $*
+    exec {source} "$@"
 else
     echo "{source} is not available anymore"
     echo ""
@@ -43,7 +43,7 @@ if [[ -x {source} ]]; then
     if [[ $1 != "auto-upgrade" ]]; then
         nohup {source} auto-upgrade {name} &> /dev/null &
     fi
-    exec {source} $*
+    exec {source} "$@"
 else
     echo "{source} is not available anymore"
     echo ""
