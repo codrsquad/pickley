@@ -2,21 +2,17 @@
 """
 Simple json configuration system
 
-<base>: installation folder, ex ~/.local/bin
-
-The following locations will be examined for config (in this order, first value found wins):
-- ~/.config/pickley.json
-- <base>/.pickley.json
+<base>: installation folder, example ~/.local/bin
 
 tree <base>
 ├── .pickley/                       # Folder where pickley will build/manage/track installations
 │   ├── audit.log                   # Activity is logged here
+│   ├── config.json                 # Optional configuration provided by user
 │   ├── tox/
 │   │   ├── .current.json           # Currently installed version
 │   │   ├── .latest.json            # Latest version as determined by querying pypi
-│   │   ├── dist/                   # Temp folder used during packaging
+│   │   ├── .work/                  # Temp folder used during installation
 │   │   └── tox-2.9.1/              # Actual installation, as packaged by pickley
-├── .pickley.json                   # Optional config provided by user
 ├── pickley                         # pickley itself
 └── tox -> .pickley/tox/2.9.1/...   # Produced exe, can be a symlink or a small wrapper exe (to ensure up-to-date)
 
