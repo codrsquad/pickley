@@ -46,7 +46,7 @@ def latest_pypi_version(url, name):
 
     data = request_get(url)
     if not data:
-        return None
+        return "can't determine latest version from '%s'" % url
 
     if data[0] == "{":
         # See https://warehouse.pypa.io/api-reference/json/
@@ -57,7 +57,7 @@ def latest_pypi_version(url, name):
         except Exception as e:
             system.warning("Failed to parse pypi json: %s\n%s", e, data)
 
-        return None
+        return "can't determine latest version from '%s'" % url
 
     # Legacy mode: parse returned HTML
     prefix = "%s-" % name
@@ -80,7 +80,7 @@ def latest_pypi_version(url, name):
                 except ValueError:
                     pass
 
-    return latest_text
+    return latest_text or "can't determine latest version from '%s'" % url
 
 
 def read_entry_points(lines):

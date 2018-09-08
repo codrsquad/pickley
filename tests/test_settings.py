@@ -158,7 +158,7 @@ def test_pypi():
 
 @patch("pickley.pypi.request_get", return_value="{foo")
 def test_pypi_bad_response(*_):
-    assert latest_pypi_version(None, "foo") is None
+    assert latest_pypi_version(None, "foo") == "can't determine latest version from 'https://pypi.org/pypi/foo/json'"
 
 
 @patch("pickley.pypi.request_get", return_value=LEGACY_SAMPLE)
