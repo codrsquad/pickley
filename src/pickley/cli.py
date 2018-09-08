@@ -28,7 +28,7 @@ def bootstrap(testing=False):
 
     p = PACKAGERS.get(system.venv_packager)(system.PICKLEY)
     p.refresh_current()
-    if p.current.packager == p.registered_name:
+    if p.current.packager == system.venv_packager:
         # We're already packaged correctly, no need to bootstrap
         return
 
