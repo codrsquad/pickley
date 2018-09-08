@@ -12,6 +12,8 @@ TESTS = system.parent_folder(__file__)
 PROJECT = system.parent_folder(TESTS)
 INEXISTING_FILE = "/dev/null/foo/bar"
 
+system.testing = True
+
 
 def sample_path(*relative):
     return os.path.join(TESTS, "samples", *relative)
@@ -27,16 +29,18 @@ def verify_abort(func, *args, **kwargs):
 
 @pytest.fixture
 def temp_base():
-    system.setup_debug_log()
     old_base = SETTINGS.base
+    old_config = SETTINGS.config
     old_cwd = os.getcwd()
-
     path = mkdtemp()
-    os.chdir(path)
-    SETTINGS.set_base(path)
-    yield path
 
-    os.chdir(old_cwd)
-    SETTINGS.set_base(old_base)
-    SETTINGS.set_cli_config()
-    shutil.rmtree(path)
+    try:
+        os.chdir(path)
+        SETTINGS.set_base(path)
+        yield path
+
+    finally:
+        os.chdir(old_cwd)
+        SETTINGS.set_base(old_base)
+        SETTINGS.load_config(config=old_config)
+        shutil.rmtree(path)

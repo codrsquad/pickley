@@ -65,13 +65,6 @@ def pickley_program_path():
     return path
 
 
-def is_test_run():
-    """
-    :return bool: True if we're running via pytest (or pycharm test)
-    """
-    return "pytest" in pickley_program_path().lower()
-
-
 def relocate_venv_file(path, source, destination):
     """
     :param str path: Path of file to relocate (change mentions of 'source' to 'destination')
@@ -124,7 +117,7 @@ class system:
     output = True
     quiet = False
     python = python_interpreter()
-    testing = is_test_run()
+    testing = False
     pickley_program_path = pickley_program_path()
 
     latest_channel = "latest"

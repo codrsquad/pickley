@@ -29,7 +29,7 @@ settings:
 
   config:
     - cli: # empty
-    - {base}/.pickley.json:
+    - {base}/.pickley/config.json:
       bundle:
         dev: [tox, twine]
         dev2: [tox, twine, pipenv]
@@ -43,7 +43,7 @@ settings:
         venv: tox pipenv
       include: [custom.json]
       index: https://pypi.org/
-    - {base}/custom.json:
+    - {base}/.pickley/custom.json:
       channel:
         alpha:
           virtualenv: 16.0.0
@@ -63,15 +63,15 @@ settings:
           delivery: wrap
           packager: pex
       version_check_delay: 60
-    - {base}/bogus.json: # empty
-    - {base}/bogus2.json: # empty
-    - {base}/bogus3.json: # empty
-    - {base}/bogus4.json: # empty
-    - {base}/bogus5.json: # empty
-    - {base}/bogus6.json: # empty
-    - {base}/bogus7.json: # empty
-    - {base}/bogus8.json: # empty
-    - {base}/bogus9.json: # empty
+    - {base}/.pickley/bogus.json: # empty
+    - {base}/.pickley/bogus2.json: # empty
+    - {base}/.pickley/bogus3.json: # empty
+    - {base}/.pickley/bogus4.json: # empty
+    - {base}/.pickley/bogus5.json: # empty
+    - {base}/.pickley/bogus6.json: # empty
+    - {base}/.pickley/bogus7.json: # empty
+    - {base}/.pickley/bogus8.json: # empty
+    - {base}/.pickley/bogus9.json: # empty
     - defaults:
       default:
         channel: latest
@@ -84,8 +84,8 @@ settings:
 
 
 def test_custom_settings():
-    s = Settings(sample_path())
-    s.load_config(testing=True)
+    s = Settings(sample_path("custom"))
+    s.load_config()
 
     assert str(s) == "[11] base: %s" % short(s.base.path)
     assert str(s.defaults) == "defaults"
@@ -98,7 +98,7 @@ def test_custom_settings():
     assert s.base.relative_path(p) == "foo/bar"
 
     d = s.resolved_definition("delivery", package_name="dict_sample")
-    assert str(d) == "%s/.pickley.json:delivery.copy" % short(s.base.path)
+    assert str(d) == "%s/config.json:delivery.copy" % short(s.meta.path)
 
     assert s.resolved_value("delivery", package_name="tox") == "venv"
     assert s.resolved_value("delivery", package_name="virtualenv") == "wrap"

@@ -140,8 +140,6 @@ def test_versions(_, __, temp_base):
     p.pex_build = lambda *_: "failed"
     assert "pex command failed" in verify_abort(p.package)
 
-    SETTINGS.set_cli_config()
-
 
 @patch("pickley.system.virtualenv_path", return_value=None)
 def test_no_venv_path(_):

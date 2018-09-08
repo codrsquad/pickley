@@ -94,10 +94,10 @@ def test_real_run():
         delattr(sys, "real_prefix")
 
     s = Settings()
-    s.load_config(testing=True)
-    assert len(s.config) == 1
-    s.load_config(testing=False)
-    assert len(s.config) == 2
+    s.load_config()
+    assert len(s.config_paths) == 1
+    s.load_config("foo.json")
+    assert len(s.config_paths) == 2
 
 
 def test_missing_implementation():
@@ -106,7 +106,7 @@ def test_missing_implementation():
     m.register(ImplementationMap)
     assert len(m.names()) == 1
     assert "No custom type configured" in verify_abort(m.resolved, "foo")
-    s.set_cli_config(custom="bar")
+    s.cli.contents["custom"] = "bar"
     assert "Unknown custom type" in verify_abort(m.resolved, "foo")
 
 

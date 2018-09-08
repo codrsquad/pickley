@@ -57,6 +57,7 @@ def test_help():
         "-q, --quiet",
         "-n, --dryrun",
         "-b, --base PATH",
+        "-c, --config PATH",
         "--python PATH",
         "-d, --delivery",
         "-p, --packager",

@@ -410,7 +410,6 @@ class Settings:
         """
         self.set_base(base)
         self.cli = SettingsFile(self, name="cli")
-        self.set_cli_config()
         self.defaults = SettingsFile(self, name="defaults")
         self.defaults.set_contents(
             default=dict(
@@ -423,11 +422,24 @@ class Settings:
             ),
         )
         self.config = None
-        self.paths = []
+        self.config_paths = []
         self.children = []
 
     def __repr__(self):
         return "[%s] %s" % (len(self.children), self.base)
+
+    def load_config(self, config=None, **cli):
+        """
+        :param str|None config: Additional configuration file to load
+        :param dict cli: Additional entries to consider as top priority (passed via CLI flags)
+        """
+        self.config = config
+        self.config_paths = []
+        self.children = []
+        self.cli.set_contents(dict((k, v) for k, v in cli.items() if v))
+        self._add_config(self.meta.full_path("config.json"))
+        if self.config:
+            self._add_config(self.config)
 
     def set_base(self, base):
         """
@@ -453,9 +465,6 @@ class Settings:
 
         self.meta = meta_folder(self.base.path)
 
-    def set_cli_config(self, **entries):
-        self.cli.set_contents(dict((k, v) for k, v in entries.items() if v))
-
     @property
     def install_timeout(self):
         """
@@ -470,34 +479,20 @@ class Settings:
         """
         return system.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY)
 
-    def load_config(self, testing=None):
+    def _add_config(self, path, base=None):
         """
-        :param bool|None testing: If True load test config, otherwise regular config (defaults to system.testing)
-        """
-        self.paths = []
-        self.children = []
-        if testing is None:
-            testing = system.testing
-        if testing:
-            self.config = [".pickley.json"]
-        else:
-            self.config = ["~/.config/pickley.json", ".pickley.json"]
-        self.add(self.config)
-
-    def add(self, paths, base=None):
-        """
-        :param list(str) paths: Paths to files to consider as settings
+        :param str path: Path to config file
         :param str|None base: Base path to use to resolve relative paths (default: current working dir)
         """
-        if paths:
-            for path in paths:
-                path = system.resolved_path(path, base=base or self.base.path)
-                if path not in self.paths:
-                    settings_file = SettingsFile(self, path)
-                    self.paths.append(path)
-                    self.children.append(settings_file)
-                    if settings_file.include:
-                        self.add(settings_file.include, base=settings_file.folder)
+        path = system.resolved_path(path, base=base)
+        if path not in self.config_paths:
+            settings_file = SettingsFile(self, path)
+            self.config_paths.append(path)
+            self.children.append(settings_file)
+            include = settings_file.include
+            if include:
+                for ipath in include:
+                    self._add_config(ipath, base=settings_file.folder)
 
     def resolved_definition(self, key, package_name=None):
         """

@@ -71,13 +71,10 @@ Once you have pickley_, you can get other python CLIs and use them as standalone
 Configuration
 =============
 
-**pickley** loads 2 configuration files (if they're present, ``<base>`` refers to the folder where **pickley** resides):
+**pickley** loads a configuration file (if present): ``<base>/.pickley/config.json``
+(``<base>`` refers to the folder where **pickley** resides)
 
-- ``~/.config/pickley.json``: convenient for user-based settings
-
-- ``<base>/pickley.json``: useful if you have several people using the same **pickley** installation
-
-- Other config files can be included, via an ``include`` directive
+Other config files can be included, via an ``include`` directive, or per invocation via the ``--config`` command line argument.
 
 Config files are json as their name implies, here's an example::
 
