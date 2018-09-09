@@ -9,7 +9,7 @@ from pickley import CaptureOutput, ImplementationMap, PingLock, PingLockExceptio
 from pickley.install import add_paths, PexRunner, Runner
 from pickley.settings import Settings
 
-from .conftest import INEXISTING_FILE, verify_abort
+from .conftest import INEXISTING_FILE, PROJECT, verify_abort
 
 
 def test_flattened():
@@ -193,3 +193,11 @@ def test_relocate_venv_file_successfully(temp_base):
     expected = ["line 1: dest\n", "line 2\n"]
     with open("foo", "rt") as fh:
         assert fh.readlines() == expected
+
+
+def test_find_venvs():
+    # There's always at least one venv in project when running tests
+    # No need to check which ones are there, just that they yield bin folders
+    venvs = list(system.find_venvs(PROJECT))
+    assert venvs
+    assert os.path.basename(venvs[0]) == "bin"

@@ -360,6 +360,30 @@ class system:
             shutil.copystat(source, destination)  # Make sure last modification time is preserved
 
     @classmethod
+    def find_venvs(cls, folder, seen=None):
+        """
+        :param str folder: Folder to scan for venvs
+        :param dict|None seen: Allows to not get stuck on circular symlinks
+        """
+        if folder and os.path.isdir(folder):
+            if seen is None:
+                folder = os.path.realpath(folder)
+                seen = set()
+
+            if folder not in seen:
+                seen.add(folder)
+                files = os.listdir(folder)
+                if "bin" in files:
+                    bin_folder = os.path.join(folder, "bin")
+                    if cls.is_executable(os.path.join(bin_folder, "python")):
+                        yield bin_folder
+                        return
+                for name in files:
+                    fname = os.path.join(folder, name)
+                    for path in cls.find_venvs(fname, seen=seen):
+                        yield path
+
+    @classmethod
     def move_file(cls, source, destination):
         """Move source -> destination"""
         if source and destination and source != destination:
@@ -370,8 +394,7 @@ class system:
             if not os.path.exists(source):
                 cls.abort("%s does not exist, can't move to %s", short(source), short(destination))
 
-            bin_folder = os.path.join(source, "bin")
-            if cls.is_executable(os.path.join(bin_folder, "python")):
+            for bin_folder in cls.find_venvs(source):
                 cls.debug("Relocating venv %s -> %s", short(source), short(destination))
                 for name in os.listdir(bin_folder):
                     fpath = os.path.join(bin_folder, name)

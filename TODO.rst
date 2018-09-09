@@ -1,9 +1,7 @@
 Ideas for new features in pickley
 =================================
 
-- uninstall pickley leftover wrappers
-
-- run pip, pex, nuitka, ... from on-the-fly venv
+- Run pip, pex, nuitka, ... from on-the-fly venv
 
 - Support packaging via shiv_, nuitka_
 
