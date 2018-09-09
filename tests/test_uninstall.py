@@ -2,30 +2,29 @@ import os
 
 from mock import patch
 
-from pickley.uninstall import BREW_CELLAR, uninstall_existing, USR_LOCAL_BIN
-
-from .conftest import verify_abort
+from pickley.uninstall import brew_uninstall, find_brew_name, uninstall_existing
 
 
+BREW_INSTALL = "/brew/install/bin"
+BREW = os.path.join(BREW_INSTALL, "brew")
+BREW_CELLAR = "/brew/install/Cellar"
 BREW_INSTALLED = ["tox", "twine"]
 
 
-def test_cant_uninstall():
-    # no-op edge case
-    uninstall_existing(None)
-
-    # Can't uninstall unknown locations
-    assert "Please uninstall /dev/null first" in verify_abort(uninstall_existing, "/dev/null")
+def is_brew_link(path):
+    return path and path.startswith(BREW_INSTALL)
 
 
 def brew_exists(path):
-    """Pretend any file under /usr/local/bin exists"""
-    return path and path.startswith(USR_LOCAL_BIN)
+    """Pretend any file under BREW_INSTALL exists"""
+    if path == BREW:
+        return False
+    return path and path.startswith(BREW_INSTALL)
 
 
 def brew_realpath(path):
     """Simulate brew symlink for names in BREW_INSTALLED"""
-    if path and path.startswith(USR_LOCAL_BIN):
+    if path and path.startswith(BREW_INSTALL):
         basename = os.path.basename(path)
         if basename not in BREW_INSTALLED:
             return path
@@ -42,15 +41,32 @@ def brew_run_program(*args, **kwargs):
     return None
 
 
-@patch("os.path.exists", side_effect=brew_exists)
+def test_cant_uninstall():
+    # no-op edge case
+    assert uninstall_existing(None, fatal=False) == 0
+
+    # Can't uninstall unknown locations
+    assert uninstall_existing("/dev/null", fatal=False) == -1
+
+    assert brew_uninstall("", fatal=False) == -1
+
+
+@patch("os.path.islink", side_effect=is_brew_link)
 @patch("os.path.realpath", side_effect=brew_realpath)
+@patch("pickley.system.is_executable", return_value=False)
+def test_find_brew_edge_case(*_):
+    assert find_brew_name("%s/tox" % BREW_INSTALL) == (None, None)
+
+
+@patch("os.path.exists", side_effect=brew_exists)
+@patch("os.path.islink", side_effect=is_brew_link)
+@patch("os.path.realpath", side_effect=brew_realpath)
+@patch("pickley.system.is_executable", side_effect=is_brew_link)
 @patch("pickley.system.run_program", side_effect=brew_run_program)
 def test_uninstall_brew(*_):
     # Simulate successful uninstall
-    uninstall_existing("/usr/local/bin/tox")
+    assert uninstall_existing("%s/tox" % BREW_INSTALL, fatal=False) == 1
 
     # Simulate failed uninstall
-    assert "Please uninstall /usr/local/bin/twine first" in verify_abort(uninstall_existing, "/usr/local/bin/twine")
-
-    # Simulate not installed by brew
-    assert "Please uninstall /usr/local/bin/wget first" in verify_abort(uninstall_existing, "/usr/local/bin/wget")
+    assert uninstall_existing("%s/twine" % BREW_INSTALL, fatal=False) == -1
+    assert uninstall_existing("%s/wget" % BREW_INSTALL, fatal=False) == -1

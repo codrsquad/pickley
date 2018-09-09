@@ -12,6 +12,7 @@ import click
 from pickley import CurrentFolder, PingLock, PingLockException, short, system
 from pickley.package import DELIVERERS, PACKAGERS
 from pickley.settings import meta_folder, SETTINGS
+from pickley.uninstall import uninstall_existing
 
 
 def bootstrap(testing=False):
@@ -144,6 +145,83 @@ def install(force, packages):
     for name in packages:
         p = PACKAGERS.resolved(name)
         p.install(force=force)
+
+
+@main.command()
+@click.option("--force", "-f", is_flag=True, help="Force installation, even if already installed")
+@click.argument("packages", nargs=-1, required=True)
+def uninstall(force, packages):
+    """
+    Uninstall packages
+    """
+    system.setup_audit_log(SETTINGS.meta)
+    packages = SETTINGS.resolved_packages(packages)
+    errors = 0
+    for name in packages:
+        p = PACKAGERS.resolved(name)
+        p.refresh_current()
+        if not force and not p.current.file_exists:
+            errors += 1
+            system.error("%s was not installed with pickley", name)
+            continue
+
+        eps = p.entry_points
+        ep_uninstalled = 0
+        ep_missed = 0
+        meta_deleted = system.delete_file(SETTINGS.meta.full_path(name), fatal=False)
+        if not eps and force:
+            eps = [name]
+        if eps and meta_deleted >= 0:
+            for entry_point in eps:
+                path = SETTINGS.base.full_path(entry_point)
+                handler = system.delete_file if meta_deleted > 0 else uninstall_existing
+                r = handler(path, fatal=False)
+                if r < 0:
+                    ep_missed += 1
+                elif r > 0:
+                    ep_uninstalled += 1
+
+        if ep_missed or meta_deleted < 0:
+            # Error was already reported
+            errors += 1
+            continue
+
+        if ep_uninstalled + meta_deleted == 0:
+            system.info("Nothing to uninstall for %s" % name)
+            continue
+
+        message = "Would uninstall" if system.dryrun else "Uninstalled"
+        message = "%s %s" % (message, name)
+        if ep_uninstalled > 1:
+            message += " (%s entry points)" % ep_uninstalled
+        system.info(message)
+
+    if errors:
+        system.abort()
+
+
+@main.command()
+@click.argument("source", required=True)
+@click.argument("destination", required=True)
+def copy(source, destination):
+    """
+    Copy file or folder, relocate venvs accordingly (if any)
+    """
+    system.setup_audit_log(SETTINGS.meta)
+    system.copy_file(source, destination)
+    system.info("Copied %s -> %s", short(source), short(destination))
+
+
+@main.command()
+@click.argument("source", required=True)
+@click.argument("destination", required=True)
+def move(source, destination):
+    """
+    Copy file or folder, relocate venvs accordingly (if any)
+    """
+    system.setup_audit_log(SETTINGS.meta)
+    system.move_file(source, destination)
+    system.info("Moved %s -> %s", short(source), short(destination))
 
 
 @main.command()

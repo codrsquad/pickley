@@ -7,6 +7,7 @@ from pickley import PingLockException, short, system
 from pickley.cli import main
 from pickley.package import PACKAGERS
 from pickley.settings import SETTINGS
+from pickley.uninstall import find_uninstaller
 
 from .conftest import PROJECT
 
@@ -119,6 +120,16 @@ def test_install(temp_base):
     expect_success("--dryrun --delivery symlink install tox", "Would symlink", "Would install tox", base=temp_base)
     expect_failure("--dryrun --delivery foo install tox", "invalid choice: foo", base=temp_base)
 
+    expect_success("--dryrun uninstall /dev/null --force", "Nothing to uninstall")
+
+    system.touch("foo")
+    expect_failure("uninstall foo", "foo was not installed with pickley")
+    expect_success("uninstall foo --force", "Uninstalled foo")
+
+    system.delete_file("foo")
+    system.ensure_folder("foo", folder=True)
+    expect_failure("uninstall foo --force", "Can't automatically uninstall")
+
     expect_failure("check tox", "is not installed", base=temp_base)
     expect_failure("install six", "'six' is not a CLI", base=temp_base)
 
@@ -130,6 +141,10 @@ def test_install(temp_base):
     assert system.is_executable(tox)
     output = run_program(tox, "--version")
     assert "tox" in output
+
+    version = output.partition(" ")[0]
+    expect_success("copy .pickley/tox/tox-%s tox-copy" % version, "Copied")
+    expect_success("move tox-copy tox-relocated", "Moved")
 
     expect_success("auto-upgrade tox", "Skipping auto-upgrade", base=temp_base)
     system.delete_file(SETTINGS.meta.full_path("tox", ".ping"))
@@ -150,10 +165,18 @@ def test_install(temp_base):
     expect_success("list", "tox", "twine", base=temp_base)
     expect_success("list --verbose", "tox", "twine", base=temp_base)
 
+    tmp = os.path.realpath(temp_base)
+    assert find_uninstaller(os.path.join(tmp, "tox"))
+    assert find_uninstaller(os.path.join(tmp, "twine"))
+
+    expect_success("uninstall twine", "Uninstalled twine", base=temp_base)
+
     p.refresh_current()
     system.delete_file(p.current._path)
     system.touch(p.current._path)
     expect_failure("check", "tox", "Invalid json file", "is not installed", base=temp_base)
+
+    expect_success("uninstall tox", "Uninstalled tox", "entry points", base=temp_base)
 
 
 @patch("pickley.package.VersionMeta.valid", return_value=True)

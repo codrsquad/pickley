@@ -68,6 +68,7 @@ def test_edge_cases():
 
     assert "Can't create folder" in verify_abort(system.ensure_folder, INEXISTING_FILE, exception=Exception)
 
+    assert system.delete_file("/dev/null", fatal=False) == -1
     assert "Can't delete" in verify_abort(system.delete_file, "/dev/null", exception=Exception)
     assert "does not exist" in verify_abort(system.make_executable, INEXISTING_FILE)
     assert "Can't chmod" in verify_abort(system.make_executable, "/dev/null", exception=Exception)
