@@ -1,13 +1,7 @@
 import os
 
-from pickley import get_lines, short, system, WRAPPER_MARK
+from pickley import short, system, WRAPPER_MARK
 from pickley.settings import SETTINGS
-
-
-def report_problem(fatal, message, *args, **kwargs):
-    report = system.abort if fatal else system.error
-    report(message, *args, **kwargs)
-    return -1
 
 
 def uninstall_existing(target, fatal=False):
@@ -20,7 +14,7 @@ def uninstall_existing(target, fatal=False):
     if handler:
         return handler(target, fatal=fatal)
 
-    return report_problem(fatal, "Can't automatically uninstall %s", short(target))
+    return system.abort("Can't automatically uninstall %s", short(target), fatal=fatal)
 
 
 def find_uninstaller(target):
@@ -37,7 +31,7 @@ def find_uninstaller(target):
         # Empty file
         return system.delete_file
 
-    content = get_lines(target)
+    content = system.get_lines(target, fatal=False, quiet=True)
     if content and any(line.startswith(WRAPPER_MARK) for line in content):
         # pickley's own wrapper also fine to simply delete
         return system.delete_file
@@ -58,8 +52,8 @@ def find_brew_name(target):
         return None, None
 
     path = os.path.realpath(target)
-    folder = os.path.dirname(target)
-    cellar = os.path.join(os.path.dirname(folder), "Cellar")
+    folder = system.parent_folder(target)
+    cellar = os.path.join(system.parent_folder(folder), "Cellar")
     if not path.startswith(cellar):
         return None, None
 
@@ -84,7 +78,7 @@ def brew_uninstall(target, fatal=False):
     output = system.run_program(brew, "uninstall", "-f", name, fatal=False, dryrun=system.dryrun, logger=system.info)
     if output is None:
         # Failed brew uninstall
-        return report_problem(fatal, "'%s uninstall %s' failed, please check", brew, name)
+        return system.abort("'%s uninstall %s' failed, please check", brew, name, fatal=fatal)
 
     # All good
     return 1

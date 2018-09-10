@@ -127,7 +127,7 @@ def test_install(temp_base):
     expect_success("uninstall foo --force", "Uninstalled foo")
 
     system.delete_file("foo")
-    system.ensure_folder("foo", folder=True)
+    assert system.ensure_folder("foo", folder=True) == 1
     expect_failure("uninstall foo --force", "Can't automatically uninstall")
 
     expect_failure("check tox", "is not installed", base=temp_base)

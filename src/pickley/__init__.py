@@ -66,63 +66,32 @@ def pickley_program_path():
     return path
 
 
-def get_lines(path, max_size=8192):
-    """
-    :param str path: Path of file to load
-    :param int max_size: Return contents only for files smaller than 'max_size' bytes
-    :return list|None: Lines from file contents
-    """
-    if not path or not os.path.isfile(path) or os.path.getsize(path) > max_size:
-        # No need to relocate if symlink, or size bigger than 8k (binary)
-        return None
-
-    try:
-        with io.open(path, "rt") as fh:
-            return fh.readlines()
-
-    except Exception as e:
-        if "utf-8" in str(e):
-            return None
-        raise
-
-
-def relocate_venv_file(path, source, destination):
+def relocate_venv_file(path, source, destination, fatal=True, quiet=False):
     """
     :param str path: Path of file to relocate (change mentions of 'source' to 'destination')
     :param str source: Where venv used to be
     :param str destination: Where venv is moved to
-    :return bool: True if file with 'path' was modified
+    :param bool fatal: Abort execution on failure if True
+    :param bool quiet: Don't log if True
+    :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
     content = None
-    try:
-        content = get_lines(path)
-        if not content:
-            return False
-
-    except Exception as e:
-        system.abort("Can't relocate venv file %s: %s", short(path), e)
+    content = system.get_lines(path, fatal=fatal, quiet=quiet)
+    if not content:
+        return 0
 
     modified = False
     lines = []
-    if content:
-        for line in content:
-            if source in line:
-                line = line.replace(source, destination)
-                modified = True
-            lines.append(line)
+    for line in content:
+        if source in line:
+            line = line.replace(source, destination)
+            modified = True
+        lines.append(line)
 
     if not modified:
-        return False
+        return 0
 
-    try:
-        with io.open(path, "wt") as fh:
-            for line in lines:
-                fh.write(line)
-
-    except Exception as e:
-        system.abort("Can't relocate venv file %s: %s", short(path), e)
-
-    return True
+    return system.write_contents(path, "".join(lines), fatal=fatal)
 
 
 class system:
@@ -179,9 +148,19 @@ class system:
 
     @classmethod
     def abort(cls, *args, **kwargs):
-        if args:
+        """
+        :param args: Args passed through for error reporting
+        :param kwargs: Args passed through for error reporting
+        :return: kwargs["return_value"] (default: -1) to signify failure to non-fatal callers
+        """
+        fatal = kwargs.pop("fatal", True)
+        quiet = kwargs.pop("quiet", False)
+        return_value = kwargs.pop("return_value", -1)
+        if not quiet and args:
             cls.error(*args, **kwargs)
-        sys.exit(1)
+        if fatal:
+            sys.exit(1)
+        return return_value
 
     @classmethod
     def relaunch(cls):
@@ -224,17 +203,63 @@ class system:
         cls._logging_initialized = True
 
     @classmethod
+    def get_lines(cls, path, max_size=8192, fatal=True, quiet=False):
+        """
+        :param str path: Path of text file to return lines from
+        :param int max_size: Return contents only for files smaller than 'max_size' bytes
+        :param bool fatal: Abort execution on failure if True
+        :param bool quiet: Don't log if True
+        :return list|None: Lines from file contents
+        """
+        if not path or not os.path.isfile(path) or os.path.getsize(path) > max_size:
+            # Intended for small text files, pretend no contents for binaries
+            return None
+
+        try:
+            with open(path, "rt") as fh:
+                return fh.readlines()
+
+        except Exception as e:
+            return cls.abort("Can't read %s: %s", short(path), e, fatal=fatal, quiet=quiet, return_value=None)
+
+    @classmethod
     def touch(cls, path):
         """
-        :param path: Path to file to touch
+        :param str path: Path to file to touch
         """
-        if path:
-            if cls.dryrun:
-                cls.debug("Would touch %s", short(path))
-                return
-            cls.ensure_folder(path)
-            with open(path, "at"):
-                os.utime(path, None)
+        return cls.write_contents(path, "")
+
+    @classmethod
+    def write_contents(cls, path, contents, verbose=False, fatal=True):
+        """
+        :param str path: Path to file
+        :param str contents: Contents to write
+        :param bool verbose: Don't log if False (dryrun being always logged)
+        :param bool fatal: Abort execution on failure if True
+        :return int: 1 if effectively done, 0 if no-op, -1 on failure
+        """
+        if not path:
+            return 0
+
+        if cls.dryrun:
+            action = "write %s bytes to" % len(contents) if contents else "touch"
+            cls.debug("Would %s %s", action, short(path))
+            return 1
+
+        cls.ensure_folder(path, fatal=fatal)
+        if verbose and contents:
+            cls.debug("Writing %s bytes to %s", len(contents), short(path))
+
+        try:
+            with open(path, "w") as fh:
+                if contents:
+                    fh.write(contents)
+                else:
+                    os.utime(path, None)
+            return 1
+
+        except Exception as e:
+            return cls.abort("Can't write to %s: %s", short(path), e, fatal=fatal)
 
     @classmethod
     def resolved_path(cls, path, base=None):
@@ -316,48 +341,67 @@ class system:
         return result
 
     @classmethod
-    def ensure_folder(cls, path, folder=False):
+    def ensure_folder(cls, path, folder=False, fatal=True):
         """
         :param str path: Path to file or folder
         :param bool folder: If True, 'path' refers to a folder (file otherwise)
+        :param bool fatal: Abort execution on failure if True
+        :return int: 1 if effectively done, 0 if no-op, -1 on failure
         """
         if not path:
-            return
+            return 0
+
         if folder:
             folder = cls.resolved_path(path)
         else:
             folder = cls.parent_folder(path)
         if os.path.isdir(folder):
-            return
+            return 0
+
         if cls.dryrun:
             cls.debug("Would create %s", short(folder))
-            return
+            return 1
+
         try:
             os.makedirs(folder)
+            return 1
+
         except Exception as e:
-            cls.error("Can't create folder %s: %s", short(folder), e)
-            raise
+            return cls.abort("Can't create folder %s: %s", short(folder), e, fatal=fatal)
 
     @classmethod
-    def copy_file(cls, source, destination):
-        """Copy source -> destination"""
-        if source and destination and source != destination:
-            if cls.dryrun:
-                cls.debug("Would copy %s -> %s", short(source), short(destination))
-                return
+    def copy_file(cls, source, destination, fatal=True):
+        """
+        Copy source -> destination
 
-            if not os.path.exists(source):
-                cls.abort("%s does not exist, can't copy to %s", short(source), short(destination))
+        :param str source: Source file or folder
+        :param str destination: Destination file or folder
+        :param bool fatal: Abort execution on failure if True
+        :return int: 1 if effectively done, 0 if no-op, -1 on failure
+        """
+        if not source or not destination or source == destination:
+            return 0
 
-            cls.ensure_folder(destination)
-            cls.delete_file(destination)
+        if cls.dryrun:
+            cls.debug("Would copy %s -> %s", short(source), short(destination))
+            return 1
 
+        if not os.path.exists(source):
+            return cls.abort("%s does not exist, can't copy to %s", short(source), short(destination), fatal=fatal)
+
+        cls.ensure_folder(destination, fatal=fatal)
+        cls.delete_file(destination, fatal=fatal)
+        try:
             if os.path.isdir(source):
                 shutil.copytree(source, destination, symlinks=True)
             else:
                 shutil.copy(source, destination)
 
             shutil.copystat(source, destination)  # Make sure last modification time is preserved
+            return 1
+
+        except Exception as e:
+            return cls.abort("Can't copy %s -> %s: %s", short(source), short(destination), e, fatal=fatal)
 
     @classmethod
     def find_venvs(cls, folder, seen=None):
@@ -384,31 +428,47 @@ class system:
                         yield path
 
     @classmethod
-    def move_file(cls, source, destination):
-        """Move source -> destination"""
-        if source and destination and source != destination:
-            if cls.dryrun:
-                cls.debug("Would move %s -> %s", short(source), short(destination))
-                return
+    def move_file(cls, source, destination, fatal=True):
+        """
+        Move source -> destination
 
-            if not os.path.exists(source):
-                cls.abort("%s does not exist, can't move to %s", short(source), short(destination))
+        :param str source: Source file or folder
+        :param str destination: Destination file or folder
+        :param bool fatal: Abort execution on failure if True
+        :return int: 1 if effectively done, 0 if no-op, -1 on failure
+        """
+        if not source or not destination or source == destination:
+            return 0
 
-            for bin_folder in cls.find_venvs(source):
-                cls.debug("Relocating venv %s -> %s", short(source), short(destination))
-                for name in os.listdir(bin_folder):
-                    fpath = os.path.join(bin_folder, name)
-                    relocate_venv_file(fpath, source, destination)
+        if cls.dryrun:
+            cls.debug("Would move %s -> %s", short(source), short(destination))
+            return 1
 
-            cls.ensure_folder(destination)
-            cls.delete_file(destination)
+        if not os.path.exists(source):
+            return cls.abort("%s does not exist, can't move to %s", short(source), short(destination), fatal=fatal)
+
+        relocated = 0
+        for bin_folder in cls.find_venvs(source):
+            cls.debug("Relocating venv %s -> %s", short(source), short(destination))
+            for name in os.listdir(bin_folder):
+                fpath = os.path.join(bin_folder, name)
+                relocated += relocate_venv_file(fpath, source, destination, fatal=fatal)
+
+        cls.ensure_folder(destination, fatal=fatal)
+        cls.delete_file(destination, fatal=fatal)
+        try:
             shutil.move(source, destination)
+            return 1
+
+        except Exception as e:
+            return cls.abort("Can't move %s -> %s: %s", short(source), short(destination), e, fatal=fatal)
 
     @classmethod
     def delete_file(cls, path, fatal=True):
         """
         :param str|None path: Path to file or folder to delete
-        :return int: 1 if deleted, 0 otherwise
+        :param bool fatal: Abort execution on failure if True
+        :return int: 1 if effectively done, 0 if no-op, -1 on failure
         """
         islink = path and os.path.islink(path)
         if not islink and (not path or not os.path.exists(path)):
@@ -427,32 +487,31 @@ class system:
             return 1
 
         except Exception as e:
-            cls.error("Can't delete %s: %s", short(path), e)
-            if fatal:
-                raise
-            return -1
+            return cls.abort("Can't delete %s: %s", short(path), e, fatal=fatal)
 
     @classmethod
-    def make_executable(cls, path):
+    def make_executable(cls, path, fatal=True):
         """
         :param str path: chmod file with 'path' as executable
+        :param bool fatal: Abort execution on failure if True
+        :return int: 1 if effectively done, 0 if no-op, -1 on failure
         """
         if cls.is_executable(path):
-            return
+            return 0
 
         if cls.dryrun:
             cls.debug("Would make %s executable", short(path))
-            return
+            return 1
 
         if not os.path.exists(path):
-            cls.abort("%s does not exist, can't make it executable", short(path))
+            return cls.abort("%s does not exist, can't make it executable", short(path), fatal=fatal)
 
         try:
             os.chmod(path, 0o755)  # nosec
+            return 1
 
         except Exception as e:
-            cls.error("Can't chmod %s: %s", short(path), e)
-            raise
+            return cls.abort("Can't chmod %s: %s", short(path), e, fatal=fatal)
 
     @classmethod
     def is_executable(cls, path):
@@ -461,23 +520,6 @@ class system:
         :return bool: True if file exists and is executable
         """
         return path and os.path.isfile(path) and os.access(path, os.X_OK)
-
-    @classmethod
-    def write_contents(cls, path, contents):
-        """
-        :param str path: Path to file
-        :param str contents: Contents to write
-        """
-        if not path or not contents:
-            return
-
-        if cls.dryrun:
-            cls.debug("Would write %s bytes to %s", len(contents), short(path))
-
-        cls.ensure_folder(path)
-        cls.debug("Writing %s bytes to %s", len(contents), short(path))
-        with open(path, "wt") as fh:
-            fh.write(contents)
 
     @classmethod
     def virtualenv_path(cls):
@@ -489,15 +531,17 @@ class system:
         return cls._virtualenv_path
 
     @classmethod
-    def create_venv(cls, folder, python=None):
+    def create_venv(cls, folder, python=None, fatal=True):
         """
         :param str folder: Create a venv in 'folder'
         :param str|None python: Python interpreter to use (defaults to cls.python)
+        :param bool fatal: Abort execution on failure if True
+        :return int: 1 if effectively done, 0 if no-op, -1 on failure
         """
         venv = cls.virtualenv_path()
         if not venv:
-            cls.abort("Can't determine path to virtualenv.py")
-        cls.run_program(python or cls.python, venv, folder)
+            return cls.abort("Can't determine path to virtualenv.py", fatal=fatal)
+        return cls.run_program(python or cls.python, venv, folder, fatal=fatal)
 
     @classmethod
     def which(cls, program):
@@ -532,9 +576,7 @@ class system:
             return message
 
         if not full_path:
-            if fatal:
-                cls.abort("%s is not installed", program)
-            return None
+            return cls.abort("%s is not installed", program, fatal=fatal, return_value=None)
 
         stdout = kwargs.pop("stdout", subprocess.PIPE)
         stderr = kwargs.pop("stderr", subprocess.PIPE)
@@ -550,15 +592,13 @@ class system:
                 error = error.strip()
 
             if p.returncode:
-                if fatal:
-                    info = ": %s\n%s" % (error, output) if output or error else ""
-                    cls.abort("%s exited with code %s%s", program, p.returncode, info)
-                return None
+                info = ": %s\n%s" % (error, output) if output or error else ""
+                return cls.abort("%s exited with code %s%s", program, p.returncode, info, fatal=fatal, return_value=None)
 
             return output
 
         except Exception as e:
-            cls.abort("%s failed: %s", os.path.basename(program), e, exc_info=e)
+            return cls.abort("%s failed: %s", os.path.basename(program), e, exc_info=e, fatal=fatal, return_value=None)
 
     @classmethod
     def quoted(cls, text):
@@ -726,7 +766,7 @@ class PingLock:
 
     def touch(self):
         """Touch the .ping file"""
-        system.touch(self.ping)
+        system.write_contents(self.ping, "")
 
     def __enter__(self):
         """

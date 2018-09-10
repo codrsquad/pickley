@@ -49,7 +49,7 @@ def test_delivery(temp_base):
     assert system.is_executable(target)
 
     # Cover edge case for make_executable():
-    system.make_executable(target)
+    assert system.make_executable(target) == 0
     assert system.is_executable(target)
 
 

@@ -202,11 +202,11 @@ class JsonSerializable:
             return
         try:
             path = system.resolved_path(path)
-            system.ensure_folder(path)
+            system.ensure_folder(path, fatal=False)
             if system.dryrun:
                 system.debug("Would save %s", short(path))
             else:
-                with open(path, "wt") as fh:
+                with open(path, "w") as fh:
                     json.dump(data, fh, sort_keys=True, indent=2)
 
         except Exception as e:
@@ -224,7 +224,7 @@ class JsonSerializable:
             return default
 
         try:
-            with open(path, "rt") as fh:
+            with open(path, "r") as fh:
                 data = json.load(fh)
                 if default is not None and type(data) != type(default):
                     system.debug("Wrong type %s for %s, expecting %s" % (type(data), short(path), type(default)))

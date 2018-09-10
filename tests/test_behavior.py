@@ -3,7 +3,7 @@ import sys
 import time
 
 import pytest
-from mock import patch
+from mock import mock_open, patch
 
 from pickley import CaptureOutput, ImplementationMap, PingLock, PingLockException, python_interpreter, relocate_venv_file, system
 from pickley.install import add_paths, PexRunner, Runner
@@ -32,8 +32,8 @@ def test_file_operations(temp_base):
         system.copy_file("foo", "bar")
         system.move_file("foo", "bar")
         system.delete_file("foo")
-        system.make_executable("foo")
-        system.write_contents("foo", "bar")
+        assert system.make_executable("foo") == 1
+        assert system.write_contents("foo", "bar", verbose=True) == 1
         assert "Would copy foo -> bar" in logged
         assert "Would move foo -> bar" in logged
         assert "Would delete foo" in logged
@@ -41,8 +41,9 @@ def test_file_operations(temp_base):
         assert "Would write 3 bytes to foo" in logged
 
     work = os.path.join(temp_base, "work")
-    system.ensure_folder(work, folder=True)
+    assert system.ensure_folder(work, folder=True) == 1
     with CaptureOutput() as logged:
+        assert system.write_contents("foo2", "bar", verbose=True) == 1
         with PingLock(work, seconds=1) as lock:
             assert lock.is_young()
             with pytest.raises(PingLockException):
@@ -50,34 +51,61 @@ def test_file_operations(temp_base):
                     pass
             time.sleep(1.2)
             assert not lock.is_young()
+        assert "Writing 3 bytes to foo2" in logged
 
 
-def test_edge_cases():
+def test_edge_cases(temp_base):
     assert not system.resolved_path("")
 
-    assert system.write_contents("", "") is None
+    assert system.write_contents("", "") == 0
 
     assert system.which("") is None
     assert system.which(INEXISTING_FILE) is None
     assert system.which("foo/bar/baz/not/a/program") is None
     assert system.which("bash")
 
-    system.ensure_folder("")
+    assert system.ensure_folder("") == 0
 
     assert "does not exist" in verify_abort(system.move_file, INEXISTING_FILE, "bar")
 
-    assert "Can't create folder" in verify_abort(system.ensure_folder, INEXISTING_FILE, exception=Exception)
+    assert "Can't create folder" in verify_abort(system.ensure_folder, INEXISTING_FILE)
+
+    assert system.copy_file("", "") == 0
+    assert system.move_file("", "") == 0
 
     assert system.delete_file("/dev/null", fatal=False) == -1
-    assert "Can't delete" in verify_abort(system.delete_file, "/dev/null", exception=Exception)
-    assert "does not exist" in verify_abort(system.make_executable, INEXISTING_FILE)
-    assert "Can't chmod" in verify_abort(system.make_executable, "/dev/null", exception=Exception)
+    assert system.delete_file("/dev/null", fatal=False) == -1
+    assert system.make_executable(INEXISTING_FILE, fatal=False) == -1
+    assert system.make_executable("/dev/null", fatal=False) == -1
 
     assert "is not installed" in verify_abort(system.run_program, INEXISTING_FILE)
     assert "exited with code" in verify_abort(system.run_program, "ls", INEXISTING_FILE)
 
     assert system.run_program(INEXISTING_FILE, fatal=False) is None
     assert system.run_program("ls", INEXISTING_FILE, fatal=False) is None
+
+    # Can't copy non-existing file
+    with patch("os.path.exists", return_value=False):
+        assert system.copy_file("foo", "bar", fatal=False) == -1
+
+    # Can't read
+    with patch("os.path.isfile", return_value=True):
+        with patch("os.path.getsize", return_value=10):
+            with patch("pickley.open", mock_open()) as m:
+                m.side_effect = Exception
+                assert "Can't read" in verify_abort(relocate_venv_file, "foo", "source", "dest")
+
+    # Can't write
+    with patch("pickley.open", mock_open()) as m:
+        m.return_value.write.side_effect = Exception
+        assert "Can't write" in verify_abort(system.write_contents, "foo", "test")
+
+    # Copy/move crash
+    with patch("os.path.exists", return_value=True):
+        with patch("shutil.copy", side_effect=Exception):
+                assert system.copy_file("foo", "bar", fatal=False) == -1
+        with patch("shutil.move", side_effect=Exception):
+            assert system.move_file("foo", "bar", fatal=False) == -1
 
 
 @patch("subprocess.Popen", side_effect=Exception)
@@ -133,11 +161,6 @@ def test_add_paths():
     assert result.get("FOO") == "bar:baz:."
 
 
-def failed_run(*_):
-    system.error("Failed run")
-    sys.exit(1)
-
-
 def test_pex_runner(temp_base):
     with CaptureOutput(dryrun=True):
         p = PexRunner(os.path.join(temp_base, "foo"))
@@ -152,47 +175,15 @@ def test_pex_runner(temp_base):
         p.effective_run = lambda *_: 1
         assert p.run() is None
 
-        p.effective_run = failed_run
+        p.effective_run = lambda *_: system.abort("Failed run")
         system.dryrun = False
         assert "Failed run" in p.run()
 
 
-def test_bad_copy(temp_base):
-    assert "does not exist, can't copy" in verify_abort(system.copy_file, "foo", "bar")
-
-
-def io_write_fail(name, mode, *_):
-    if mode == "rt":
-        return open(name, mode)
-    raise Exception("oops")
-
-
-@patch("io.open", side_effect=Exception("utf-8"))
-def test_relocate_venv_non_utf(_, temp_base):
-    system.touch("foo")
-    assert relocate_venv_file("foo", "source", "dest") is False
-
-
-@patch("io.open", side_effect=Exception)
-def test_relocate_venv_read_crash(_, temp_base):
-    system.touch("foo")
-    assert "Can't relocate" in verify_abort(relocate_venv_file, "foo", "source", "dest")
-
-
-@patch("io.open", side_effect=io_write_fail)
-def test_relocate_venv_write_crash(_, temp_base):
-    system.write_contents("foo", "line 1: source\nline 2\n")
-    assert "Can't relocate" in verify_abort(relocate_venv_file, "foo", "source", "dest")
-
-
 def test_relocate_venv_file_successfully(temp_base):
-    lines = "line 1: source\nline 2\n"
-    system.write_contents("foo", lines)
-    relocate_venv_file("foo", "source", "dest")
-
-    expected = ["line 1: dest\n", "line 2\n"]
-    with open("foo", "rt") as fh:
-        assert fh.readlines() == expected
+    system.write_contents("foo", "line 1: source\nline 2\n")
+    assert relocate_venv_file("foo", "source", "dest", fatal=False) == 1
+    assert system.get_lines("foo") == ["line 1: dest\n", "line 2\n"]
 
 
 def test_find_venvs():
