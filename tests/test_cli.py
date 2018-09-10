@@ -6,7 +6,7 @@ from mock import patch
 from pickley import PingLockException, short, system
 from pickley.cli import main
 from pickley.package import PACKAGERS
-from pickley.settings import SETTINGS
+from pickley.settings import JsonSerializable, SETTINGS
 from pickley.uninstall import find_uninstaller
 
 from .conftest import PROJECT
@@ -134,10 +134,12 @@ def test_install(temp_base):
     expect_failure("install six", "'six' is not a CLI", base=temp_base)
 
     # Install tox, but add a few files + a bogus previous entry point to test cleanup
+    SETTINGS.cli.contents["install_timeout"] = 600
     system.touch(SETTINGS.base.full_path("tox-foo"))
     system.touch(SETTINGS.meta.full_path("tox", "tox-0.0.0"))
-    system.write_contents(SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-foo"]\n')
-    expect_success("--delivery wrap install tox", "Installed tox", "tox-foo", "tox-0.0.0", base=temp_base)
+    system.touch(SETTINGS.meta.full_path("tox", "tox-foo"))
+    system.write_contents(SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-foo", "tox-bar"]\n')
+    expect_success("--delivery wrap install tox", "Installed tox", "tox-foo", base=temp_base)
     assert system.is_executable(tox)
     output = run_program(tox, "--version")
     assert "tox" in output
@@ -150,7 +152,9 @@ def test_install(temp_base):
     system.delete_file(SETTINGS.meta.full_path("tox", ".ping"))
     expect_success("auto-upgrade tox", "already installed", base=temp_base)
 
-    expect_success("install tox", "already installed", base=temp_base)
+    # Verify that older versions and removed entry-points do get cleaned up
+    JsonSerializable.save_json({"install_timeout": 0}, "custom-timeout.json")
+    expect_success("-ccustom-timeout.json install tox", "already installed", "tox/tox-foo", "tox/tox-0.0.0", base=temp_base)
     expect_success("check", "tox", "is installed", base=temp_base)
     expect_success("check --verbose", "tox", "is installed (as venv wrap, channel: ", base=temp_base)
 

@@ -5,7 +5,7 @@ from mock import patch
 
 from pickley import CaptureOutput, system
 from pickley.install import PexRunner
-from pickley.package import DELIVERERS, Packager, PACKAGERS, VersionMeta
+from pickley.package import DELIVERERS, find_prefix, Packager, PACKAGERS, VersionMeta
 from pickley.settings import Definition, SETTINGS
 
 from .conftest import INEXISTING_FILE, verify_abort
@@ -60,6 +60,8 @@ def test_bogus_delivery():
 
 
 def test_version_meta():
+    assert find_prefix({}, "") is None
+
     v = VersionMeta("foo")
     v2 = VersionMeta("foo")
     assert v.equivalent(v2)

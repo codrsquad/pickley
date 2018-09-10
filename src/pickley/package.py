@@ -55,6 +55,22 @@ fi
 """ % pickley.WRAPPER_MARK
 
 
+def find_prefix(prefixes, text):
+    """
+    :param dict prefixes: Prefixes available
+    :param str text: Text to examine
+    :return str|None: Longest prefix found
+    """
+    if not text or not prefixes:
+        return None
+    candidate = None
+    for name in prefixes:
+        if name and text.startswith(name):
+            if not candidate or len(name) > len(candidate):
+                candidate = name
+    return candidate
+
+
 class DeliveryMethod:
     """
     Various implementation of delivering the actual executables
@@ -326,6 +342,10 @@ class Packager(object):
         return SETTINGS.meta.full_path(self.name, ".entry-points.json")
 
     @property
+    def removed_entry_points_path(self):
+        return SETTINGS.meta.full_path(self.name, ".removed-entry-points.json")
+
+    @property
     def entry_points(self):
         """
         :return list|None: Determined entry points from produced wheel, if available
@@ -469,12 +489,13 @@ class Packager(object):
             intent = "bootstrap" if bootstrap else "install"
             self.refresh_desired()
             if not self.desired.valid:
-                system.abort("Can't %s %s: %s", intent, self.name, self.desired.problem)
+                return system.abort("Can't %s %s: %s", intent, self.name, self.desired.problem)
 
             self.refresh_current()
             if not force and self.current.equivalent(self.desired):
                 if not bootstrap:
                     system.info(self.desired.representation(verbose=True, note="is already installed"))
+                    self.cleanup()
                 return
 
             system.setup_audit_log(SETTINGS.meta)
@@ -482,27 +503,80 @@ class Packager(object):
                 system.debug("Bootstrapping %s with %s", system.PICKLEY, self.registered_name)
 
             prev_entry_points = self.entry_points
-            installed = self.effective_install(self.desired.version)
-
-            target = SETTINGS.meta.full_path(self.name)
-            if os.path.isdir(target):
-                for name in os.listdir(target):
-                    if not name.startswith("."):
-                        fpath = os.path.join(target, name)
-                        if fpath not in installed:
-                            system.delete_file(fpath)
+            self.effective_install(self.desired.version)
 
             new_entry_points = self.entry_points
-            for name in prev_entry_points:
-                if name not in new_entry_points:
-                    # Entry point was removed by package
-                    system.delete_file(SETTINGS.base.full_path(name))
+            removed = set(prev_entry_points).difference(new_entry_points)
+            if removed:
+                old_removed = JsonSerializable.get_json(self.removed_entry_points_path, default=[])
+                removed = sorted(removed.union(old_removed))
+                JsonSerializable.save_json(removed, self.removed_entry_points_path)
+
+            # Delete wrapper/symlinks of removed entry points immediately
+            for name in removed:
+                system.delete_file(SETTINGS.base.full_path(name))
+
+            self.cleanup()
 
             self.current.set_from(self.desired)
             self.current.save()
 
             msg = "Would %s" % intent if system.dryrun else "%sed" % (intent.title())
             system.info("%s %s", msg, self.desired.representation(verbose=True))
+
+    def cleanup(self):
+        """Cleanup older installs"""
+        cutoff = time.time() - SETTINGS.install_timeout
+        folder = SETTINGS.meta.full_path(self.name)
+
+        removed_entry_points = JsonSerializable.get_json(self.removed_entry_points_path, default=[])
+
+        prefixes = {None: [], self.name: []}
+        for name in self.entry_points:
+            prefixes[name] = []
+        for name in removed_entry_points:
+            prefixes[name] = []
+
+        if os.path.isdir(folder):
+            for name in os.listdir(folder):
+                if name.startswith("."):
+                    continue
+                target = find_prefix(prefixes, name)
+                if target in prefixes:
+                    fpath = os.path.join(folder, name)
+                    prefixes[target].append((os.path.getmtime(fpath), fpath))
+
+        # Sort each by last modified timestamp
+        for target, cleanable in prefixes.items():
+            prefixes[target] = sorted(cleanable, reverse=True)
+
+        rem_cleaned = 0
+        for target, cleanable in prefixes.items():
+            if not cleanable:
+                if target in removed_entry_points:
+                    # No cleanable found for a removed entry-point -> count as cleaned
+                    rem_cleaned += 1
+                continue
+
+            if target not in removed_entry_points:
+                if cleanable[-1][0] <= cutoff:
+                    # Latest is old enough now, cleanup all except latest
+                    cleanable = cleanable[1:]
+                else:
+                    # Latest is too young, keep the last 2
+                    cleanable = cleanable[2:]
+            elif cleanable[-1][0] <= cutoff:
+                # Delete all removed entry points when old enough
+                rem_cleaned += 1
+            else:
+                # Removed entry point still too young, keep latest
+                cleanable = cleanable[1:]
+
+            for _, path in cleanable:
+                system.delete_file(path)
+
+        if rem_cleaned >= len(removed_entry_points):
+            system.delete_file(self.removed_entry_points_path)
 
     def effective_install(self, version):
         """
