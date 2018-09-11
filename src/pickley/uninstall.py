@@ -1,6 +1,6 @@
 import os
 
-from pickley import short, system, WRAPPER_MARK
+from pickley import short, system
 from pickley.settings import SETTINGS
 
 
@@ -32,7 +32,7 @@ def find_uninstaller(target):
         return system.delete_file
 
     content = system.get_lines(target, fatal=False, quiet=True)
-    if content and any(line.startswith(WRAPPER_MARK) for line in content):
+    if content and any(line.startswith(system.WRAPPER_MARK) for line in content):
         # pickley's own wrapper also fine to simply delete
         return system.delete_file
 
@@ -75,7 +75,7 @@ def brew_uninstall(target, fatal=False):
     if not brew or not name:
         return -1
 
-    output = system.run_program(brew, "uninstall", "-f", name, fatal=False, dryrun=system.dryrun, logger=system.info)
+    output = system.run_program(brew, "uninstall", "-f", name, fatal=False, dryrun=system.DRYRUN, logger=system.info)
     if output is None:
         # Failed brew uninstall
         return system.abort("'%s uninstall %s' failed, please check", brew, name, fatal=fatal)

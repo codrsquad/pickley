@@ -25,13 +25,13 @@ def bootstrap(testing=False):
     however there are some edge cases where running pip from a pex-packaged CLI doesn't work very well
     So, first thing we do is re-package ourselves as a venv on the target machine
     """
-    if not testing and (system.quiet or getattr(sys, "real_prefix", None)):
+    if not testing and (system.State.quiet or getattr(sys, "real_prefix", None)):
         # Don't bootstrap in quiet mode, or if we're running from a venv already
         return
 
-    p = PACKAGERS.get(system.venv_packager)(system.PICKLEY)
+    p = PACKAGERS.get(system.VENV_PACKAGER)(system.PICKLEY)
     p.refresh_current()
-    if p.current.packager == system.venv_packager:
+    if p.current.packager == system.VENV_PACKAGER:
         # We're already packaged correctly, no need to bootstrap
         return
 
@@ -62,8 +62,8 @@ def main(debug, quiet, dryrun, base, config, python, delivery, packager):
         debug = True
     if debug:
         quiet = False
-    system.dryrun = bool(dryrun)
-    system.quiet = bool(quiet)
+    system.DRYRUN = bool(dryrun)
+    system.State.quiet = bool(quiet)
 
     if base:
         base = system.resolved_path(base)
@@ -192,7 +192,7 @@ def uninstall(force, packages):
             system.info("Nothing to uninstall for %s" % name)
             continue
 
-        message = "Would uninstall" if system.dryrun else "Uninstalled"
+        message = "Would uninstall" if system.DRYRUN else "Uninstalled"
         message = "%s %s" % (message, name)
         if ep_uninstalled > 1:
             message += " (%s entry points)" % ep_uninstalled
@@ -270,7 +270,7 @@ def settings(diagnostics):
     Show settings
     """
     if diagnostics:
-        system.info("python interpreter: %s", short(system.python))
+        system.info("python interpreter: %s", short(system.PYTHON))
         system.info("sys.executable    : %s", short(sys.executable))
         system.info("sys.prefix        : %s", short(getattr(sys, "prefix", None)))
         system.info("sys.real_prefix   : %s", short(getattr(sys, "real_prefix", None)))

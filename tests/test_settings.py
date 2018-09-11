@@ -103,14 +103,14 @@ def test_custom_settings():
     assert s.resolved_value("delivery", package_name="tox") == "venv"
     assert s.resolved_value("delivery", package_name="virtualenv") == "wrap"
 
-    assert s.resolved_value("packager", package_name="tox") == system.venv_packager
+    assert s.resolved_value("packager", package_name="tox") == system.VENV_PACKAGER
     assert s.resolved_value("packager", package_name="virtualenv") == "pex"
 
     assert s.resolved_packages("bundle:dev") == ["tox", "twine"]
     assert s.get_value("bundle.dev") == ["tox", "twine"]
     assert s.get_value("bundle.dev2") == ["tox", "twine", "pipenv"]
 
-    expected = EXPECTED_REPRESENTATION.format(base=short(s.base.path), python=short(system.python)).strip()
+    expected = EXPECTED_REPRESENTATION.format(base=short(s.base.path), python=short(system.PYTHON)).strip()
     assert s.represented().strip() == expected
 
     s.cli.contents["packager"] = "copy"
@@ -126,21 +126,21 @@ def test_custom_settings():
 
 
 def test_settings_base():
-    old_program = system.pickley_program_path
+    old_program = system.PICKLEY_PROGRAM_PATH
 
     # Verify that .pickley/... part of base gets ignored
     base = sample_path("foo")
-    system.pickley_program_path = os.path.join(base, DOT_PICKLEY, "pickley-1.0.0", "bin", "pickley")
+    system.PICKLEY_PROGRAM_PATH = os.path.join(base, DOT_PICKLEY, "pickley-1.0.0", "bin", "pickley")
     s = Settings()
     assert s.base.path == base
 
     # Convenience dev case
     base = sample_path(".venv", "bin", "pickley")
-    system.pickley_program_path = base
+    system.PICKLEY_PROGRAM_PATH = base
     s = Settings()
     assert s.base.path == sample_path(".venv", "root")
 
-    system.pickley_program_path = old_program
+    system.PICKLEY_PROGRAM_PATH = old_program
 
 
 def test_same_type():

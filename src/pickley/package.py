@@ -3,8 +3,7 @@ import sys
 import time
 import zipfile
 
-import pickley
-from pickley import short, system
+from pickley import __version__, short, system
 from pickley.context import ImplementationMap
 from pickley.delivery import DELIVERERS
 from pickley.lock import PingLock, PingLockException
@@ -72,11 +71,11 @@ class VersionMeta(JsonSerializable):
 
     def _update_dynamic_fields(self):
         """Update dynamically determined fields"""
-        if self._suffix != system.latest_channel:
+        if self._suffix != system.LATEST_CHANNEL:
             self.packager = PACKAGERS.resolved_name(self._name)
             self.delivery = DELIVERERS.resolved_name(self._name)
             self.python = SETTINGS.resolved_value("python", self._name)
-        self.pickley = pickley.__version__
+        self.pickley = __version__
         self.timestamp = int(time.time())
 
     def representation(self, verbose=False, note=None):
@@ -202,7 +201,7 @@ class Packager(object):
         self.name = name
         self._entry_points = None
         self.current = VersionMeta(self.name, "current")
-        self.latest = VersionMeta(self.name, system.latest_channel)
+        self.latest = VersionMeta(self.name, system.LATEST_CHANNEL)
         self.desired = VersionMeta(self.name)
         self.dist_folder = SETTINGS.meta.full_path(self.name, ".work")
         self.build_folder = os.path.join(self.dist_folder, "build")
@@ -227,7 +226,7 @@ class Packager(object):
         if self._entry_points is None:
             self._entry_points = JsonSerializable.get_json(self.entry_points_path)
             if self._entry_points is None:
-                return [self.name] if system.dryrun else []
+                return [self.name] if system.DRYRUN else []
         return self._entry_points
 
     def refresh_entry_points(self, folder, version):
@@ -235,7 +234,7 @@ class Packager(object):
         :param str folder: Folder where to look for entry points
         :param str version: Version of package
         """
-        if system.dryrun:
+        if system.DRYRUN:
             return
         self._entry_points = self.get_entry_points(folder, version)
         JsonSerializable.save_json(self._entry_points, self.entry_points_path)
@@ -278,7 +277,7 @@ class Packager(object):
             return
 
         version = latest_pypi_version(SETTINGS.index, self.name)
-        self.latest.set_version(version, system.latest_channel, SETTINGS.index or "pypi")
+        self.latest.set_version(version, system.LATEST_CHANNEL, SETTINGS.index or "pypi")
         if version and not version.startswith("can't"):
             self.latest.save()
 
@@ -293,7 +292,7 @@ class Packager(object):
             self.desired.set_version(v.value, channel.value, str(v))
             return
 
-        if channel.value == system.latest_channel:
+        if channel.value == system.LATEST_CHANNEL:
             self.refresh_latest()
             self.desired.set_from(self.latest)
             return
@@ -395,7 +394,7 @@ class Packager(object):
             self.current.set_from(self.desired)
             self.current.save()
 
-            msg = "Would %s" % intent if system.dryrun else "%sed" % (intent.title())
+            msg = "Would %s" % intent if system.DRYRUN else "%sed" % (intent.title())
             system.info("%s %s", msg, self.desired.representation(verbose=True))
 
     def cleanup(self):

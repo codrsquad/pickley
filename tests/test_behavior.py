@@ -5,7 +5,7 @@ import time
 import pytest
 from mock import mock_open, patch
 
-from pickley import python_interpreter, relocate_venv_file, system
+from pickley import python_interpreter, system
 from pickley.context import CaptureOutput, ImplementationMap
 from pickley.lock import PingLock, PingLockException
 from pickley.run import add_paths, PexRunner, Runner
@@ -93,12 +93,12 @@ def test_edge_cases(temp_base):
     # Can't read
     with patch("os.path.isfile", return_value=True):
         with patch("os.path.getsize", return_value=10):
-            with patch("pickley.open", mock_open()) as m:
+            with patch("pickley.system.open", mock_open()) as m:
                 m.side_effect = Exception
-                assert "Can't read" in verify_abort(relocate_venv_file, "foo", "source", "dest")
+                assert "Can't read" in verify_abort(system.relocate_venv_file, "foo", "source", "dest")
 
     # Can't write
-    with patch("pickley.open", mock_open()) as m:
+    with patch("pickley.system.open", mock_open()) as m:
         m.return_value.write.side_effect = Exception
         assert "Can't write" in verify_abort(system.write_contents, "foo", "test")
 
@@ -178,13 +178,13 @@ def test_pex_runner(temp_base):
         assert p.run() is None
 
         p.effective_run = lambda *_: system.abort("Failed run")
-        system.dryrun = False
+        system.DRYRUN = False
         assert "Failed run" in p.run()
 
 
 def test_relocate_venv_file_successfully(temp_base):
     system.write_contents("foo", "line 1: source\nline 2\n")
-    assert relocate_venv_file("foo", "source", "dest", fatal=False) == 1
+    assert system.relocate_venv_file("foo", "source", "dest", fatal=False) == 1
     assert system.get_lines("foo") == ["line 1: dest\n", "line 2\n"]
 
 

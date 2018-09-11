@@ -52,7 +52,7 @@ import os
 
 import six
 
-from pickley import FolderBase, short, system
+from pickley import short, system
 
 
 DOT_PICKLEY = ".pickley"
@@ -72,9 +72,9 @@ def same_type(t1, t2):
 def meta_folder(path):
     """
     :param str path: Path to folder to use
-    :return FolderBase: Associated object
+    :return system.FolderBase: Associated object
     """
-    return FolderBase(os.path.join(path, DOT_PICKLEY), name="meta")
+    return system.FolderBase(os.path.join(path, DOT_PICKLEY), name="meta")
 
 
 def add_representation(result, data, indent=""):
@@ -203,7 +203,7 @@ class JsonSerializable:
         try:
             path = system.resolved_path(path)
             system.ensure_folder(path, fatal=False)
-            if system.dryrun:
+            if system.DRYRUN:
                 system.debug("Would save %s", short(path))
             else:
                 with open(path, "w") as fh:
@@ -409,11 +409,11 @@ class Settings:
         self.defaults = SettingsFile(self, name="defaults")
         self.defaults.set_contents(
             default=dict(
-                channel=system.latest_channel,
-                delivery=system.default_delivery,
+                channel=system.LATEST_CHANNEL,
+                delivery=system.DEFAULT_DELIVERY,
                 install_timeout=DEFAULT_INSTALL_TIMEOUT,
-                packager=system.venv_packager,
-                python=system.python,
+                packager=system.VENV_PACKAGER,
+                python=system.PYTHON,
                 version_check_delay=DEFAULT_VERSION_CHECK_DELAY,
             ),
         )
@@ -439,12 +439,12 @@ class Settings:
 
     def set_base(self, base):
         """
-        :param str|FolderBase|None base: Folder to use as base for installations
+        :param str|system.FolderBase|None base: Folder to use as base for installations
         """
         if not base:
             base = os.environ.get("PICKLEY_ROOT")
         if not base:
-            base = system.parent_folder(system.pickley_program_path)
+            base = system.parent_folder(system.PICKLEY_PROGRAM_PATH)
             if DOT_PICKLEY in base:
                 # Don't consider bootstrapped .pickley/... as installation base
                 i = base.index(DOT_PICKLEY)
@@ -454,10 +454,10 @@ class Settings:
                 base = system.parent_folder(base)
                 base = os.path.join(base, "root")
 
-        if isinstance(base, FolderBase):
+        if isinstance(base, system.FolderBase):
             self.base = base
         else:
-            self.base = FolderBase(base, name="base")
+            self.base = system.FolderBase(base, name="base")
 
         self.meta = meta_folder(self.base.path)
 

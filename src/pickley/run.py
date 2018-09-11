@@ -41,7 +41,7 @@ class Runner:
     def run(self, *args):
         args = system.flattened([self.prelude_args(), args], unique=False)
 
-        if system.dryrun:
+        if system.DRYRUN:
             system.debug("Would run: %s %s", self.name, system.represented_args(args))
             return None
 
@@ -146,7 +146,7 @@ class PexRunner(Runner):
         python = self.resolved_python(package_name)
         args = ["-c%s" % script_name, "-o%s" % destination, "%s==%s" % (package_name, version)]
 
-        # Note: 'python.source' being 'SETTINGS.defaults' is the same as it being 'system.python'
+        # Note: 'python.source' being 'SETTINGS.defaults' is the same as it being 'system.PYTHON'
         # Writing it this way is easier to change in tests
         explicit_python = python and python.value and python.source is not SETTINGS.defaults
         if explicit_python:

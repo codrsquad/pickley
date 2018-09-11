@@ -47,7 +47,7 @@ def test_bootstrap_in_progress(_):
 def test_relaunch(run_program):
     with pytest.raises(SystemExit):
         system.relaunch()
-    # Restore system.output
-    system.output = True
+    # Restore system.State.output
+    system.State.output = True
     assert run_program.call_count == 1
     assert list(run_program.call_args_list[0][0]) == sys.argv

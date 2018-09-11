@@ -40,7 +40,7 @@ def test_delivery(temp_base):
     assert os.path.islink(target)
 
     # Test wrapper
-    p = PACKAGERS.get(system.venv_packager)("tox")
+    p = PACKAGERS.get(system.VENV_PACKAGER)("tox")
     assert str(p) == "venv tox"
     target = os.path.join(temp_base, "tox")
     source = os.path.join(temp_base, "tox-source")
@@ -55,7 +55,7 @@ def test_delivery(temp_base):
 
 
 def test_bogus_delivery():
-    deliver = DELIVERERS.get(system.default_delivery)("foo")
+    deliver = DELIVERERS.get(system.DEFAULT_DELIVERY)("foo")
     assert "does not exist" in verify_abort(deliver.install, None, INEXISTING_FILE)
     assert "Failed symlink" in verify_abort(deliver.install, None, __file__)
 
@@ -158,13 +158,13 @@ def get_definition(key, package_name=None):
     if key == "delivery":
         return Definition("wrap", "test", key)
     if key == "packager":
-        return Definition(system.venv_packager, "test", key)
+        return Definition(system.VENV_PACKAGER, "test", key)
     return None
 
 
 @patch("pickley.settings.SettingsFile.get_definition", side_effect=get_definition)
 def test_channel(_):
-    p = PACKAGERS.get(system.venv_packager)("foo")
+    p = PACKAGERS.get(system.VENV_PACKAGER)("foo")
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo 1.0 (as venv wrap, channel: stable, source: test:channel.stable.foo)"
 

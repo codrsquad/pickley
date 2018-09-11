@@ -27,7 +27,7 @@ def run_cli(args, **kwargs):
     result = runner.invoke(main, args=args)
     if "--dryrun" in args:
         # Restore default non-dryrun state after a --dryrun test
-        system.dryrun = False
+        system.DRYRUN = False
     return result
 
 
@@ -75,7 +75,7 @@ def test_version():
 
 
 def test_settings():
-    expect_success("settings -d", "settings:", "python interpreter: %s" % short(system.python), "base: %s" % short(SETTINGS.base.path))
+    expect_success("settings -d", "settings:", "python interpreter: %s" % short(system.PYTHON), "base: %s" % short(SETTINGS.base.path))
 
 
 def run_program(program, *args):
@@ -159,7 +159,7 @@ def test_install(temp_base):
     expect_success("check", "tox", "is installed", base=temp_base)
     expect_success("check --verbose", "tox", "is installed (as venv wrap, channel: ", base=temp_base)
 
-    p = PACKAGERS.get(system.venv_packager)("tox")
+    p = PACKAGERS.get(system.VENV_PACKAGER)("tox")
     p.refresh_latest()
     p.latest.version = "10000.0"
     p.latest.save()

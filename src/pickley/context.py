@@ -158,7 +158,7 @@ class CaptureOutput:
         logging.root.handlers = [self.handler]
 
         if self.dryrun is not None:
-            (system.dryrun, self.dryrun) = (bool(self.dryrun), bool(system.dryrun))
+            (system.DRYRUN, self.dryrun) = (bool(self.dryrun), bool(system.DRYRUN))
 
         return self
 
@@ -180,7 +180,7 @@ class CaptureOutput:
                 os.environ[key] = value
 
         if self.dryrun is not None:
-            system.dryrun = self.dryrun
+            system.DRYRUN = self.dryrun
 
     def __contains__(self, item):
         return item is not None and item in str(self)

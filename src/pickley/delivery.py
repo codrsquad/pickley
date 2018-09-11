@@ -1,6 +1,5 @@
 import os
 
-import pickley
 from pickley import short, system
 from pickley.context import ImplementationMap
 from pickley.lock import PingLock
@@ -25,7 +24,7 @@ else
     echo "{pickley} install -f {name}"
     exit 1
 fi
-""" % pickley.WRAPPER_MARK
+""" % system.WRAPPER_MARK
 
 # Specific wrapper for pickley itself (better handling bootstrap)
 PICKLEY_WRAPPER = """
@@ -46,7 +45,7 @@ else
     echo curl -sLo {pickley} $url
     exit 1
 fi
-""" % pickley.WRAPPER_MARK
+""" % system.WRAPPER_MARK
 
 
 class DeliveryMethod:
@@ -65,7 +64,7 @@ class DeliveryMethod:
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
         system.delete_file(target)
-        if system.dryrun:
+        if system.DRYRUN:
             system.debug("Would %s %s (source: %s)", self.registered_name, short(target), short(source))
             return
 

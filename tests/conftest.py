@@ -13,7 +13,7 @@ TESTS = system.parent_folder(__file__)
 PROJECT = system.parent_folder(TESTS)
 INEXISTING_FILE = "/dev/null/foo/bar"
 
-system.testing = True
+system.State.testing = True
 
 
 def sample_path(*relative):
