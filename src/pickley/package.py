@@ -559,13 +559,13 @@ class Packager(object):
                 continue
 
             if target not in removed_entry_points:
-                if cleanable[-1][0] <= cutoff:
+                if cleanable[0][0] <= cutoff:
                     # Latest is old enough now, cleanup all except latest
                     cleanable = cleanable[1:]
                 else:
                     # Latest is too young, keep the last 2
                     cleanable = cleanable[2:]
-            elif cleanable[-1][0] <= cutoff:
+            elif cleanable[0][0] <= cutoff:
                 # Delete all removed entry points when old enough
                 rem_cleaned += 1
             else:
