@@ -4,7 +4,8 @@ from tempfile import mkdtemp
 
 import pytest
 
-from pickley import CaptureOutput, system
+from pickley import system
+from pickley.context import CaptureOutput
 from pickley.settings import SETTINGS
 
 

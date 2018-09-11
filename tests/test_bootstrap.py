@@ -4,8 +4,10 @@ import sys
 import pytest
 from mock import patch
 
-from pickley import CaptureOutput, PingLockException, system
+from pickley import system
 from pickley.cli import bootstrap
+from pickley.context import CaptureOutput
+from pickley.lock import PingLockException
 from pickley.settings import SETTINGS
 
 

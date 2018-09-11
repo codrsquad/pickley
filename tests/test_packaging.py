@@ -3,9 +3,10 @@ import time
 
 from mock import patch
 
-from pickley import CaptureOutput, system
-from pickley.install import PexRunner
+from pickley import system
+from pickley.context import CaptureOutput
 from pickley.package import DELIVERERS, find_prefix, Packager, PACKAGERS, VersionMeta
+from pickley.run import PexRunner
 from pickley.settings import Definition, SETTINGS
 
 from .conftest import INEXISTING_FILE, verify_abort

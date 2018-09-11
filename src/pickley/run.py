@@ -4,7 +4,8 @@ import os
 from pex.bin.pex import main as pex_main
 from pip._internal import main as pip_main
 
-from pickley import CaptureOutput, system
+from pickley import system
+from pickley.context import CaptureOutput
 from pickley.settings import SETTINGS
 
 

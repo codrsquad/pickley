@@ -5,8 +5,10 @@ import time
 import pytest
 from mock import mock_open, patch
 
-from pickley import CaptureOutput, ImplementationMap, PingLock, PingLockException, python_interpreter, relocate_venv_file, system
-from pickley.install import add_paths, PexRunner, Runner
+from pickley import python_interpreter, relocate_venv_file, system
+from pickley.context import CaptureOutput, ImplementationMap
+from pickley.lock import PingLock, PingLockException
+from pickley.run import add_paths, PexRunner, Runner
 from pickley.settings import Settings
 
 from .conftest import INEXISTING_FILE, PROJECT, verify_abort

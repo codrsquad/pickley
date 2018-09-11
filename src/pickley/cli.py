@@ -9,7 +9,9 @@ import sys
 
 import click
 
-from pickley import CurrentFolder, PingLock, PingLockException, short, system
+from pickley import short, system
+from pickley.context import CurrentFolder
+from pickley.lock import PingLock, PingLockException
 from pickley.package import DELIVERERS, PACKAGERS
 from pickley.settings import meta_folder, SETTINGS
 from pickley.uninstall import uninstall_existing

@@ -3,8 +3,9 @@ import os
 from click.testing import CliRunner
 from mock import patch
 
-from pickley import PingLockException, short, system
+from pickley import short, system
 from pickley.cli import main
+from pickley.lock import PingLockException
 from pickley.package import PACKAGERS
 from pickley.settings import JsonSerializable, SETTINGS
 from pickley.uninstall import find_uninstaller
