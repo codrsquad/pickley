@@ -1,10 +1,10 @@
-
 import os
+import time
 
 from pex.bin.pex import main as pex_main
 from pip._internal import main as pip_main
 
-from pickley import system
+from pickley import short, system
 from pickley.context import CaptureOutput
 from pickley.settings import SETTINGS
 
@@ -28,6 +28,96 @@ def add_paths(result, env_var, *paths):
             current.append(path)
     if added:
         result[env_var] = ":".join(current)
+
+
+class WorkingVenv:
+    """
+    Auto-create and manage a venv to run pip, wheel, pex etc from
+    Access is protected via a soft file lock
+    """
+    def __init__(self, timeout=5, max_lock_age=10, max_venv_age=10):
+        """
+        :param int timeout: Timeout in minutes after which to abort if venv lock could not be acquired
+        :param int max_lock_age: Age in minutes after which to consider existing lock as invalid
+        :param int max_venv_age: Age in days after which to automatically recreate the venv
+        """
+        self.timeout = timeout * 60
+        self.max_lock_age = max_lock_age * 60
+        self.max_venv_age = max_venv_age * 60 * 60
+        self.folder = SETTINGS.meta.full_path(".venv")
+        self.lock = SETTINGS.meta.full_path(".venv.pid")
+        self.bin_folder = os.path.join(self.folder, "bin")
+        self.python = os.path.join(self.bin_folder, "python")
+        self.pip = os.path.join(self.bin_folder, "pip")
+
+    def _ensure_venv(self):
+        """Ensure that venv is installed, or recreated if need be"""
+        age = system.file_age(self.python)
+        if age is not None and age < self.max_venv_age:
+            return
+        system.delete_file(self.folder)
+        system.create_venv(self.folder, python=SETTINGS.resolved_value("python"))
+
+    def _locked(self):
+        """
+        :return bool: True if lock is held by another process
+        """
+        age = system.file_age(self.lock)
+        if age is None or age > self.max_lock_age:
+            # File does not exist or too long since lock was acquired
+            return False
+
+        # Locked if pid stated in lock file is still valid
+        pid = system.to_int(system.first_line(self.lock))
+        return system.check_pid(pid)
+
+    def _pip_install(self, *args, **kwargs):
+        """Run 'pip install' with given args"""
+        system.run_program(self.pip, "install", "-i", SETTINGS.index, *args, **kwargs)
+
+    def _install_module(self, package_name, program):
+        """
+        :param str package_name: Pypi module to install in venv, if not already installed
+        :param str program: Full path to corresponding executable in this venv
+        """
+        if system.is_executable(program):
+            return
+        self._pip_install(package_name)
+
+    def run(self, package_name, *args, **kwargs):
+        """
+        Should be called while holding the soft file lock in context only
+
+        :param str package_name: Pypi package to which command being ran belongs to
+        :param args: Args to invoke program with
+        :param kwargs: Additional args, use program= if entry point differs from 'package_name'
+        """
+        program = kwargs.pop("program", package_name)
+        program = os.path.join(self.bin_folder, program)
+        self._install_module(package_name, program)
+        system.run_program(program, *args, **kwargs)
+
+    def __enter__(self):
+        """
+        Auto-create venv, with a soft file lock while we're running in context
+        """
+        cutoff = time.time() + self.timeout
+        while self._locked():
+            if time.time() > cutoff:
+                system.abort("Could not obtain lock on %s, please try again later" % short(self.folder))
+            time.sleep(1)
+
+        # We got the soft lock
+        system.write_contents(self.lock, "%s\n" % os.getpid())
+        self._ensure_venv()
+
+        return self
+
+    def __exit__(self, *_):
+        """
+        Release lock on venv
+        """
+        system.delete_file(self.lock)
 
 
 class Runner:

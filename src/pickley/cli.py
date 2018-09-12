@@ -91,6 +91,10 @@ def check(verbose, packages):
     """
     Check whether specified packages need an upgrade
     """
+    # from pickley.run import WorkingVenv
+    # with WorkingVenv() as venv:
+    #     venv.run("pex", "--help")
+    #     print()
     code = 0
     packages = SETTINGS.resolved_packages(packages) or SETTINGS.current_names()
     if not packages:

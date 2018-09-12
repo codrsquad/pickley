@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess  # nosec
 import sys
+import time
 from logging.handlers import RotatingFileHandler
 
 from pickley import decode, pickley_program_path, python_interpreter, short
@@ -143,6 +144,27 @@ def get_lines(path, max_size=8192, fatal=True, quiet=False):
         return abort("Can't read %s: %s", short(path), e, fatal=fatal, quiet=quiet, return_value=None)
 
 
+def file_age(path):
+    """
+    :param str path: Path to file
+    :return float|None: Age in seconds of file, if it exists
+    """
+    try:
+        return time.time() - os.path.getmtime(path)
+
+    except OSError:
+        return None
+
+
+def check_pid(pid):
+    """Check For the existence of a unix pid"""
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, TypeError):
+        return False
+
+
 def touch(path):
     """
     :param str path: Path to file to touch
@@ -213,7 +235,7 @@ def first_line(path):
     try:
         with io.open(path, "rt", errors="ignore") as fh:
             return fh.readline().strip()
-    except Exception:
+    except (IOError, TypeError):
         return None
 
 
@@ -584,7 +606,7 @@ def to_int(text, default=None):
     """
     try:
         return float(text)
-    except Exception:
+    except (TypeError, ValueError):
         return default
 
 
