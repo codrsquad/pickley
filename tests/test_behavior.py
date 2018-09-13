@@ -1,13 +1,29 @@
 import os
 import sys
 
+import pytest
 from mock import mock_open, patch
 
 from pickley import python_interpreter, system
 from pickley.context import CaptureOutput, ImplementationMap
+from pickley.lock import SharedVenv, SoftLock, SoftLockException
 from pickley.settings import Settings
 
 from .conftest import INEXISTING_FILE, PROJECT, verify_abort
+
+
+def test_lock(temp_base):
+    folder = os.path.join(temp_base, "foo")
+    with SoftLock(folder, timeout=10) as lock:
+        assert lock._locked()
+        with pytest.raises(SoftLockException):
+            with SoftLock(folder, timeout=0.01):
+                pass
+        system.delete_file(folder + ".lock")
+        assert not lock._locked()
+
+        with patch("pickley.system.virtualenv_path", return_value=None):
+            assert "Can't determine path to virtualenv.py" in verify_abort(SharedVenv, lock)
 
 
 def test_flattened():
@@ -42,6 +58,8 @@ def test_file_operations(temp_base):
 def test_edge_cases(temp_base):
     assert system.added_env_paths(dict(FOO="."), env=dict(FOO="bar:baz")) == dict(FOO="bar:baz:.")
 
+    assert system.check_pid(None) is False
+    assert system.check_pid("foo") is False
     with patch("os.kill", return_value=True):
         assert system.check_pid(5) is True
 
@@ -120,12 +138,11 @@ def test_real_run():
 
 
 def test_missing_implementation():
-    s = Settings()
-    m = ImplementationMap(s, "custom")
+    m = ImplementationMap("custom")
     m.register(ImplementationMap)
     assert len(m.names()) == 1
     assert "No custom type configured" in verify_abort(m.resolved, "foo")
-    s.cli.contents["custom"] = "bar"
+    system.SETTINGS.cli.contents["custom"] = "bar"
     assert "Unknown custom type" in verify_abort(m.resolved, "foo")
 
 

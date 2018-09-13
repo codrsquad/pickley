@@ -1,10 +1,10 @@
 import os
 
-from pickley import short, system
+from pickley import system
 from pickley.context import ImplementationMap
-from pickley.settings import SETTINGS
+from pickley.system import short
 
-DELIVERERS = ImplementationMap(SETTINGS, "delivery")
+DELIVERERS = ImplementationMap("delivery")
 
 GENERIC_WRAPPER = """
 #!/bin/bash
@@ -107,7 +107,7 @@ class DeliveryMethodWrap(DeliveryMethod):
 
     def _install(self, target, source):
         # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-        system.touch(SETTINGS.meta.full_path(self.package_name, ".ping"))
+        system.touch(system.SETTINGS.meta.full_path(self.package_name, ".ping"))
 
         if self.package_name == system.PICKLEY:
             # Important: call pickley auto-upgrade from souce, and not wrapper in order to avoid infinite recursion
@@ -117,7 +117,7 @@ class DeliveryMethodWrap(DeliveryMethod):
 
         contents = wrapper.lstrip().format(
             name=system.quoted(self.package_name),
-            pickley=system.quoted(SETTINGS.base.full_path(system.PICKLEY)),
+            pickley=system.quoted(system.SETTINGS.base.full_path(system.PICKLEY)),
             source=system.quoted(source),
         )
         system.write_contents(target, contents)

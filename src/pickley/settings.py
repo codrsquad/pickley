@@ -11,7 +11,8 @@ tree <base>
 │   ├── tox/
 │   │   ├── .current.json           # Currently installed version
 │   │   ├── .latest.json            # Latest version as determined by querying pypi
-│   │   ├── .work/                  # Temp folder used during installation
+│   │   ├── .v/                     # Temp folder used during installation
+│   │   ├── .v.lock                 # Soft lock file containing pid of pickley process that currently hold the lock on .v/
 │   │   └── tox-2.9.1/              # Actual installation, as packaged by pickley
 ├── pickley                         # pickley itself
 └── tox -> .pickley/tox/2.9.1/...   # Produced exe, can be a symlink or a small wrapper exe (to ensure up-to-date)
@@ -52,12 +53,13 @@ import os
 
 from six import string_types
 
-from pickley import short, system
+from pickley import system
+from pickley.system import short
 
 
 DOT_PICKLEY = ".pickley"
-DEFAULT_INSTALL_TIMEOUT = 1800
-DEFAULT_VERSION_CHECK_DELAY = 600
+DEFAULT_INSTALL_TIMEOUT = 30
+DEFAULT_VERSION_CHECK_SECONDS = 600
 
 
 def same_type(t1, t2):
@@ -414,7 +416,7 @@ class Settings:
                 install_timeout=DEFAULT_INSTALL_TIMEOUT,
                 packager=system.VENV_PACKAGER,
                 python=system.PYTHON,
-                version_check_delay=DEFAULT_VERSION_CHECK_DELAY,
+                version_check_seconds=DEFAULT_VERSION_CHECK_SECONDS,
             ),
         )
         self.config = None
@@ -464,16 +466,16 @@ class Settings:
     @property
     def install_timeout(self):
         """
-        :return float: How many seconds to give an installation to complete before assuming it failed
+        :return float: How many minutes to give an installation to complete before assuming it failed
         """
         return system.to_int(self.get_value("install_timeout"), default=DEFAULT_INSTALL_TIMEOUT)
 
     @property
-    def version_check_delay(self):
+    def version_check_seconds(self):
         """
         :return float: How many seconds to wait before checking for upgrades again
         """
-        return system.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY)
+        return system.to_int(self.get_value("version_check_seconds"), default=DEFAULT_VERSION_CHECK_SECONDS)
 
     def _add_config(self, path, base=None):
         """
@@ -567,17 +569,6 @@ class Settings:
                 result.append(name)
         return system.flattened(result)
 
-    def current_names(self):
-        """Yield names of currently installed packages"""
-        result = []
-        if os.path.isdir(self.meta.path):
-            for fname in os.listdir(self.meta.path):
-                fpath = os.path.join(self.meta.path, fname)
-                if os.path.isdir(fpath):
-                    if os.path.exists(os.path.join(fpath, ".current.json")):
-                        result.append(fname)
-        return result
-
     def represented(self):
         """
         :return str: Human readable representation of these settings
@@ -597,4 +588,4 @@ class Settings:
         return "\n".join(result)
 
 
-SETTINGS = Settings()
+system.SETTINGS = Settings()

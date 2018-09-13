@@ -8,8 +8,6 @@ import sys
 from pkg_resources import get_distribution
 
 
-HOME = os.path.expanduser("~")
-
 try:
     __version__ = get_distribution(__name__).version
 except Exception:  # pragma: no cover
@@ -21,25 +19,6 @@ def decode(value):
     if isinstance(value, bytes) and not isinstance(value, str):
         return value.decode("utf-8")
     return value
-
-
-def short(path, base=None):
-    """
-    :param path: Path to represent in its short form
-    :param str|list|None base: Base folder(s) to relativise paths to
-    :return str: Short form, using '~' if applicable
-    """
-    if not path:
-        return path
-    path = str(path)
-    if base:
-        if not isinstance(base, list):
-            base = [base]
-        for b in base:
-            if b:
-                path = path.replace(b + "/", "")
-    path = path.replace(HOME, "~")
-    return path
 
 
 def python_interpreter():

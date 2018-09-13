@@ -3,17 +3,17 @@ import sys
 import time
 import zipfile
 
-from pickley import __version__, short, system
+from pickley import __version__, system
 from pickley.context import ImplementationMap
 from pickley.delivery import DELIVERERS
-from pickley.lock import PingLock, PingLockException
+from pickley.lock import SoftLock, SoftLockException, vrun
 from pickley.pypi import latest_pypi_version, read_entry_points
-from pickley.run import WorkingVenv
-from pickley.settings import JsonSerializable, SETTINGS
+from pickley.settings import JsonSerializable
+from pickley.system import short
 from pickley.uninstall import uninstall_existing
 
 
-PACKAGERS = ImplementationMap(SETTINGS, "packager")
+PACKAGERS = ImplementationMap("packager")
 
 
 def find_prefix(prefixes, text):
@@ -64,7 +64,7 @@ class VersionMeta(JsonSerializable):
         self._name = name
         self._suffix = suffix
         if suffix:
-            self._path = SETTINGS.meta.full_path(name, ".%s.json" % suffix)
+            self._path = system.SETTINGS.meta.full_path(name, ".%s.json" % suffix)
 
     def __repr__(self):
         return self.representation()
@@ -74,13 +74,14 @@ class VersionMeta(JsonSerializable):
         if self._suffix != system.LATEST_CHANNEL:
             self.packager = PACKAGERS.resolved_name(self._name)
             self.delivery = DELIVERERS.resolved_name(self._name)
-            self.python = SETTINGS.resolved_value("python", self._name)
+            self.python = system.SETTINGS.resolved_value("python", self._name)
         self.pickley = __version__
         self.timestamp = int(time.time())
 
     def representation(self, verbose=False, note=None):
         """
         :param bool verbose: If True, show more extensive info
+        :param str|None note: Optional not to mention in returned text
         :return str: Human readable representation
         """
         if self._problem:
@@ -88,7 +89,7 @@ class VersionMeta(JsonSerializable):
         elif self.version:
             lead = "%s %s" % (self._name, self.version)
         else:
-            lead = "%s: no version" % (self._name)
+            lead = "%s: no version" % self._name
         notice = ""
         if verbose:
             notice = []
@@ -101,7 +102,7 @@ class VersionMeta(JsonSerializable):
                 notice.append(info)
             if self.channel:
                 notice.append("channel: %s" % self.channel)
-            if notice and self.source and self.source != SETTINGS.index:
+            if notice and self.source and self.source != system.SETTINGS.index:
                 notice.append("source: %s" % self.source)
             if notice:
                 notice = " (%s)" % ", ".join(notice)
@@ -182,8 +183,8 @@ class VersionMeta(JsonSerializable):
         if not self.valid or not self.timestamp:
             return self.valid
         try:
-            return (int(time.time()) - self.timestamp) < SETTINGS.version_check_delay
-        except Exception:
+            return (int(time.time()) - self.timestamp) < system.SETTINGS.version_check_seconds
+        except (TypeError, ValueError):
             return False
 
 
@@ -203,7 +204,7 @@ class Packager(object):
         self.current = VersionMeta(self.name, "current")
         self.latest = VersionMeta(self.name, system.LATEST_CHANNEL)
         self.desired = VersionMeta(self.name)
-        self.dist_folder = SETTINGS.meta.full_path(self.name, ".work")
+        self.dist_folder = system.SETTINGS.meta.full_path(self.name, ".v")
         self.build_folder = os.path.join(self.dist_folder, "build")
         self.source_folder = None
 
@@ -212,11 +213,11 @@ class Packager(object):
 
     @property
     def entry_points_path(self):
-        return SETTINGS.meta.full_path(self.name, ".entry-points.json")
+        return system.SETTINGS.meta.full_path(self.name, ".entry-points.json")
 
     @property
     def removed_entry_points_path(self):
-        return SETTINGS.meta.full_path(self.name, ".removed-entry-points.json")
+        return system.SETTINGS.meta.full_path(self.name, ".removed-entry-points.json")
 
     @property
     def entry_points(self):
@@ -229,19 +230,23 @@ class Packager(object):
                 return [self.name] if system.DRYRUN else []
         return self._entry_points
 
-    def refresh_entry_points(self, folder, version):
+    def resolved_python(self):
         """
-        :param str folder: Folder where to look for entry points
+        :return pickley.settings.Definition: Associated definition
+        """
+        return system.SETTINGS.resolved_definition("python", package_name=self.name)
+
+    def refresh_entry_points(self, version):
+        """
         :param str version: Version of package
         """
         if system.DRYRUN:
             return
-        self._entry_points = self.get_entry_points(folder, version)
+        self._entry_points = self.get_entry_points(version)
         JsonSerializable.save_json(self._entry_points, self.entry_points_path)
 
-    def get_entry_points(self, folder, version):
+    def get_entry_points(self, version):
         """
-        :param str folder: Folder where to look for entry points
         :param str version: Version of package
         :return list|None: Determine entry points for pypi package with 'self.name'
         """
@@ -254,9 +259,9 @@ class Packager(object):
                 wheel_path = os.path.join(self.build_folder, fname)
                 try:
                     with zipfile.ZipFile(wheel_path, "r") as wheel:
-                        for fname in wheel.namelist():
-                            if os.path.basename(fname) == "entry_points.txt":
-                                with wheel.open(fname) as fh:
+                        for wname in wheel.namelist():
+                            if os.path.basename(wname) == "entry_points.txt":
+                                with wheel.open(wname) as fh:
                                     return read_entry_points(fh)
 
                 except Exception as e:
@@ -276,18 +281,19 @@ class Packager(object):
         if self.latest.still_valid:
             return
 
-        version = latest_pypi_version(SETTINGS.index, self.name)
-        self.latest.set_version(version, system.LATEST_CHANNEL, SETTINGS.index or "pypi")
+        version = latest_pypi_version(system.SETTINGS.index, self.name)
+        source = system.SETTINGS.index or "pypi"
+        self.latest.set_version(version, system.LATEST_CHANNEL, source)
         if version and not version.startswith("can't"):
             self.latest.save()
 
         else:
-            self.latest.invalidate(version or "can't determine latest version from %s" % (SETTINGS.index or "pypi"))
+            self.latest.invalidate(version or "can't determine latest version from %s" % source)
 
     def refresh_desired(self):
         """Refresh self.desired"""
-        channel = SETTINGS.resolved_definition("channel", package_name=self.name)
-        v = SETTINGS.get_definition("channel.%s.%s" % (channel.value, self.name))
+        channel = system.SETTINGS.resolved_definition("channel", package_name=self.name)
+        v = system.SETTINGS.get_definition("channel.%s.%s" % (channel.value, self.name))
         if v and v.value:
             self.desired.set_version(v.value, channel.value, str(v))
             return
@@ -307,10 +313,10 @@ class Packager(object):
         :return str: None if successful, error message otherwise
         """
         system.ensure_folder(self.build_folder, folder=True)
-        return WorkingVenv.run(
+        return vrun(
             "pip",
             "--cache-dir", self.build_folder,
-            "wheel", "-i", SETTINGS.index, "--wheel-dir", self.build_folder,
+            "wheel", "-i", system.SETTINGS.index, "--wheel-dir", self.build_folder,
             self.source_folder if self.source_folder else "%s==%s" % (self.name, version)
         )
 
@@ -320,19 +326,19 @@ class Packager(object):
         :return list: List of produced packages (files), if successful
         """
         if not version and not self.source_folder:
-            system.abort("Need either source_folder or version in order to package")
+            return system.abort("Need either source_folder or version in order to package", return_value=[])
 
         if not version:
             setup_py = os.path.join(self.source_folder, "setup.py")
             if not os.path.isfile(setup_py):
-                system.abort("No setup.py in %s", short(self.source_folder))
+                return system.abort("No setup.py in %s", short(self.source_folder), return_value=[])
             version = system.run_program(sys.executable, setup_py, "--version", fatal=False)
             if not version:
-                system.abort("Could not determine version from %s", short(setup_py))
+                return system.abort("Could not determine version from %s", short(setup_py), return_value=[])
 
         self.pip_wheel(version)
 
-        self.refresh_entry_points(self.build_folder, version)
+        self.refresh_entry_points(version)
         system.ensure_folder(self.dist_folder, folder=True)
         template = "{name}" if self.source_folder else "{name}-{version}"
         return self.effective_package(template, version)
@@ -352,16 +358,16 @@ class Packager(object):
         try:
             self.internal_install(force=force)
 
-        except PingLockException as e:
+        except SoftLockException as e:
             system.error("%s is currently being installed by another process" % self.name)
-            system.abort("If that is incorrect, please delete %s", short(e.ping_path))
+            system.abort("If that is incorrect, please delete %s.lock", short(e.folder))
 
     def internal_install(self, force=False, bootstrap=False):
         """
         :param bool force: If True, re-install even if package is already installed
         :param bool bootstrap: Bootstrap mode
         """
-        with PingLock(self.dist_folder, seconds=SETTINGS.install_timeout):
+        with SoftLock(self.dist_folder, timeout=system.SETTINGS.install_timeout):
             intent = "bootstrap" if bootstrap else "install"
             self.refresh_desired()
             if not self.desired.valid:
@@ -374,9 +380,9 @@ class Packager(object):
                     self.cleanup()
                 return
 
-            system.setup_audit_log(SETTINGS.meta)
+            system.setup_audit_log()
             if bootstrap:
-                system.debug("Bootstrapping %s with %s", system.PICKLEY, self.registered_name)
+                system.info("Bootstrapping %s with %s", system.PICKLEY, self.registered_name)
 
             prev_entry_points = self.entry_points
             self.effective_install(self.desired.version)
@@ -390,7 +396,7 @@ class Packager(object):
 
             # Delete wrapper/symlinks of removed entry points immediately
             for name in removed:
-                system.delete_file(SETTINGS.base.full_path(name))
+                system.delete_file(system.SETTINGS.base.full_path(name))
 
             self.cleanup()
 
@@ -402,8 +408,8 @@ class Packager(object):
 
     def cleanup(self):
         """Cleanup older installs"""
-        cutoff = time.time() - SETTINGS.install_timeout
-        folder = SETTINGS.meta.full_path(self.name)
+        cutoff = time.time() - system.SETTINGS.install_timeout * 60
+        folder = system.SETTINGS.meta.full_path(self.name)
 
         removed_entry_points = JsonSerializable.get_json(self.removed_entry_points_path, default=[])
 
@@ -476,10 +482,10 @@ class Packager(object):
         """
         deliverer = DELIVERERS.resolved(self.name)
         for name in self.required_entry_points():
-            target = SETTINGS.base.full_path(name)
+            target = system.SETTINGS.base.full_path(name)
             if self.name != system.PICKLEY and not self.current.file_exists:
                 uninstall_existing(target, fatal=True)
-            path = template.format(meta=SETTINGS.meta.full_path(self.name), name=name, version=version)
+            path = template.format(meta=system.SETTINGS.meta.full_path(self.name), name=name, version=version)
             deliverer.install(target, path)
 
 
@@ -488,13 +494,6 @@ class PexPackager(Packager):
     """
     Package/install via pex (https://pypi.org/project/pex/)
     """
-
-    def resolved_python(self):
-        """
-        :param str package_name: Pypi package name
-        :return pickley.settings.Definition: Associated definition
-        """
-        return SETTINGS.resolved_definition("python", package_name=self.name)
 
     def pex_build(self, name, version, destination):
         """
@@ -512,9 +511,9 @@ class PexPackager(Packager):
         args = ["--no-pypi", "--cache-dir", self.build_folder, "--repo", self.build_folder]
         args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.name, version)])
 
-        # Note: 'python.source' being 'SETTINGS.defaults' is the same as it being 'system.PYTHON'
+        # Note: 'python.source' being 'system.SETTINGS.defaults' is the same as it being 'system.PYTHON'
         # Writing it this way is easier to change in tests
-        explicit_python = python and python.value and python.source is not SETTINGS.defaults
+        explicit_python = python and python.value and python.source is not system.SETTINGS.defaults
         if explicit_python:
             shebang = python.value
             args.append("--python=%s" % python.value)
@@ -530,7 +529,7 @@ class PexPackager(Packager):
                 shebang = "/usr/bin/env %s" % shebang
             args.append("--python-shebang=%s" % shebang)
 
-        WorkingVenv.run("pex", *args, path_env={"PKG_CONFIG_PATH": "/usr/local/opt/openssl/lib/pkgconfig"})
+        vrun("pex", *args, path_env={"PKG_CONFIG_PATH": "/usr/local/opt/openssl/lib/pkgconfig"})
 
     def effective_package(self, template, version=None):
         """
@@ -557,7 +556,7 @@ class PexPackager(Packager):
         packaged = self.package(version=version)
         for path in packaged:
             name = os.path.basename(path)
-            target = SETTINGS.meta.full_path(self.name, name)
+            target = system.SETTINGS.meta.full_path(self.name, name)
             system.move_file(path, target)
             result.append(target)
         self.perform_delivery(version, "{meta}/{name}-{version}")
@@ -576,13 +575,14 @@ class VenvPackager(Packager):
         :param str|None version: If provided, append version as suffix to produced pex
         :return list: List of produced packages (files), if successful
         """
-        working_folder = os.path.join(self.dist_folder, template.format(name=self.name, version=version))
-        WorkingVenv.create_venv(working_folder, python=SETTINGS.resolved_value("python", package_name=self.name))
+        folder = os.path.join(self.dist_folder, template.format(name=self.name, version=version))
+        system.ensure_folder(folder, folder=True)
+        vrun("virtualenv", "--python", self.resolved_python().value, folder)
 
-        pip = os.path.join(working_folder, "bin", "pip")
-        system.run_program(pip, "install", "-i", SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))
+        pip = os.path.join(folder, "bin", "pip")
+        system.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))
 
-        return [working_folder]
+        return [folder]
 
     def effective_install(self, version):
         """
@@ -592,7 +592,7 @@ class VenvPackager(Packager):
         result = []
         packaged = self.package(version=version)
         for path in packaged:
-            target = SETTINGS.meta.full_path(self.name, os.path.basename(path))
+            target = system.SETTINGS.meta.full_path(self.name, os.path.basename(path))
             system.move_file(path, target)
             result.append(target)
             self.perform_delivery(version, os.path.join(target, "bin", "{name}"))

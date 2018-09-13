@@ -2,9 +2,10 @@ import os
 
 from mock import patch
 
-from pickley import short, system
-from pickley.pypi import latest_pypi_version
+from pickley import system
+from pickley.pypi import latest_pypi_version, request_get
 from pickley.settings import add_representation, DOT_PICKLEY, JsonSerializable, same_type, Settings
+from pickley.system import short
 
 from .conftest import sample_path
 
@@ -57,12 +58,12 @@ settings:
         - bogus7.json
         - bogus8.json
         - bogus9.json
-      install_timeout: 120
+      install_timeout: 2
       select:
         virtualenv:
           delivery: wrap
           packager: pex
-      version_check_delay: 60
+      version_check_seconds: 60
     - {base}/.pickley/bogus.json: # empty
     - {base}/.pickley/bogus2.json: # empty
     - {base}/.pickley/bogus3.json: # empty
@@ -76,10 +77,10 @@ settings:
       default:
         channel: latest
         delivery: symlink
-        install_timeout: 1800
+        install_timeout: 30
         packager: venv
         python: {python}
-        version_check_delay: 600
+        version_check_seconds: 600
 """
 
 
@@ -121,8 +122,8 @@ def test_custom_settings():
     assert d.value == "copy"
     assert d.source is s.cli
 
-    assert s.install_timeout == 120
-    assert s.version_check_delay == 60
+    assert s.install_timeout == 2
+    assert s.version_check_seconds == 60
 
 
 def test_settings_base():
@@ -151,19 +152,34 @@ def test_same_type():
     assert same_type(["foo"], [u"bar"])
 
 
-def test_pypi():
+@patch("pickley.system.run_program", side_effect=Exception)
+def test_pypi(_):
     assert latest_pypi_version(None, "") is None
     assert latest_pypi_version(None, "tox")
 
+    with patch("pickley.pypi.request_get", return_value="{foo"):
+        # 404
+        assert latest_pypi_version(None, "foo") == "can't determine latest version from 'https://pypi.org/pypi/foo/json'"
 
-@patch("pickley.pypi.request_get", return_value="{foo")
-def test_pypi_bad_response(*_):
-    assert latest_pypi_version(None, "foo") == "can't determine latest version from 'https://pypi.org/pypi/foo/json'"
+    with patch("pickley.pypi.request_get", return_value=None):
+        assert latest_pypi_version(None, "twine").startswith("can't determine latest version")
 
+    with patch("pickley.pypi.request_get", return_value=LEGACY_SAMPLE):
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "twine") == "1.9.1"
 
-@patch("pickley.pypi.request_get", return_value=LEGACY_SAMPLE)
-def test_pypi_legacy(*_):
-    assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "twine") == "1.9.1"
+    with patch("pickley.pypi.urlopen", side_effect=Exception):
+        # GET fails, and fallback curl also fails
+        assert request_get("") is None
+
+        with patch("pickley.system.run_program", return_value="foo"):
+            # GET fails, but curl succeeds
+            assert request_get("") == "foo"
+
+    e = Exception()
+    e.code = 404
+    with patch("pickley.pypi.urlopen", side_effect=e):
+        # With explicit 404 we don't fallback to curl
+        assert request_get("") is None
 
 
 def test_add_representation():

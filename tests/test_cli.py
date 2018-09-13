@@ -3,11 +3,12 @@ import os
 from click.testing import CliRunner
 from mock import patch
 
-from pickley import short, system
+from pickley import system
 from pickley.cli import main
-from pickley.lock import PingLockException
+from pickley.lock import SoftLockException
 from pickley.package import PACKAGERS
-from pickley.settings import JsonSerializable, SETTINGS
+from pickley.settings import JsonSerializable
+from pickley.system import short
 from pickley.uninstall import find_uninstaller
 
 from .conftest import PROJECT
@@ -75,7 +76,12 @@ def test_version():
 
 
 def test_settings():
-    expect_success("settings -d", "settings:", "python interpreter: %s" % short(system.PYTHON), "base: %s" % short(SETTINGS.base.path))
+    expect_success(
+        "settings -d",
+        "settings:",
+        "python interpreter: %s" % short(system.PYTHON),
+        "base: %s" % short(system.SETTINGS.base.path)
+    )
 
 
 def run_program(program, *args):
@@ -83,7 +89,7 @@ def run_program(program, *args):
 
 
 def test_package(temp_base):
-    pickley = SETTINGS.base.full_path("pickley")
+    pickley = system.SETTINGS.base.full_path("pickley")
 
     # Package pickley as pex
     expect_success(["-ppex", "package", "-d", ".", PROJECT], "Packaged %s successfully" % short(PROJECT))
@@ -95,8 +101,7 @@ def test_package(temp_base):
     assert system.first_line(pickley) == "#!/usr/bin/env python"
 
 
-@patch("pickley.pypi.urlopen", side_effect=Exception)
-def test_bogus_install(_, temp_base):
+def test_bogus_install(temp_base):
     expect_failure("-b foo/bar settings", "Can't use", "as base", "folder does not exist")
 
     expect_failure("auto-upgrade foo", "not currently installed")
@@ -108,21 +113,11 @@ def test_bogus_install(_, temp_base):
     expect_success("check", "No packages installed", base=temp_base)
     expect_success("list", "No packages installed", base=temp_base)
 
-    e = Exception()
-    e.code = 404
-    with patch("pickley.pypi.urlopen", side_effect=e):
-        # With explicit 404 (we don't fallback to curl)
-        expect_failure("check bogus_", "can't determine latest version", base=temp_base)
-
-    with patch("pickley.system.run_program", side_effect=Exception):
-        # With fallback to curl also failing
-        expect_failure("check bogus_", "can't determine latest version", base=temp_base)
-
     expect_success("settings -d", "base: %s" % short(temp_base))
 
 
 def test_install(temp_base):
-    tox = SETTINGS.base.full_path("tox")
+    tox = system.SETTINGS.base.full_path("tox")
     assert not os.path.exists(tox)
     assert system.first_line(tox) is None
 
@@ -140,15 +135,15 @@ def test_install(temp_base):
     assert system.ensure_folder("foo", folder=True) == 1
     expect_failure("uninstall foo --force", "Can't automatically uninstall")
 
-    expect_failure("check tox", "is not installed", base=temp_base)
+    expect_failure("check tox foo/bar", "is not installed", "can't determine latest version", base=temp_base)
     expect_failure("install six", "'six' is not a CLI", base=temp_base)
 
     # Install tox, but add a few files + a bogus previous entry point to test cleanup
-    SETTINGS.cli.contents["install_timeout"] = 600
-    system.touch(SETTINGS.base.full_path("tox-foo"))
-    system.touch(SETTINGS.meta.full_path("tox", "tox-0.0.0"))
-    system.touch(SETTINGS.meta.full_path("tox", "tox-foo"))
-    system.write_contents(SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-foo", "tox-bar"]\n')
+    system.SETTINGS.cli.contents["install_timeout"] = 600
+    system.touch(system.SETTINGS.base.full_path("tox-foo"))
+    system.touch(system.SETTINGS.meta.full_path("tox", "tox-0.0.0"))
+    system.touch(system.SETTINGS.meta.full_path("tox", "tox-foo"))
+    system.write_contents(system.SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-foo", "tox-bar"]\n')
     expect_success("--delivery wrap install tox", "Installed tox", "tox-foo", base=temp_base)
     assert system.is_executable(tox)
     output = run_program(tox, "--version")
@@ -159,7 +154,7 @@ def test_install(temp_base):
     expect_success("move tox-copy tox-relocated", "Moved")
 
     expect_success("auto-upgrade tox", "Skipping auto-upgrade", base=temp_base)
-    system.delete_file(SETTINGS.meta.full_path("tox", ".ping"))
+    system.delete_file(system.SETTINGS.meta.full_path("tox", ".ping"))
     expect_success("auto-upgrade tox", "already installed", base=temp_base)
 
     # Verify that older versions and removed entry-points do get cleaned up
@@ -194,7 +189,7 @@ def test_install(temp_base):
 
 
 @patch("pickley.package.VersionMeta.valid", return_value=True)
-@patch("pickley.package.Packager.internal_install", side_effect=PingLockException(".ping"))
+@patch("pickley.package.Packager.internal_install", side_effect=SoftLockException(".lock"))
 def test_auto_upgrade_locked(*_):
     expect_failure("--dryrun install foo", "installed by another process")
     expect_success("--dryrun auto-upgrade foo", "installed by another process")

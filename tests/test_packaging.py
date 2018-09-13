@@ -5,10 +5,15 @@ from mock import patch
 
 from pickley import system
 from pickley.context import CaptureOutput
-from pickley.package import DELIVERERS, find_prefix, PACKAGERS, PexPackager, VersionMeta
-from pickley.settings import Definition, SETTINGS
+from pickley.package import DELIVERERS, find_prefix, Packager, PACKAGERS, PexPackager, VersionMeta
+from pickley.settings import Definition
 
 from .conftest import INEXISTING_FILE, verify_abort
+
+
+def test_edge_cases():
+    p = Packager("")
+    assert not p.effective_package("", "")
 
 
 def test_delivery(temp_base):
@@ -90,24 +95,24 @@ def test_versions(_, __, temp_base):
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo: can't determine latest version from pypi (channel: latest, source: pypi)"
 
-    SETTINGS.cli.contents["channel"] = "stable"
+    system.SETTINGS.cli.contents["channel"] = "stable"
     p.refresh_desired()
     assert p.desired.representation() == "foo: can't determine stable version"
 
     assert "can't determine stable version" in verify_abort(p.install)
 
     # Without a build fodler
-    assert p.get_entry_points(p.build_folder, "0.0.0") is None
+    assert p.get_entry_points("0.0.0") is None
 
     # With an empty build fodler
     system.ensure_folder(p.build_folder, folder=True)
-    assert p.get_entry_points(p.build_folder, "0.0.0") is None
+    assert p.get_entry_points("0.0.0") is None
 
     # With a bogus wheel
     with CaptureOutput() as logged:
         whl = os.path.join(p.build_folder, "foo-0.0.0-py2.py3-none-any.whl")
         system.touch(whl)
-        assert p.get_entry_points(p.build_folder, "0.0.0") is None
+        assert p.get_entry_points("0.0.0") is None
         assert "Can't read wheel" in logged
         system.delete_file(whl)
 
@@ -160,21 +165,21 @@ def simulated_run(*args, **kwargs):
     print("Would run %s" % system.represented_args(args))
 
 
-@patch("pickley.run.WorkingVenv.run", side_effect=simulated_run)
+@patch("pickley.lock.vrun", side_effect=simulated_run)
 def test_shebang(_):
     p = PexPackager("")
 
     # Universal wheels
     with patch("pickley.system.is_universal", return_value=True):
         # Default python, absolute path
-        p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
+        p.resolved_python = pydef("/some-python", source=system.SETTINGS.defaults)
         with CaptureOutput(dryrun=True) as logged:
             p.pex_build("", "", "")
             assert "--python=" not in logged
             assert "--python-shebang=/usr/bin/env python" in logged
 
         # Default python, relative path
-        p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
+        p.resolved_python = pydef("some-python", source=system.SETTINGS.defaults)
         with CaptureOutput(dryrun=True) as logged:
             p.pex_build("", "", "")
             assert "--python=" not in logged
@@ -197,14 +202,14 @@ def test_shebang(_):
     # Non-universal wheels
     with patch("pickley.system.is_universal", return_value=False):
         # Default python, absolute path
-        p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
+        p.resolved_python = pydef("/some-python", source=system.SETTINGS.defaults)
         with CaptureOutput(dryrun=True) as logged:
             p.pex_build("", "", "")
             assert "--python=" not in logged
             assert "--python-shebang=/some-python" in logged
 
         # Default python, relative path
-        p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
+        p.resolved_python = pydef("some-python", source=system.SETTINGS.defaults)
         with CaptureOutput(dryrun=True) as logged:
             p.pex_build("", "", "")
             assert "--python=" not in logged

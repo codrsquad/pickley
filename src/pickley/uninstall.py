@@ -1,7 +1,7 @@
 import os
 
-from pickley import short, system
-from pickley.settings import SETTINGS
+from pickley import system
+from pickley.system import short
 
 
 def uninstall_existing(target, fatal=False):
@@ -23,7 +23,7 @@ def find_uninstaller(target):
         return system.delete_file
 
     path = os.path.realpath(target)
-    if path.startswith(os.path.realpath(SETTINGS.meta.path)):
+    if path.startswith(os.path.realpath(system.SETTINGS.meta.path)):
         # Pickley symlink, can be simply deleted
         return system.delete_file
 

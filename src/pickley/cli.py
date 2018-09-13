@@ -9,11 +9,12 @@ import sys
 
 import click
 
-from pickley import short, system
+from pickley import system
 from pickley.context import CurrentFolder
-from pickley.lock import PingLockException
+from pickley.lock import SoftLockException
 from pickley.package import DELIVERERS, PACKAGERS
-from pickley.settings import meta_folder, SETTINGS
+from pickley.settings import meta_folder
+from pickley.system import short
 from pickley.uninstall import uninstall_existing
 
 
@@ -40,7 +41,7 @@ def bootstrap(testing=False):
         p.internal_install(bootstrap=True)
         system.relaunch()
 
-    except PingLockException:
+    except SoftLockException:
         return
 
 
@@ -69,9 +70,9 @@ def main(debug, quiet, dryrun, base, config, python, delivery, packager):
         base = system.resolved_path(base)
         if not os.path.exists(base):
             system.abort("Can't use %s as base: folder does not exist", short(base))
-        SETTINGS.set_base(base)
+        system.SETTINGS.set_base(base)
 
-    SETTINGS.load_config(config=config, python=python, delivery=delivery, packager=packager)
+    system.SETTINGS.load_config(config=config, python=python, delivery=delivery, packager=packager)
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None
@@ -92,7 +93,7 @@ def check(verbose, packages):
     Check whether specified packages need an upgrade
     """
     code = 0
-    packages = SETTINGS.resolved_packages(packages) or SETTINGS.current_names()
+    packages = system.SETTINGS.resolved_packages(packages) or system.installed_names()
     if not packages:
         system.info("No packages installed")
 
@@ -122,7 +123,7 @@ def list(verbose):
     """
     List installed packages
     """
-    packages = SETTINGS.current_names()
+    packages = system.installed_names()
     if not packages:
         system.info("No packages installed")
 
@@ -140,10 +141,10 @@ def install(force, packages):
     """
     Install a package from pypi
     """
-    system.setup_audit_log(SETTINGS.meta)
+    system.setup_audit_log()
     bootstrap()
 
-    packages = SETTINGS.resolved_packages(packages)
+    packages = system.SETTINGS.resolved_packages(packages)
     for name in packages:
         p = PACKAGERS.resolved(name)
         p.install(force=force)
@@ -156,8 +157,8 @@ def uninstall(force, packages):
     """
     Uninstall packages
     """
-    system.setup_audit_log(SETTINGS.meta)
-    packages = SETTINGS.resolved_packages(packages)
+    system.setup_audit_log()
+    packages = system.SETTINGS.resolved_packages(packages)
     errors = 0
     for name in packages:
         p = PACKAGERS.resolved(name)
@@ -170,12 +171,12 @@ def uninstall(force, packages):
         eps = p.entry_points
         ep_uninstalled = 0
         ep_missed = 0
-        meta_deleted = system.delete_file(SETTINGS.meta.full_path(name), fatal=False)
+        meta_deleted = system.delete_file(system.SETTINGS.meta.full_path(name), fatal=False)
         if not eps and force:
             eps = [name]
         if eps and meta_deleted >= 0:
             for entry_point in eps:
-                path = SETTINGS.base.full_path(entry_point)
+                path = system.SETTINGS.base.full_path(entry_point)
                 handler = system.delete_file if meta_deleted > 0 else uninstall_existing
                 r = handler(path, fatal=False)
                 if r < 0:
@@ -209,7 +210,7 @@ def copy(source, destination):
     """
     Copy file or folder, relocate venvs accordingly (if any)
     """
-    system.setup_audit_log(SETTINGS.meta)
+    system.setup_audit_log()
     system.copy_file(source, destination)
     system.info("Copied %s -> %s", short(source), short(destination))
 
@@ -221,7 +222,7 @@ def move(source, destination):
     """
     Copy file or folder, relocate venvs accordingly (if any)
     """
-    system.setup_audit_log(SETTINGS.meta)
+    system.setup_audit_log()
     system.move_file(source, destination)
     system.info("Moved %s -> %s", short(source), short(destination))
 
@@ -238,8 +239,8 @@ def package(dist, build, folder):
     build = system.resolved_path(build)
     folder = system.resolved_path(folder)
 
-    SETTINGS.meta = meta_folder(build)
-    system.setup_audit_log(SETTINGS.meta)
+    system.SETTINGS.meta = meta_folder(build)
+    system.setup_audit_log()
     bootstrap()
 
     if not os.path.isdir(folder):
@@ -274,10 +275,11 @@ def settings(diagnostics):
         system.info("sys.executable    : %s", short(sys.executable))
         system.info("sys.prefix        : %s", short(getattr(sys, "prefix", None)))
         system.info("sys.real_prefix   : %s", short(getattr(sys, "real_prefix", None)))
-        system.info("meta              : %s" % short(SETTINGS.meta.path))
+        system.info("pickley           : %s" % short(system.PICKLEY_PROGRAM_PATH))
+        system.info("meta              : %s" % short(system.SETTINGS.meta.path))
         system.info("")
 
-    system.info(SETTINGS.represented())
+    system.info(system.SETTINGS.represented())
 
 
 @main.command(name="auto-upgrade")
@@ -291,8 +293,8 @@ def auto_upgrade(package):
     if not p.current.valid:
         system.abort("%s is not currently installed", package)
 
-    ping = SETTINGS.meta.full_path(package, ".ping")
-    if system.file_younger(ping, SETTINGS.version_check_delay):
+    ping = system.SETTINGS.meta.full_path(package, ".ping")
+    if system.file_younger(ping, system.SETTINGS.version_check_seconds):
         # We checked for auto-upgrade recently, no need to check again yet
         system.abort("Skipping auto-upgrade, checked recently", code=0)
     system.touch(ping)
@@ -300,5 +302,5 @@ def auto_upgrade(package):
     try:
         p.internal_install()
 
-    except PingLockException:
+    except SoftLockException:
         system.abort("Skipping auto-upgrade, %s is currently being installed by another process" % package, code=0)

@@ -12,13 +12,11 @@ class ImplementationMap:
     Keep track of implementations by name, configurable via settings
     """
 
-    def __init__(self, settings, key):
+    def __init__(self, key):
         """
-        :param pickley.settings.Settings: Settings to use
         :param str key: Key in setting where to lookup default to use
         """
         self.key = key
-        self.settings = settings
         self.map = {}
 
     def register(self, implementation):
@@ -55,7 +53,7 @@ class ImplementationMap:
         :param str package_name: Name of pypi package
         :return str: Corresponding implementation name to use
         """
-        definition = self.settings.resolved_definition(self.key, package_name=package_name)
+        definition = system.SETTINGS.resolved_definition(self.key, package_name=package_name)
         if not definition or not definition.value:
             return None
 

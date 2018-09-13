@@ -7,13 +7,12 @@ from mock import patch
 from pickley import system
 from pickley.cli import bootstrap
 from pickley.context import CaptureOutput
-from pickley.lock import PingLockException
-from pickley.settings import SETTINGS
+from pickley.lock import SoftLockException
 
 
 @patch("pickley.system.relaunch")
 def test_bootstrap(_, temp_base):
-    SETTINGS.cli.contents["delivery"] = "wrap"
+    system.SETTINGS.cli.contents["delivery"] = "wrap"
     pickley = os.path.join(temp_base, system.PICKLEY)
 
     with CaptureOutput(dryrun=True) as logged:
@@ -36,7 +35,7 @@ def test_bootstrap(_, temp_base):
         assert not str(logged)
 
 
-@patch("pickley.package.Packager.internal_install", side_effect=PingLockException(".ping"))
+@patch("pickley.package.Packager.internal_install", side_effect=SoftLockException(".lock"))
 def test_bootstrap_in_progress(_):
     with CaptureOutput() as logged:
         assert bootstrap(testing=True) is None
