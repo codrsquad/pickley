@@ -26,14 +26,19 @@ def decode(value):
 def short(path, base=None):
     """
     :param path: Path to represent in its short form
-    :param str|None base: Base folder to relativise paths to
+    :param str|list|set|None base: Base folder(s) to relativise paths to
     :return str: Short form, using '~' if applicable
     """
     if not path:
         return path
+    path = str(path)
     if base:
-        path = str(path).replace(base + "/", "")
-    path = str(path).replace(HOME, "~")
+        if not isinstance(base, (list, set)):
+            base = [base]
+        for b in base:
+            if b:
+                path = path.replace(b + "/", "")
+    path = path.replace(HOME, "~")
     return path
 
 

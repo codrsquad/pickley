@@ -8,7 +8,7 @@ from pickley.context import ImplementationMap
 from pickley.delivery import DELIVERERS
 from pickley.lock import PingLock, PingLockException
 from pickley.pypi import latest_pypi_version, read_entry_points
-from pickley.run import PexRunner, PipRunner
+from pickley.run import PexRunner, PipRunner, WorkingVenv
 from pickley.settings import JsonSerializable, SETTINGS
 from pickley.uninstall import uninstall_existing
 
@@ -325,9 +325,7 @@ class Packager(object):
             if not version:
                 system.abort("Could not determine version from %s", short(setup_py))
 
-        error = self.pip_wheel(version)
-        if error:
-            system.abort("pip wheel failed: %s", error)
+        self.pip_wheel(version)
 
         self.refresh_entry_points(self.build_folder, version)
         system.ensure_folder(self.dist_folder, folder=True)
@@ -509,9 +507,7 @@ class PexPackager(Packager):
             dest = template.format(name=name, version=version)
             dest = os.path.join(self.dist_folder, dest)
 
-            error = self.pex_build(name, version, dest)
-            if error:
-                system.abort("pex command failed: %s", error)
+            self.pex_build(name, version, dest)
             result.append(dest)
 
         return result
@@ -545,7 +541,7 @@ class VenvPackager(Packager):
         :return list: List of produced packages (files), if successful
         """
         working_folder = os.path.join(self.dist_folder, template.format(name=self.name, version=version))
-        system.create_venv(working_folder, python=SETTINGS.resolved_value("python", package_name=self.name))
+        WorkingVenv.create_venv(working_folder, python=SETTINGS.resolved_value("python", package_name=self.name))
 
         pip = os.path.join(working_folder, "bin", "pip")
         system.run_program(pip, "install", "-i", SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))

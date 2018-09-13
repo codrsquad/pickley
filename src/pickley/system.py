@@ -36,7 +36,6 @@ class State:
     logging = False
     audit_handler = None
     debug_handler = None
-    virtualenv_path = None
 
 
 def debug(message, *args, **kwargs):
@@ -492,28 +491,6 @@ def is_executable(path):
     return path and os.path.isfile(path) and os.access(path, os.X_OK)
 
 
-def virtualenv_path():
-    if State.virtualenv_path is None:
-        import virtualenv
-        State.virtualenv_path = virtualenv.__file__
-        if State.virtualenv_path and State.virtualenv_path.endswith(".pyc"):
-            State.virtualenv_path = State.virtualenv_path[:-1]
-    return State.virtualenv_path
-
-
-def create_venv(folder, python=None, fatal=True):
-    """
-    :param str folder: Create a venv in 'folder'
-    :param str|None python: Python interpreter to use (defaults to python)
-    :param bool fatal: Abort execution on failure if True
-    :return int: 1 if effectively done, 0 if no-op, -1 on failure
-    """
-    venv = virtualenv_path()
-    if not venv:
-        return abort("Can't determine path to virtualenv.py", fatal=fatal)
-    return run_program(python or PYTHON, venv, folder, fatal=fatal)
-
-
 def which(program):
     """
     :param str program: Program name to find via env var PATH
@@ -536,17 +513,18 @@ def run_program(program, *args, **kwargs):
     full_path = which(program)
 
     fatal = kwargs.pop("fatal", True)
+    base = kwargs.pop("base", None)
     logger = kwargs.pop("logger", debug)
     dryrun = kwargs.pop("dryrun", fatal and DRYRUN)
     message = "Would run" if dryrun else "Running"
-    message = "%s: %s %s" % (message, short(full_path or program), represented_args(args))
+    message = "%s: %s %s" % (message, short(full_path or program, base=base), represented_args(args, base=base))
     logger(message)
 
     if dryrun:
         return message
 
     if not full_path:
-        return abort("%s is not installed", program, fatal=fatal, return_value=None)
+        return abort("%s is not installed", short(program, base=base), fatal=fatal, return_value=None)
 
     stdout = kwargs.pop("stdout", subprocess.PIPE)
     stderr = kwargs.pop("stderr", subprocess.PIPE)
@@ -563,12 +541,12 @@ def run_program(program, *args, **kwargs):
 
         if p.returncode:
             info = ": %s\n%s" % (error, output) if output or error else ""
-            return abort("%s exited with code %s%s", program, p.returncode, info, fatal=fatal, return_value=None)
+            return abort("%s exited with code %s%s", short(program, base=base), p.returncode, info, fatal=fatal, return_value=None)
 
         return output
 
     except Exception as e:
-        return abort("%s failed: %s", os.path.basename(program), e, exc_info=e, fatal=fatal, return_value=None)
+        return abort("%s failed: %s", short(program, base=base), e, exc_info=e, fatal=fatal, return_value=None)
 
 
 def quoted(text):

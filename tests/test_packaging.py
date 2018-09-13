@@ -5,7 +5,7 @@ from mock import patch
 
 from pickley import system
 from pickley.context import CaptureOutput
-from pickley.package import DELIVERERS, find_prefix, Packager, PACKAGERS, VersionMeta
+from pickley.package import DELIVERERS, find_prefix, PACKAGERS, VersionMeta
 from pickley.run import PexRunner
 from pickley.settings import Definition, SETTINGS
 
@@ -142,12 +142,6 @@ def test_versions(_, __, temp_base):
     p.pip_wheel = lambda *_: None
     p.pex_build = lambda *_: "failed"
     assert "pex command failed" in verify_abort(p.package)
-
-
-@patch("pickley.system.virtualenv_path", return_value=None)
-def test_no_venv_path(_):
-    assert "Can't determine path to virtualenv.py" in verify_abort(system.create_venv, None)
-    assert not Packager("").effective_package("")  # Edge case
 
 
 def get_definition(key, package_name=None):

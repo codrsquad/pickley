@@ -1,11 +1,7 @@
 import os
 import time
 
-from pex.bin.pex import main as pex_main
-from pip._internal import main as pip_main
-
 from pickley import short, system
-from pickley.context import CaptureOutput
 from pickley.settings import SETTINGS
 
 
@@ -35,15 +31,17 @@ class WorkingVenv:
     Auto-create and manage a venv to run pip, wheel, pex etc from
     Access is protected via a soft file lock
     """
-    def __init__(self, timeout=5, max_lock_age=10, max_venv_age=10):
+    def __init__(self, timeout=5, max_lock_age=10, max_venv_age=10, env=None):
         """
         :param int timeout: Timeout in minutes after which to abort if venv lock could not be acquired
         :param int max_lock_age: Age in minutes after which to consider existing lock as invalid
         :param int max_venv_age: Age in days after which to automatically recreate the venv
+        :param dict|None env: Customize PATH-like env vars when provided
         """
         self.timeout = timeout * 60
         self.max_lock_age = max_lock_age * 60
         self.max_venv_age = max_venv_age * 60 * 60
+        self.env = env
         self.folder = SETTINGS.meta.full_path(".venv")
         self.lock = SETTINGS.meta.full_path(".venv.pid")
         self.bin_folder = os.path.join(self.folder, "bin")
@@ -56,7 +54,29 @@ class WorkingVenv:
         if age is not None and age < self.max_venv_age:
             return
         system.delete_file(self.folder)
-        system.create_venv(self.folder, python=SETTINGS.resolved_value("python"))
+        venv = self._virtualenv_path()
+        if not venv:
+            return system.abort("Can't determine path to virtualenv.py")
+        return system.run_program(system.PYTHON, venv, self.folder)
+
+    def _virtualenv_path(self):
+        """
+        :return str: Path to our own virtualenv.py
+        """
+        import virtualenv
+        path = virtualenv.__file__
+        if path and path.endswith(".pyc"):
+            path = path[:-1]
+        return path
+
+    @classmethod
+    def create_venv(cls, folder, python=None):
+        """
+        :param str folder: Create a venv in 'folder'
+        :param str|None python: Python interpreter to use (defaults to python)
+        """
+        with WorkingVenv() as venv:
+            return venv.run("virtualenv", "--python", python, folder)
 
     def _locked(self):
         """
@@ -73,7 +93,7 @@ class WorkingVenv:
 
     def _pip_install(self, *args, **kwargs):
         """Run 'pip install' with given args"""
-        system.run_program(self.pip, "install", "-i", SETTINGS.index, *args, **kwargs)
+        self.run("pip", "install", "-i", SETTINGS.index, *args, **kwargs)
 
     def _install_module(self, package_name, program):
         """
@@ -95,7 +115,8 @@ class WorkingVenv:
         program = kwargs.pop("program", package_name)
         program = os.path.join(self.bin_folder, program)
         self._install_module(package_name, program)
-        system.run_program(program, *args, **kwargs)
+        kwargs["base"] = {self.bin_folder, SETTINGS.meta.path}
+        return system.run_program(program, *args, **kwargs)
 
     def __enter__(self):
         """
@@ -136,25 +157,12 @@ class Runner:
             return None
 
         system.ensure_folder(self.cache, folder=True)
-        system.debug("Running %s %s", self.name, system.represented_args(args))
-        with CaptureOutput(self.cache, env=self.custom_env()) as captured:
-            try:
-                exit_code = self.effective_run(args)
-            except SystemExit as e:
-                exit_code = e.code
-            if exit_code:
-                return str(captured)
-            return None
+        with WorkingVenv(env=self.custom_env()) as venv:
+            return venv.run(self.name, *args)
 
     def custom_env(self):
         """
         :return dict: Optional customized env vars to use
-        """
-
-    def effective_run(self, args):
-        """
-        :param list args: Args to run with
-        :return int: Exit code
         """
 
     def prelude_args(self):
@@ -164,18 +172,11 @@ class Runner:
 
 
 class PipRunner(Runner):
-    def effective_run(self, args):
-        """
-        :param list args: Args to run with
-        :return int: Exit code
-        """
-        return pip_main(args)
-
     def prelude_args(self):
         """
         :return list|None: Arguments to pass to invoked module for all invocations
         """
-        return ["--disable-pip-version-check", "--cache-dir", self.cache]
+        return ["--cache-dir", self.cache]
 
     def wheel(self, *package_names):
         return self.run("wheel", "-i", SETTINGS.index, "--wheel-dir", self.cache, *package_names)
@@ -189,13 +190,6 @@ class PexRunner(Runner):
         result = {}
         add_paths(result, "PKG_CONFIG_PATH", "/usr/local/opt/openssl/lib/pkgconfig")
         return result
-
-    def effective_run(self, args):
-        """
-        :param list args: Args to run with
-        :return int: Exit code
-        """
-        return pex_main(args)
 
     def prelude_args(self):
         """
