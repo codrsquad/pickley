@@ -23,7 +23,17 @@ def request_get(url):
         return response and decode(response).strip()
 
     except Exception as e:
-        system.debug("GET %s failed: %s", url, e, exc_info=e)
+        code = getattr(e, "code", None)
+        if isinstance(code, int) and code >= 400 and code < 500:
+            return None
+
+        try:
+            # Some old python installations have trouble with SSL (OSX for example), try curl
+            data = system.run_program("curl", "-s", url, dryrun=False)
+            return data and decode(data).strip()
+
+        except Exception as e:
+            system.debug("GET %s failed: %s", url, e, exc_info=e)
 
     return None
 

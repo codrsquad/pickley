@@ -6,7 +6,6 @@ from mock import patch
 from pickley import system
 from pickley.context import CaptureOutput
 from pickley.package import DELIVERERS, find_prefix, PACKAGERS, VersionMeta
-from pickley.run import PexRunner
 from pickley.settings import Definition, SETTINGS
 
 from .conftest import INEXISTING_FILE, verify_abort
@@ -131,18 +130,6 @@ def test_versions(_, __, temp_base):
     p.get_entry_points = lambda *_: None
     assert "is not a CLI" in verify_abort(p.required_entry_points)
 
-    # Simulate presence of entry points
-    p.get_entry_points = lambda *_: ["foo"]
-
-    # Simulate pip wheel failure
-    p.pip_wheel = lambda *_: "failed"
-    assert "pip wheel failed" in verify_abort(p.package)
-
-    # Simulate pex failure
-    p.pip_wheel = lambda *_: None
-    p.pex_build = lambda *_: "failed"
-    assert "pex command failed" in verify_abort(p.package)
-
 
 def get_definition(key, package_name=None):
     if key == "channel":
@@ -167,70 +154,3 @@ def pydef(value, source="test"):
     def callback(*_):
         return Definition(value, source, key="python")
     return callback
-
-
-def test_shebang():
-    p = PexRunner("")
-    p.run = lambda *args: system.info("args: %s", system.represented_args(*args))
-
-    # Universal wheels
-    p.is_universal = lambda *_: True
-
-    # Default python, absolute path
-    p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
-    with CaptureOutput() as logged:
-        p.build("", "", "", "")
-        assert "--python=" not in logged
-        assert "--python-shebang=/usr/bin/env python" in logged
-
-    # Default python, relative path
-    p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
-    with CaptureOutput() as logged:
-        p.build("", "", "", "")
-        assert "--python=" not in logged
-        assert "--python-shebang=/usr/bin/env python" in logged
-
-    # Explicit python, absolute path
-    p.resolved_python = pydef("/some-python")
-    with CaptureOutput() as logged:
-        p.build("", "", "", "")
-        assert "--python=/some-python" in logged
-        assert "--python-shebang=/some-python" in logged
-
-    # Explicit python, relative path
-    p.resolved_python = pydef("some-python")
-    with CaptureOutput() as logged:
-        p.build("", "", "", "")
-        assert "--python=some-python" in logged
-        assert "--python-shebang=/usr/bin/env some-python" in logged
-
-    # Non-universal wheels
-    p.is_universal = lambda *_: False
-
-    # Default python, absolute path
-    p.resolved_python = pydef("/some-python", source=SETTINGS.defaults)
-    with CaptureOutput() as logged:
-        p.build("", "", "", "")
-        assert "--python=" not in logged
-        assert "--python-shebang=/some-python" in logged
-
-    # Default python, relative path
-    p.resolved_python = pydef("some-python", source=SETTINGS.defaults)
-    with CaptureOutput() as logged:
-        p.build("", "", "", "")
-        assert "--python=" not in logged
-        assert "--python-shebang=/usr/bin/env some-python" in logged
-
-    # Explicit python, absolute path
-    p.resolved_python = pydef("/some-python")
-    with CaptureOutput() as logged:
-        p.build("", "", "", "")
-        assert "--python=/some-python" in logged
-        assert "--python-shebang=/some-python" in logged
-
-    # Explicit python, relative path
-    p.resolved_python = pydef("some-python")
-    with CaptureOutput() as logged:
-        p.build("", "", "", "")
-        assert "--python=some-python" in logged
-        assert "--python-shebang=/usr/bin/env some-python" in logged

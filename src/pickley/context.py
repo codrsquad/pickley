@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-import six
+from six import StringIO
 
 from pickley import decode, system
 
@@ -103,25 +103,19 @@ class CaptureOutput:
         assert "some message" in logged
     """
 
-    def __init__(self, folder=None, stdout=True, stderr=True, env=None, dryrun=None):
+    def __init__(self, stdout=True, stderr=True, dryrun=None):
         """
-        :param str|None folder: Change cwd to 'folder' when provided
         :param bool stdout: Capture stdout
         :param bool stderr: Capture stderr
-        :param dict|None env: Customize PATH-like env vars when provided
-        :param bool|None dryrun: Switch dryrun when provided
+        :param bool|None dryrun: Override dryrun (when provided)
         """
-        self.current_folder = os.getcwd()
-        self.folder = folder
-        self.env = env
         self.dryrun = dryrun
-        self.old_env = {}
         self.old_out = sys.stdout
         self.old_err = sys.stderr
         self.old_handlers = logging.root.handlers
 
-        self.out_buffer = six.StringIO() if stdout else self.old_out
-        self.err_buffer = six.StringIO() if stderr else self.old_err
+        self.out_buffer = StringIO() if stdout else self.old_out
+        self.err_buffer = StringIO() if stderr else self.old_err
 
         self.handler = logging.StreamHandler(stream=self.err_buffer)
         self.handler.setLevel(logging.DEBUG)
@@ -136,23 +130,6 @@ class CaptureOutput:
         return result
 
     def __enter__(self):
-        if self.folder:
-            system.ensure_folder(self.folder, folder=True)
-
-        self.old_env = {}
-        for key, value in os.environ.items():
-            self.old_env[key] = os.environ.get(key)
-
-        if self.env:
-            for key, value in self.env.items():
-                if value:
-                    if value != os.environ.get(key):
-                        system.debug("Customizing env %s=%s", key, value)
-                        os.environ[key] = value
-                elif key in os.environ:
-                    system.debug("Removing env %s", key)
-                    del os.environ[key]
-
         sys.stdout = self.out_buffer
         sys.stderr = self.err_buffer
         logging.root.handlers = [self.handler]
@@ -168,16 +145,6 @@ class CaptureOutput:
         self.out_buffer = None
         self.err_buffer = None
         logging.root.handlers = self.old_handlers
-
-        for key in list(os.environ.keys()):
-            if key not in self.old_env:
-                system.debug("Cleaning up env %s", key)
-                del os.environ[key]
-
-        for key, value in self.old_env.items():
-            if value != os.environ.get(key):
-                system.debug("Restoring env %s=%s", key, value)
-                os.environ[key] = value
 
         if self.dryrun is not None:
             system.DRYRUN = self.dryrun

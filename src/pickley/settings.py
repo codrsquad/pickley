@@ -50,7 +50,7 @@ tree <base>
 import json
 import os
 
-import six
+from six import string_types
 
 from pickley import short, system
 
@@ -64,7 +64,7 @@ def same_type(t1, t2):
     """
     :return bool: True if 't1' and 't2' are of equivalent types
     """
-    if isinstance(t1, six.string_types) and isinstance(t2, six.string_types):
+    if isinstance(t1, string_types) and isinstance(t2, string_types):
         return True
     return type(t1) == type(t2)
 

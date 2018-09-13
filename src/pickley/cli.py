@@ -11,7 +11,7 @@ import click
 
 from pickley import short, system
 from pickley.context import CurrentFolder
-from pickley.lock import PingLock, PingLockException
+from pickley.lock import PingLockException
 from pickley.package import DELIVERERS, PACKAGERS
 from pickley.settings import meta_folder, SETTINGS
 from pickley.uninstall import uninstall_existing
@@ -91,10 +91,6 @@ def check(verbose, packages):
     """
     Check whether specified packages need an upgrade
     """
-    # from pickley.run import WorkingVenv
-    # with WorkingVenv() as venv:
-    #     venv.run("pex", "--help")
-    #     print()
     code = 0
     packages = SETTINGS.resolved_packages(packages) or SETTINGS.current_names()
     if not packages:
@@ -295,16 +291,14 @@ def auto_upgrade(package):
     if not p.current.valid:
         system.abort("%s is not currently installed", package)
 
-    ping = PingLock(SETTINGS.meta.full_path(package), seconds=SETTINGS.version_check_delay)
-    if ping.is_young():
+    ping = SETTINGS.meta.full_path(package, ".ping")
+    if system.file_younger(ping, SETTINGS.version_check_delay):
         # We checked for auto-upgrade recently, no need to check again yet
-        system.debug("Skipping auto-upgrade, checked recently")
-        sys.exit(0)
-    ping.touch()
+        system.abort("Skipping auto-upgrade, checked recently", code=0)
+    system.touch(ping)
 
     try:
         p.internal_install()
 
     except PingLockException:
-        system.debug("Skipping auto-upgrade, %s is currently being installed by another process" % package)
-        sys.exit(0)
+        system.abort("Skipping auto-upgrade, %s is currently being installed by another process" % package, code=0)

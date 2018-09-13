@@ -73,13 +73,14 @@ def abort(*args, **kwargs):
     :param kwargs: Args passed through for error reporting
     :return: kwargs["return_value"] (default: -1) to signify failure to non-fatal callers
     """
+    code = kwargs.pop("code", 1)
     fatal = kwargs.pop("fatal", True)
     quiet = kwargs.pop("quiet", False)
     return_value = kwargs.pop("return_value", -1)
     if not quiet and args:
         error(*args, **kwargs)
     if fatal:
-        sys.exit(1)
+        sys.exit(code)
     return return_value
 
 
@@ -143,16 +144,56 @@ def get_lines(path, max_size=8192, fatal=True, quiet=False):
         return abort("Can't read %s: %s", short(path), e, fatal=fatal, quiet=quiet, return_value=None)
 
 
-def file_age(path):
+def is_universal(wheels_folder, package_name, version):
+    """
+    :param str wheels_folder: Path to folder where wheels reside
+    :param str package_name: Pypi package name
+    :param str version: Specific version of 'package_name' to examine
+    :return bool: True if wheel exists and is universal
+    """
+    if not os.path.isdir(wheels_folder):
+        return False
+    prefix = "%s-%s-" % (package_name, version)
+    for fname in os.listdir(wheels_folder):
+        if fname.startswith(prefix) and fname.endswith(".whl"):
+            return "py2.py3-none" in fname
+    return False
+
+
+def added_env_paths(env_vars, env=None):
+    """
+    :param dict env_vars: Env vars to customize
+    :param dict env: Original env vars
+    """
+    if not env_vars:
+        return None
+    if not env:
+        env = dict(os.environ)
+    result = dict(env)
+    for env_var, paths in env_vars.items():
+        current = env.get(env_var, "")
+        current = [x for x in current.split(":") if x]
+        added = 0
+        for path in paths.split(":"):
+            if os.path.isdir(path) and path not in current:
+                added += 1
+                current.append(path)
+        if added:
+            result[env_var] = ":".join(current)
+    return result
+
+
+def file_younger(path, age):
     """
     :param str path: Path to file
-    :return float|None: Age in seconds of file, if it exists
+    :param int age: How many seconds to consider the file too old
+    :return bool: True if file exists and is younger than 'age' seconds
     """
     try:
-        return time.time() - os.path.getmtime(path)
+        return time.time() - os.path.getmtime(path) < age
 
     except OSError:
-        return None
+        return False
 
 
 def check_pid(pid):
@@ -530,7 +571,7 @@ def run_program(program, *args, **kwargs):
     stderr = kwargs.pop("stderr", subprocess.PIPE)
     args = [full_path] + args
     try:
-        p = subprocess.Popen(args, stdout=stdout, stderr=stderr)  # nosec
+        p = subprocess.Popen(args, stdout=stdout, stderr=stderr, env=added_env_paths(kwargs.pop("path_env", None)))  # nosec
         output, error = p.communicate()
         output = decode(output)
         error = decode(error)

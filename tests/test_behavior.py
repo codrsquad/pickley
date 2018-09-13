@@ -1,14 +1,10 @@
 import os
 import sys
-import time
 
-import pytest
 from mock import mock_open, patch
 
 from pickley import python_interpreter, system
 from pickley.context import CaptureOutput, ImplementationMap
-from pickley.lock import PingLock, PingLockException
-from pickley.run import add_paths, PexRunner, Runner
 from pickley.settings import Settings
 
 from .conftest import INEXISTING_FILE, PROJECT, verify_abort
@@ -42,21 +38,10 @@ def test_file_operations(temp_base):
         assert "Would make foo executable" in logged
         assert "Would write 3 bytes to foo" in logged
 
-    work = os.path.join(temp_base, "work")
-    assert system.ensure_folder(work, folder=True) == 1
-    with CaptureOutput() as logged:
-        assert system.write_contents("foo2", "bar", verbose=True) == 1
-        with PingLock(work, seconds=1) as lock:
-            assert lock.is_young()
-            with pytest.raises(PingLockException):
-                with PingLock(work, seconds=10):
-                    pass
-            time.sleep(1.2)
-            assert not lock.is_young()
-        assert "Writing 3 bytes to foo2" in logged
-
 
 def test_edge_cases(temp_base):
+    assert system.added_env_paths(dict(FOO="."), env=dict(FOO="bar:baz")) == dict(FOO="bar:baz:.")
+
     assert not system.resolved_path("")
 
     assert system.write_contents("", "") == 0
@@ -139,47 +124,6 @@ def test_missing_implementation():
     assert "No custom type configured" in verify_abort(m.resolved, "foo")
     s.cli.contents["custom"] = "bar"
     assert "Unknown custom type" in verify_abort(m.resolved, "foo")
-
-
-def test_capture_env():
-    env = dict(PATH=None, JAVA_HOME="/some-place/java")
-    with CaptureOutput() as logged:
-        with CaptureOutput(env=env):
-            os.environ["ENV_ADDED"] = "testing"
-            assert "PATH" not in os.environ
-            assert os.environ.get("JAVA_HOME") == "/some-place/java"
-        assert "PATH" in os.environ
-        assert "Cleaning up env ENV_ADDED" in logged
-        assert "Removing env PATH" in logged
-        assert "Customizing env JAVA_HOME=/some-place/java" in logged
-        assert "Restoring env PATH=" in logged
-    assert "PATH" in os.environ
-
-
-@patch.dict(os.environ, dict(FOO="bar:baz"), clear=True)
-def test_add_paths():
-    result = {}
-    add_paths(result, "FOO", ".")
-    assert result.get("FOO") == "bar:baz:."
-
-
-def test_pex_runner(temp_base):
-    with CaptureOutput(dryrun=True):
-        p = PexRunner(os.path.join(temp_base, "foo"))
-        assert not p.is_universal("tox", "1.0")
-
-        p = PexRunner(temp_base)
-        assert not p.is_universal("tox", "1.0")
-
-        p = Runner(temp_base)
-
-        # Edge cases
-        p.effective_run = lambda *_: 1
-        assert p.run() is None
-
-        p.effective_run = lambda *_: system.abort("Failed run")
-        system.DRYRUN = False
-        assert "Failed run" in p.run()
 
 
 def test_relocate_venv_file_successfully(temp_base):

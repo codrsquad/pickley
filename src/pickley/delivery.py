@@ -2,7 +2,6 @@ import os
 
 from pickley import short, system
 from pickley.context import ImplementationMap
-from pickley.lock import PingLock
 from pickley.settings import SETTINGS
 
 DELIVERERS = ImplementationMap(SETTINGS, "delivery")
@@ -108,8 +107,7 @@ class DeliveryMethodWrap(DeliveryMethod):
 
     def _install(self, target, source):
         # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-        ping = PingLock(SETTINGS.meta.full_path(self.package_name), seconds=SETTINGS.version_check_delay)
-        ping.touch()
+        system.touch(SETTINGS.meta.full_path(self.package_name, ".ping"))
 
         if self.package_name == system.PICKLEY:
             # Important: call pickley auto-upgrade from souce, and not wrapper in order to avoid infinite recursion

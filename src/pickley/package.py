@@ -8,7 +8,7 @@ from pickley.context import ImplementationMap
 from pickley.delivery import DELIVERERS
 from pickley.lock import PingLock, PingLockException
 from pickley.pypi import latest_pypi_version, read_entry_points
-from pickley.run import PexRunner, PipRunner, WorkingVenv
+from pickley.run import WorkingVenv
 from pickley.settings import JsonSerializable, SETTINGS
 from pickley.uninstall import uninstall_existing
 
@@ -306,8 +306,13 @@ class Packager(object):
         :param str version: Version to use
         :return str: None if successful, error message otherwise
         """
-        pip = PipRunner(self.build_folder)
-        return pip.wheel(self.source_folder if self.source_folder else "%s==%s" % (self.name, version))
+        system.ensure_folder(self.build_folder, folder=True)
+        return WorkingVenv.run(
+            "pip",
+            "--cache-dir", self.build_folder,
+            "wheel", "-i", SETTINGS.index, "--wheel-dir", self.build_folder,
+            self.source_folder if self.source_folder else "%s==%s" % (self.name, version)
+        )
 
     def package(self, version=None):
         """
@@ -484,17 +489,41 @@ class PexPackager(Packager):
     Package/install via pex (https://pypi.org/project/pex/)
     """
 
-    def pex_build(self, name, version, dest):
+    def pex_build(self, name, version, destination):
         """
         Run pex build
 
         :param str name: Name of entry point
         :param str version: Version to use
-        :param str dest: Path to file where to produce pex
+        :param str destination: Path to file where to produce pex
         :return str: None if successful, error message otherwise
         """
-        pex = PexRunner(self.build_folder)
-        return pex.build(name, self.name, version, dest)
+        system.ensure_folder(self.build_folder, folder=True)
+
+        system.delete_file(destination)
+        python = SETTINGS.resolved_definition("python", package_name=self.name)
+        args = ["--no-pypi", "--cache-dir", self.build_folder, "--repo", self.build_folder]
+        args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.name, version)])
+
+        # Note: 'python.source' being 'SETTINGS.defaults' is the same as it being 'system.PYTHON'
+        # Writing it this way is easier to change in tests
+        explicit_python = python and python.value and python.source is not SETTINGS.defaults
+        if explicit_python:
+            shebang = python.value
+            args.append("--python=%s" % python.value)
+
+        elif not python or system.is_universal(self.build_folder, self.name, version):
+            shebang = "python"
+
+        else:
+            shebang = python.value
+
+        if shebang:
+            if not os.path.isabs(shebang):
+                shebang = "/usr/bin/env %s" % shebang
+            args.append("--python-shebang=%s" % shebang)
+
+        WorkingVenv.run("pex", *args, path_env={"PKG_CONFIG_PATH": "/usr/local/opt/openssl/lib/pkgconfig"})
 
     def effective_package(self, template, version=None):
         """
