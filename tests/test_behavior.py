@@ -42,6 +42,9 @@ def test_file_operations(temp_base):
 def test_edge_cases(temp_base):
     assert system.added_env_paths(dict(FOO="."), env=dict(FOO="bar:baz")) == dict(FOO="bar:baz:.")
 
+    with patch("os.kill", return_value=True):
+        assert system.check_pid(5) is True
+
     assert not system.resolved_path("")
 
     assert system.write_contents("", "") == 0
@@ -127,7 +130,7 @@ def test_missing_implementation():
 
 
 def test_relocate_venv_file_successfully(temp_base):
-    system.write_contents("foo", "line 1: source\nline 2\n")
+    system.write_contents("foo", "line 1: source\nline 2\n", verbose=True)
     assert system.relocate_venv_file("foo", "source", "dest", fatal=False) == 1
     assert system.get_lines("foo") == ["line 1: dest\n", "line 2\n"]
 

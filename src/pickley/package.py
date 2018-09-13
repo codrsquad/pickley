@@ -489,6 +489,13 @@ class PexPackager(Packager):
     Package/install via pex (https://pypi.org/project/pex/)
     """
 
+    def resolved_python(self):
+        """
+        :param str package_name: Pypi package name
+        :return pickley.settings.Definition: Associated definition
+        """
+        return SETTINGS.resolved_definition("python", package_name=self.name)
+
     def pex_build(self, name, version, destination):
         """
         Run pex build
@@ -501,7 +508,7 @@ class PexPackager(Packager):
         system.ensure_folder(self.build_folder, folder=True)
 
         system.delete_file(destination)
-        python = SETTINGS.resolved_definition("python", package_name=self.name)
+        python = self.resolved_python()
         args = ["--no-pypi", "--cache-dir", self.build_folder, "--repo", self.build_folder]
         args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.name, version)])
 

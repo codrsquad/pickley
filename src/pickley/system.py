@@ -151,13 +151,11 @@ def is_universal(wheels_folder, package_name, version):
     :param str version: Specific version of 'package_name' to examine
     :return bool: True if wheel exists and is universal
     """
-    if not os.path.isdir(wheels_folder):
-        return False
-    prefix = "%s-%s-" % (package_name, version)
-    for fname in os.listdir(wheels_folder):
-        if fname.startswith(prefix) and fname.endswith(".whl"):
-            return "py2.py3-none" in fname
-    return False
+    if os.path.isdir(wheels_folder):
+        prefix = "%s-%s-" % (package_name, version)
+        for fname in os.listdir(wheels_folder):
+            if fname.startswith(prefix) and fname.endswith(".whl"):
+                return "py2.py3-none" in fname
 
 
 def added_env_paths(env_vars, env=None):

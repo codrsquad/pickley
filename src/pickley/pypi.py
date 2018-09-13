@@ -29,7 +29,7 @@ def request_get(url):
 
         try:
             # Some old python installations have trouble with SSL (OSX for example), try curl
-            data = system.run_program("curl", "-s", url, dryrun=False)
+            data = system.run_program("curl", "-s", url, dryrun=False, fatal=False)
             return data and decode(data).strip()
 
         except Exception as e:

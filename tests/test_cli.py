@@ -107,7 +107,16 @@ def test_bogus_install(_, temp_base):
 
     expect_success("check", "No packages installed", base=temp_base)
     expect_success("list", "No packages installed", base=temp_base)
-    expect_failure("check bogus_", "can't determine latest version", base=temp_base)
+
+    e = Exception()
+    e.code = 404
+    with patch("pickley.pypi.urlopen", side_effect=e):
+        # With explicit 404 (we don't fallback to curl)
+        expect_failure("check bogus_", "can't determine latest version", base=temp_base)
+
+    with patch("pickley.system.run_program", side_effect=Exception):
+        # With fallback to curl also failing
+        expect_failure("check bogus_", "can't determine latest version", base=temp_base)
 
     expect_success("settings -d", "base: %s" % short(temp_base))
 
