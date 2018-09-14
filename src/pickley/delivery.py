@@ -25,14 +25,14 @@ else
 fi
 """ % system.WRAPPER_MARK
 
-# Specific wrapper for pickley itself (better handling bootstrap)
+# Specific wrapper for pickley itself (avoid calling ourselves back recursively for auto-upgrade)
 PICKLEY_WRAPPER = """
 #!/bin/bash
 
 %s
 
 if [[ -x {source} ]]; then
-    if [[ $1 != "auto-upgrade" ]]; then
+    if [[ $* =~ "*auto-upgrade*" ]]; then
         nohup {source} auto-upgrade {name} &> /dev/null &
     fi
     exec {source} "$@"
@@ -62,7 +62,7 @@ class DeliveryMethod:
         :param str target: Full path of executable to deliver (<base>/<entry_point>)
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
-        system.delete_file(target)
+        system.delete_file(target, quiet=True)
         if system.DRYRUN:
             system.debug("Would %s %s (source: %s)", self.registered_name, short(target), short(source))
             return
@@ -71,7 +71,7 @@ class DeliveryMethod:
             system.abort("Can't %s, source %s does not exist", self.registered_name, short(source))
 
         try:
-            system.debug("Delivery: %s %s -> %s", self.registered_name, short(target), short(source))
+            system.debug("Delivering %s %s -> %s", self.registered_name, short(target), short(source))
             self._install(target, source)
 
         except Exception as e:
@@ -106,15 +106,7 @@ class DeliveryMethodWrap(DeliveryMethod):
     """
 
     def _install(self, target, source):
-        # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-        system.touch(system.SETTINGS.meta.full_path(self.package_name, ".ping"))
-
-        if self.package_name == system.PICKLEY:
-            # Important: call pickley auto-upgrade from souce, and not wrapper in order to avoid infinite recursion
-            wrapper = PICKLEY_WRAPPER
-        else:
-            wrapper = GENERIC_WRAPPER
-
+        wrapper = PICKLEY_WRAPPER if self.package_name == system.PICKLEY else GENERIC_WRAPPER
         contents = wrapper.lstrip().format(
             name=system.quoted(self.package_name),
             pickley=system.quoted(system.SETTINGS.base.full_path(system.PICKLEY)),

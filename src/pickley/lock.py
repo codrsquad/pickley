@@ -68,7 +68,7 @@ class SoftLock:
         system.write_contents(self.lock, "%s\n" % os.getpid())
 
         if not self._should_keep():
-            system.delete_file(self.folder)
+            system.delete_file(self.folder, quiet=not self.keep)
 
         return self
 
@@ -77,8 +77,8 @@ class SoftLock:
         Release lock
         """
         if not self._should_keep():
-            system.delete_file(self.folder)
-        system.delete_file(self.lock)
+            system.delete_file(self.folder, quiet=not self.keep)
+        system.delete_file(self.lock, quiet=True)
 
 
 def vrun(package_name, *args, **kwargs):
@@ -139,5 +139,5 @@ class SharedVenv:
         program = kwargs.pop("program", package_name)
         program = os.path.join(self.bin, program)
         self._install_module(package_name, program)
-        kwargs["base"] = [self.bin, system.SETTINGS.meta.path]
+        kwargs["shorten"] = self.bin
         return system.run_program(program, *args, **kwargs)

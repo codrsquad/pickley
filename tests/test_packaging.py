@@ -68,9 +68,15 @@ def test_version_meta():
     assert find_prefix({}, "") is None
 
     v = VersionMeta("foo")
+
     v2 = VersionMeta("foo")
     assert v.equivalent(v2)
     v2.packager = "bar"
+    assert not v.equivalent(v2)
+
+    v2 = VersionMeta("foo")
+    assert v.equivalent(v2)
+    v2.delivery = "bar"
     assert not v.equivalent(v2)
 
     assert not v.equivalent(None)

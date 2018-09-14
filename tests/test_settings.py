@@ -4,7 +4,8 @@ from mock import patch
 
 from pickley import system
 from pickley.pypi import latest_pypi_version, request_get
-from pickley.settings import add_representation, DOT_PICKLEY, JsonSerializable, same_type, Settings
+from pickley.settings import add_representation, DEFAULT_INSTALL_TIMEOUT, DEFAULT_VERSION_CHECK_SECONDS
+from pickley.settings import DOT_PICKLEY, JsonSerializable, same_type, Settings
 from pickley.system import short
 
 from .conftest import sample_path
@@ -75,13 +76,20 @@ settings:
     - {base}/.pickley/bogus9.json: # empty
     - defaults:
       default:
-        channel: latest
-        delivery: symlink
-        install_timeout: 30
-        packager: venv
-        python: {python}
-        version_check_seconds: 600
-"""
+        channel: %s
+        delivery: %s
+        install_timeout: %s
+        packager: %s
+        python: %s
+        version_check_seconds: %s
+""" % (
+    system.LATEST_CHANNEL,
+    system.DEFAULT_DELIVERY,
+    DEFAULT_INSTALL_TIMEOUT,
+    system.VENV_PACKAGER,
+    short(system.PYTHON),
+    DEFAULT_VERSION_CHECK_SECONDS,
+)
 
 
 def test_custom_settings():
@@ -111,7 +119,7 @@ def test_custom_settings():
     assert s.get_value("bundle.dev") == ["tox", "twine"]
     assert s.get_value("bundle.dev2") == ["tox", "twine", "pipenv"]
 
-    expected = EXPECTED_REPRESENTATION.format(base=short(s.base.path), python=short(system.PYTHON)).strip()
+    expected = EXPECTED_REPRESENTATION.format(base=short(s.base.path)).strip()
     assert s.represented().strip() == expected
 
     s.cli.contents["packager"] = "copy"

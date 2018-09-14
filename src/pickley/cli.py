@@ -30,9 +30,18 @@ def bootstrap(testing=False):
         # Don't bootstrap in quiet mode, or if we're running from a venv already
         return
 
-    p = PACKAGERS.get(system.VENV_PACKAGER)(system.PICKLEY)
+    delivery = DELIVERERS.resolved_name(system.PICKLEY)
+    if delivery != "wrap":
+        # Only bootstrap if we're using wrapper, no point otherwise
+        return
+
+    p = PACKAGERS.resolved(system.PICKLEY)
+    if p.registered_name != system.VENV_PACKAGER:
+        # Also no real point bootstrapping unless target packager is venv
+        return
+
     p.refresh_current()
-    if p.current.packager == system.VENV_PACKAGER:
+    if p.current.packager == system.VENV_PACKAGER and p.current.delivery == delivery:
         # We're already packaged correctly, no need to bootstrap
         return
 
@@ -261,7 +270,7 @@ def package(dist, build, folder):
     p.build_folder = system.resolved_path(build)
     p.source_folder = system.resolved_path(folder)
     r = p.package()
-    system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, base=folder))
+    system.info("Packaged %s successfully, produced: %s", short(folder), system.represented_args(r, shorten=folder))
 
 
 @main.command()

@@ -48,23 +48,25 @@ class ImplementationMap:
         """
         return sorted(self.map.keys())
 
-    def resolved_name(self, package_name):
+    def resolved_name(self, package_name, default=None):
         """
         :param str package_name: Name of pypi package
+        :param default: Optional default value (takes precendence over system.SETTINGS.defaults only)
         :return str: Corresponding implementation name to use
         """
-        definition = system.SETTINGS.resolved_definition(self.key, package_name=package_name)
+        definition = system.SETTINGS.resolved_definition(self.key, package_name=package_name, default=default)
         if not definition or not definition.value:
             return None
 
         return definition.value
 
-    def resolved(self, package_name):
+    def resolved(self, package_name, default=None):
         """
         :param str package_name: Name of pypi package
+        :param default: Optional default value (takes precendence over system.SETTINGS.defaults only)
         :return: Corresponding implementation to use
         """
-        name = self.resolved_name(package_name)
+        name = self.resolved_name(package_name, default=default)
         if not name:
             system.abort("No %s type configured for %s", self.key, package_name)
 

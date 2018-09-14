@@ -11,8 +11,8 @@ tree <base>
 │   ├── tox/
 │   │   ├── .current.json           # Currently installed version
 │   │   ├── .latest.json            # Latest version as determined by querying pypi
-│   │   ├── .v/                     # Temp folder used during installation
-│   │   ├── .v.lock                 # Soft lock file containing pid of pickley process that currently hold the lock on .v/
+│   │   ├── .tmp/                   # Temp folder used during installation
+│   │   ├── .tmp.lock               # Soft lock file containing pid of pickley process that currently hold the lock on .tmp/
 │   │   └── tox-2.9.1/              # Actual installation, as packaged by pickley
 ├── pickley                         # pickley itself
 └── tox -> .pickley/tox/2.9.1/...   # Produced exe, can be a symlink or a small wrapper exe (to ensure up-to-date)
@@ -270,12 +270,12 @@ class SettingsFile:
         :param str|None path: Path to settings file
         """
         self.parent = parent
-        self.path = short(path) or name
+        self.path = path or name
         self.folder = system.parent_folder(path)
         self._contents = None
 
     def __repr__(self):
-        return self.path
+        return short(self.path)
 
     def set_contents(self, *args, **kwargs):
         for arg in args:
@@ -448,7 +448,7 @@ class Settings:
         if not base:
             base = system.parent_folder(system.PICKLEY_PROGRAM_PATH)
             if DOT_PICKLEY in base:
-                # Don't consider bootstrapped .pickley/... as installation base
+                # Don't consider meta folder .pickley/... as installation base
                 i = base.index(DOT_PICKLEY)
                 base = base[:i].rstrip("/")
             elif ".venv" in base:
@@ -492,10 +492,11 @@ class Settings:
                 for ipath in include:
                     self._add_config(ipath, base=settings_file.folder)
 
-    def resolved_definition(self, key, package_name=None):
+    def resolved_definition(self, key, package_name=None, default=None):
         """
         :param str key: Key to look up
         :param str|None package_name: Optional associated package name
+        :param default: Optional default value (takes precendence over system.SETTINGS.defaults only)
         :return Definition|None: Definition corresponding to 'key', if any
         """
         definition = self.cli.get_definition(key)
@@ -505,6 +506,8 @@ class Settings:
             definition = child.resolved_definition(key, package_name=package_name)
             if definition is not None:
                 return definition
+        if default:
+            return Definition(default, "default", key)
         return self.defaults.resolved_definition(key, package_name=package_name)
 
     def resolved_value(self, key, package_name=None, default=None):

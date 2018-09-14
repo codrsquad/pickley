@@ -36,7 +36,21 @@ def test_bootstrap(_, temp_base):
 
 
 @patch("pickley.package.Packager.internal_install", side_effect=SoftLockException(".lock"))
-def test_bootstrap_in_progress(_):
+def test_bootstrap_in_progress(_, temp_base):
+    # No bootstrap unless delivery is wrap
+    system.SETTINGS.cli.contents["delivery"] = "symlink"
+    with CaptureOutput() as logged:
+        assert bootstrap(testing=True) is None
+        assert not str(logged)
+
+    # Bootstrap attempted (but mocked out as can't acquire lock)
+    system.SETTINGS.cli.contents["delivery"] = "wrap"
+    with CaptureOutput() as logged:
+        assert bootstrap(testing=True) is None
+        assert not str(logged)
+
+    # No bootstrap unless packager is venv (default)
+    system.SETTINGS.cli.contents["packager"] = "pex"
     with CaptureOutput() as logged:
         assert bootstrap(testing=True) is None
         assert not str(logged)

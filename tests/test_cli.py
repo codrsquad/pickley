@@ -128,10 +128,11 @@ def test_install(temp_base):
     expect_success("--dryrun uninstall /dev/null --force", "Nothing to uninstall")
 
     system.touch("foo")
+    assert os.path.exists("foo")
     expect_failure("uninstall foo", "foo was not installed with pickley")
     expect_success("uninstall foo --force", "Uninstalled foo")
 
-    system.delete_file("foo")
+    assert not os.path.exists("foo")
     assert system.ensure_folder("foo", folder=True) == 1
     expect_failure("uninstall foo --force", "Can't automatically uninstall")
 
@@ -139,29 +140,57 @@ def test_install(temp_base):
     expect_failure("install six", "'six' is not a CLI", base=temp_base)
 
     # Install tox, but add a few files + a bogus previous entry point to test cleanup
-    system.SETTINGS.cli.contents["install_timeout"] = 600
-    system.touch(system.SETTINGS.base.full_path("tox-foo"))
-    system.touch(system.SETTINGS.meta.full_path("tox", "tox-0.0.0"))
-    system.touch(system.SETTINGS.meta.full_path("tox", "tox-foo"))
-    system.write_contents(system.SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-foo", "tox-bar"]\n')
-    expect_success("--delivery wrap install tox", "Installed tox", "tox-foo", base=temp_base)
+    wep1 = system.SETTINGS.base.full_path("tox-old-entrypoint1")
+    tep10 = system.SETTINGS.meta.full_path("tox", "tox-old-entrypoint1-1.0")
+    tep11 = system.SETTINGS.meta.full_path("tox", "tox-old-entrypoint1-1.1")
+    t00 = system.SETTINGS.meta.full_path("tox", "tox-0.0.0")
+    tfoo = system.SETTINGS.meta.full_path("tox", "tox-foo")
+    system.touch(wep1)
+    system.touch(tep10)
+    system.touch(tep11)
+    system.touch(t00)
+    system.touch(tfoo)
+    system.write_contents(system.SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-old-entrypoint1", "tox-old-entrypoint2"]\n')
+    expect_success("--delivery wrap install tox", "Installed tox", base=temp_base)
+
+    # Old entry point removed immediately
+    assert not os.path.exists(wep1)
+
+    # Only 1 cleaned up immediately (latest + 1 kept)
+    assert not os.path.exists(tep10)
+    assert os.path.exists(tep11)
+    assert not os.path.exists(t00)
+    assert os.path.exists(tfoo)
+
     assert system.is_executable(tox)
     output = run_program(tox, "--version")
     assert "tox" in output
-
-    version = output.partition(" ")[0]
-    expect_success("copy .pickley/tox/tox-%s tox-copy" % version, "Copied")
-    expect_success("move tox-copy tox-relocated", "Moved")
 
     expect_success("auto-upgrade tox", "Skipping auto-upgrade", base=temp_base)
     system.delete_file(system.SETTINGS.meta.full_path("tox", ".ping"))
     expect_success("auto-upgrade tox", "already installed", base=temp_base)
 
+    version = output.partition(" ")[0]
+    expect_success("copy .pickley/tox/tox-%s tox-copy" % version, "Copied")
+    expect_success("move tox-copy tox-relocated", "Moved")
+
     # Verify that older versions and removed entry-points do get cleaned up
     JsonSerializable.save_json({"install_timeout": 0}, "custom-timeout.json")
-    expect_success("-ccustom-timeout.json install tox", "already installed", "tox/tox-foo", "tox/tox-0.0.0", base=temp_base)
+    expect_success("-ccustom-timeout.json install tox", "already installed", base=temp_base)
+
+    # All cleaned up when enough time went by
+    assert not os.path.exists(tep10)
+    assert not os.path.exists(tep11)
+    assert not os.path.exists(t00)
+    assert not os.path.exists(tfoo)
+
     expect_success("check", "tox", "is installed", base=temp_base)
-    expect_success("check --verbose", "tox", "is installed (as venv wrap, channel: ", base=temp_base)
+    expect_success(
+        "check --verbose",
+        "tox",
+        "is installed (as %s wrap, channel: " % system.VENV_PACKAGER,
+        base=temp_base
+    )
 
     p = PACKAGERS.get(system.VENV_PACKAGER)("tox")
     p.refresh_latest()

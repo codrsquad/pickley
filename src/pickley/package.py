@@ -144,6 +144,8 @@ class VersionMeta(JsonSerializable):
             return False
         if self.packager != other.packager:
             return False
+        if self.delivery != other.delivery:
+            return False
         return True
 
     def set_version(self, version, channel, source):
@@ -204,7 +206,7 @@ class Packager(object):
         self.current = VersionMeta(self.name, "current")
         self.latest = VersionMeta(self.name, system.LATEST_CHANNEL)
         self.desired = VersionMeta(self.name)
-        self.dist_folder = system.SETTINGS.meta.full_path(self.name, ".v")
+        self.dist_folder = system.SETTINGS.meta.full_path(self.name, ".tmp")
         self.build_folder = os.path.join(self.dist_folder, "build")
         self.source_folder = None
 
@@ -374,6 +376,7 @@ class Packager(object):
                 return system.abort("Can't %s %s: %s", intent, self.name, self.desired.problem)
 
             self.refresh_current()
+            self.desired.delivery = DELIVERERS.resolved_name(self.name, default=self.current.delivery)
             if not force and self.current.equivalent(self.desired):
                 if not bootstrap:
                     system.info(self.desired.representation(verbose=True, note="is already installed"))
@@ -472,6 +475,7 @@ class Packager(object):
         """
         ep = self.entry_points
         if not ep:
+            system.delete_file(system.SETTINGS.meta.full_path(self.name))
             system.abort("'%s' is not a CLI, it has no console_scripts entry points", self.name)
         return ep
 
@@ -480,7 +484,10 @@ class Packager(object):
         :param str version: Version being delivered
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
-        deliverer = DELIVERERS.resolved(self.name)
+        # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
+        system.touch(system.SETTINGS.meta.full_path(self.name, ".ping"))
+
+        deliverer = DELIVERERS.resolved(self.name, default=self.desired.delivery)
         for name in self.required_entry_points():
             target = system.SETTINGS.base.full_path(name)
             if self.name != system.PICKLEY and not self.current.file_exists:

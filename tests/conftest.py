@@ -6,6 +6,7 @@ import pytest
 
 from pickley import system
 from pickley.context import CaptureOutput
+from pickley.settings import DOT_PICKLEY  # noqa: imported to ensure that system.SETTINGS is set
 
 
 TESTS = system.parent_folder(__file__)

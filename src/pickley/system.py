@@ -57,21 +57,17 @@ PICKLEY_PROGRAM_PATH = resolved_path(pickley_program_path())
 sys.argv[0] = PICKLEY_PROGRAM_PATH
 
 
-def short(path, base=None):
+def short(path, shorten=None):
     """
     :param path: Path to represent in its short form
-    :param str|list|None base: Base folder(s) to relativise paths to
+    :param str|None shorten: Extra folder to relativise paths to
     :return str: Short form, using '~' if applicable
     """
     if not path:
         return path
-    path = str(path).replace(SETTINGS.meta.path + "/", "")
-    if base:
-        if not isinstance(base, list):
-            base = [base]
-        for b in base:
-            if b:
-                path = path.replace(b + "/", "")
+    path = str(path)
+    for p in sorted(flattened([SETTINGS.base.path, shorten]), reverse=True):
+        path = path.replace(p + "/", "")
     path = path.replace(HOME, "~")
     return path
 
@@ -493,13 +489,15 @@ def move_file(source, destination, fatal=True):
 
     relocated = 0
     for bin_folder in find_venvs(source):
-        debug("Relocating venv %s -> %s", short(source), short(destination))
         for name in os.listdir(bin_folder):
             fpath = os.path.join(bin_folder, name)
             relocated += relocate_venv_file(fpath, source, destination, fatal=fatal)
 
+    action = "Relocating venv" if relocated else "Moving"
+    debug("%s %s -> %s", action, short(source), short(destination))
+
     ensure_folder(destination, fatal=fatal)
-    delete_file(destination, fatal=fatal)
+    delete_file(destination, fatal=fatal, quiet=True)
     try:
         shutil.move(source, destination)
         return 1
@@ -508,10 +506,11 @@ def move_file(source, destination, fatal=True):
         return abort("Can't move %s -> %s: %s", short(source), short(destination), e, fatal=fatal)
 
 
-def delete_file(path, fatal=True):
+def delete_file(path, fatal=True, quiet=False):
     """
     :param str|None path: Path to file or folder to delete
     :param bool fatal: Abort execution on failure if True
+    :param bool quiet: Don't log if True
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
     islink = path and os.path.islink(path)
@@ -522,7 +521,8 @@ def delete_file(path, fatal=True):
         debug("Would delete %s", short(path))
         return 1
 
-    debug("Deleting %s", short(path))
+    if not quiet:
+        debug("Deleting %s", short(path))
     try:
         if islink or os.path.isfile(path):
             os.unlink(path)
@@ -588,18 +588,18 @@ def run_program(program, *args, **kwargs):
     full_path = which(program)
 
     fatal = kwargs.pop("fatal", True)
-    base = kwargs.pop("base", None)
+    shorten = kwargs.pop("shorten", None)
     logger = kwargs.pop("logger", debug)
     dryrun = kwargs.pop("dryrun", fatal and DRYRUN)
     message = "Would run" if dryrun else "Running"
-    message = "%s: %s %s" % (message, short(full_path or program, base=base), represented_args(args, base=base))
+    message = "%s: %s %s" % (message, short(full_path or program, shorten=shorten), represented_args(args, shorten=shorten))
     logger(message)
 
     if dryrun:
         return message
 
     if not full_path:
-        return abort("%s is not installed", short(program, base=base), fatal=fatal, return_value=None)
+        return abort("%s is not installed", short(program, shorten=shorten), fatal=fatal, return_value=None)
 
     stdout = kwargs.pop("stdout", subprocess.PIPE)
     stderr = kwargs.pop("stderr", subprocess.PIPE)
@@ -616,12 +616,12 @@ def run_program(program, *args, **kwargs):
 
         if p.returncode:
             info = ": %s\n%s" % (error, output) if output or error else ""
-            return abort("%s exited with code %s%s", short(program, base=base), p.returncode, info, fatal=fatal, return_value=None)
+            return abort("%s exited with code %s%s", short(program, shorten=shorten), p.returncode, info, fatal=fatal, return_value=None)
 
         return output
 
     except Exception as e:
-        return abort("%s failed: %s", short(program, base=base), e, exc_info=e, fatal=fatal, return_value=None)
+        return abort("%s failed: %s", short(program, shorten=shorten), e, exc_info=e, fatal=fatal, return_value=None)
 
 
 def quoted(text):
@@ -635,19 +635,16 @@ def quoted(text):
     return text
 
 
-def represented_args(args, base=None, separator=" ", shorten=True):
+def represented_args(args, shorten=None, separator=" "):
     """
     :param list|tuple args: Arguments to represent
-    :param str|None base: Base folder to relativise paths to
+    :param str|None shorten: Extra folder to relativise paths to
     :param str separator: Separator to use
-    :param bool shorten: If True, shorten involved paths
     :return str: Quoted as needed textual representation
     """
     result = []
     for text in args:
-        if shorten:
-            text = short(text, base=base)
-        result.append(quoted(text))
+        result.append(quoted(short(text, shorten=shorten)))
     return separator.join(result)
 
 
