@@ -2,10 +2,9 @@ import os
 
 from mock import patch
 
+import pickley.settings
 from pickley import system
 from pickley.pypi import latest_pypi_version, request_get
-from pickley.settings import add_representation, DEFAULT_INSTALL_TIMEOUT, DEFAULT_VERSION_CHECK_SECONDS
-from pickley.settings import DOT_PICKLEY, JsonSerializable, same_type, Settings
 from pickley.system import short
 
 from .conftest import sample_path
@@ -51,14 +50,7 @@ settings:
           virtualenv: 16.0.0
       include:
         - bogus.json
-        - bogus2.json
-        - bogus3.json
-        - bogus4.json
-        - bogus5.json
-        - bogus6.json
-        - bogus7.json
-        - bogus8.json
-        - bogus9.json
+        - non-existent-config-file.json
       install_timeout: 2
       select:
         virtualenv:
@@ -66,37 +58,15 @@ settings:
           packager: pex
       version_check_seconds: 60
     - {base}/.pickley/bogus.json: # empty
-    - {base}/.pickley/bogus2.json: # empty
-    - {base}/.pickley/bogus3.json: # empty
-    - {base}/.pickley/bogus4.json: # empty
-    - {base}/.pickley/bogus5.json: # empty
-    - {base}/.pickley/bogus6.json: # empty
-    - {base}/.pickley/bogus7.json: # empty
-    - {base}/.pickley/bogus8.json: # empty
-    - {base}/.pickley/bogus9.json: # empty
-    - defaults:
-      default:
-        channel: %s
-        delivery: %s
-        install_timeout: %s
-        packager: %s
-        python: %s
-        version_check_seconds: %s
-""" % (
-    system.LATEST_CHANNEL,
-    system.DEFAULT_DELIVERY,
-    DEFAULT_INSTALL_TIMEOUT,
-    system.VENV_PACKAGER,
-    short(system.PYTHON),
-    DEFAULT_VERSION_CHECK_SECONDS,
-)
+    - {base}/.pickley/non-existent-config-file.json: # empty
+"""
 
 
 def test_custom_settings():
-    s = Settings(sample_path("custom"))
+    s = pickley.settings.Settings(sample_path("custom"))
     s.load_config()
 
-    assert str(s) == "[11] base: %s" % short(s.base.path)
+    assert str(s) == "[4] base: %s" % short(s.base.path)
     assert str(s.defaults) == "defaults"
     assert str(s.base) == "base: %s" % short(s.base.path)
     assert s.get_definition("") is None
@@ -119,8 +89,11 @@ def test_custom_settings():
     assert s.get_value("bundle.dev") == ["tox", "twine"]
     assert s.get_value("bundle.dev2") == ["tox", "twine", "pipenv"]
 
-    expected = EXPECTED_REPRESENTATION.format(base=short(s.base.path)).strip()
-    assert s.represented().strip() == expected
+    old_width = pickley.settings.REPRESENTATION_WIDTH
+    pickley.settings.REPRESENTATION_WIDTH = 40
+    actual = s.represented(include_defaults=False).replace(short(s.base.path), "{base}")
+    assert actual == EXPECTED_REPRESENTATION.strip()
+    pickley.settings.REPRESENTATION_WIDTH = old_width
 
     s.cli.contents["packager"] = "copy"
     d = s.resolved_definition("packager")
@@ -139,25 +112,25 @@ def test_settings_base():
 
     # Verify that .pickley/... part of base gets ignored
     base = sample_path("foo")
-    system.PICKLEY_PROGRAM_PATH = os.path.join(base, DOT_PICKLEY, "pickley-1.0.0", "bin", "pickley")
-    s = Settings()
+    system.PICKLEY_PROGRAM_PATH = os.path.join(base, pickley.settings.DOT_PICKLEY, "pickley-1.0.0", "bin", "pickley")
+    s = pickley.settings.Settings()
     assert s.base.path == base
 
     # Convenience dev case
     base = sample_path(".venv", "bin", "pickley")
     system.PICKLEY_PROGRAM_PATH = base
-    s = Settings()
+    s = pickley.settings.Settings()
     assert s.base.path == sample_path(".venv", "root")
 
     system.PICKLEY_PROGRAM_PATH = old_program
 
 
 def test_same_type():
-    assert same_type(None, None)
-    assert not same_type(None, "")
-    assert same_type("foo", "bar")
-    assert same_type("foo", u"bar")
-    assert same_type(["foo"], [u"bar"])
+    assert pickley.settings.same_type(None, None)
+    assert not pickley.settings.same_type(None, "")
+    assert pickley.settings.same_type("foo", "bar")
+    assert pickley.settings.same_type("foo", u"bar")
+    assert pickley.settings.same_type(["foo"], [u"bar"])
 
 
 @patch("pickley.system.run_program", side_effect=Exception)
@@ -193,14 +166,14 @@ def test_pypi(_):
 def test_add_representation():
     # Cover add_representation() edge cases
     r = []
-    add_representation(r, "")
+    pickley.settings.add_representation(r, "")
     assert not r
-    add_representation(r, "foo")
+    pickley.settings.add_representation(r, "foo")
     assert r == ["- foo"]
 
 
 def test_serialization():
-    j = JsonSerializable()
+    j = pickley.settings.JsonSerializable()
     assert str(j) == "no source"
     j.save()  # no-op
     j.set_from_dict({}, source="test")
@@ -213,10 +186,10 @@ def test_serialization():
     j.reset()
     assert not j.some_string
 
-    j = JsonSerializable.from_json("")
+    j = pickley.settings.JsonSerializable.from_json("")
     assert str(j) == "no source"
 
-    j = JsonSerializable.from_json("/dev/null/foo")
+    j = pickley.settings.JsonSerializable.from_json("/dev/null/foo")
     assert str(j) == "/dev/null/foo"
     j.save()  # Warns: Couldn't save...
 

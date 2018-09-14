@@ -99,12 +99,12 @@ def test_edge_cases(temp_base):
     # Can't read
     with patch("os.path.isfile", return_value=True):
         with patch("os.path.getsize", return_value=10):
-            with patch("pickley.system.open", mock_open()) as m:
+            with patch("io.open", mock_open()) as m:
                 m.side_effect = Exception
                 assert "Can't read" in verify_abort(system.relocate_venv_file, "foo", "source", "dest")
 
     # Can't write
-    with patch("pickley.system.open", mock_open()) as m:
+    with patch("io.open", mock_open()) as m:
         m.return_value.write.side_effect = Exception
         assert "Can't write" in verify_abort(system.write_contents, "foo", "test")
 

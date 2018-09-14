@@ -16,38 +16,9 @@ tree <base>
 │   │   └── tox-2.9.1/              # Actual installation, as packaged by pickley
 ├── pickley                         # pickley itself
 └── tox -> .pickley/tox/2.9.1/...   # Produced exe, can be a symlink or a small wrapper exe (to ensure up-to-date)
-
-{
-    "bundle": {
-        "mybundle": "tox twine"
-    },
-    "channel": {
-        "stable": {
-            "tox": "1.0"
-        }
-    },
-    "default": {
-        "channel": "latest",
-        "delivery": "wrap, or symlink, or copy",
-        "packager": "venv"
-    },
-    "delivery": {
-        "wrap": "logfetch mgit"
-    },
-    "include": [
-        "~/foo/pickley.json"
-    ],
-    "index": "https://pypi.org/",
-    "select": {
-        "twine": {
-            "channel": "latest",
-            "delivery": "symlink",
-            "packager": "pex",
-        }
-    }
-}
 """
 
+import io
 import json
 import os
 
@@ -60,6 +31,7 @@ from pickley.system import short
 DOT_PICKLEY = ".pickley"
 DEFAULT_INSTALL_TIMEOUT = 30
 DEFAULT_VERSION_CHECK_SECONDS = 600
+REPRESENTATION_WIDTH = 90
 
 
 def same_type(t1, t2):
@@ -95,7 +67,7 @@ def add_representation(result, data, indent=""):
         for key, value in sorted(data.items()):
             if isinstance(value, list):
                 brief = system.represented_args(value, separator=", ")
-                if len(brief) < 90:
+                if len(brief) < REPRESENTATION_WIDTH:
                     result.append("%s%s: [%s]" % (indent, short(key), brief))
                     continue
             if isinstance(value, (dict, list)):
@@ -208,8 +180,9 @@ class JsonSerializable:
             if system.DRYRUN:
                 system.debug("Would save %s", short(path))
             else:
-                with open(path, "w") as fh:
-                    json.dump(data, fh, sort_keys=True, indent=2)
+                s = "%s\n" % json.dumps(data, sort_keys=True, indent=2).strip()
+                with io.open(path, "wt") as fh:
+                    fh.write(system.to_unicode(s))
 
         except Exception as e:
             system.warning("Couldn't save %s: %s" % (short(path), e))
@@ -226,7 +199,7 @@ class JsonSerializable:
             return default
 
         try:
-            with open(path, "r") as fh:
+            with io.open(path, "rt") as fh:
                 data = json.load(fh)
                 if default is not None and type(data) != type(default):
                     system.debug("Wrong type %s for %s, expecting %s" % (type(data), short(path), type(default)))
@@ -508,7 +481,7 @@ class Settings:
                 return definition
         if default:
             return Definition(default, "default", key)
-        return self.defaults.resolved_definition(key, package_name=package_name)
+        return self.defaults.get_definition("default.%s" % key)
 
     def resolved_value(self, key, package_name=None, default=None):
         """
@@ -572,8 +545,9 @@ class Settings:
                 result.append(name)
         return system.flattened(result)
 
-    def represented(self):
+    def represented(self, include_defaults=True):
         """
+        :param bool include_defaults: When True, include representation of defaults as well
         :return str: Human readable representation of these settings
         """
         result = [
@@ -587,8 +561,9 @@ class Settings:
         result.append(self.cli.represented())
         for child in self.children:
             result.append(child.represented())
-        result.append(self.defaults.represented())
-        return "\n".join(result)
+        if include_defaults:
+            result.append(self.defaults.represented())
+        return "\n".join(result).strip()
 
 
 system.SETTINGS = Settings()

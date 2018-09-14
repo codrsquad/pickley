@@ -60,11 +60,12 @@ def bootstrap(testing=False):
 @click.option("--quiet", "-q", is_flag=True, help="Quiet mode, do not output anything")
 @click.option("--dryrun", "-n", is_flag=True, help="Perform a dryrun")
 @click.option("--base", "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
+@click.option("--index", "-i", metavar="PATH", help="Pypi index to use")
 @click.option("--config", "-c", metavar="PATH", help="Extra config to load")
-@click.option("--python", metavar="PATH", help="Python interpreter to use")
+@click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", type=click.Choice(DELIVERERS.names()), help="Delivery method to use")
 @click.option("--packager", "-p", type=click.Choice(PACKAGERS.names()), help="Packager to use")
-def main(debug, quiet, dryrun, base, config, python, delivery, packager):
+def main(debug, quiet, dryrun, base, index, config, python, delivery, packager):
     """
     Package manager for python CLIs
     """
@@ -81,7 +82,7 @@ def main(debug, quiet, dryrun, base, config, python, delivery, packager):
             system.abort("Can't use %s as base: folder does not exist", short(base))
         system.SETTINGS.set_base(base)
 
-    system.SETTINGS.load_config(config=config, python=python, delivery=delivery, packager=packager)
+    system.SETTINGS.load_config(config=config, delivery=delivery, index=index, packager=packager, python=python)
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None

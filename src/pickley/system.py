@@ -11,6 +11,8 @@ import sys
 import time
 from logging.handlers import RotatingFileHandler
 
+import six
+
 from pickley import decode, pickley_program_path, python_interpreter
 
 
@@ -184,7 +186,7 @@ def get_lines(path, max_size=8192, fatal=True, quiet=False):
         return None
 
     try:
-        with open(path, "rt") as fh:
+        with io.open(path, "rt", errors="ignore") as fh:
             return fh.readlines()
 
     except Exception as e:
@@ -268,6 +270,13 @@ def touch(path):
     return write_contents(path, "")
 
 
+def to_unicode(s):
+    """Helps deal with py2/3 differences around unicode"""
+    if isinstance(s, six.text_type):
+        return s
+    return six.text_type(s)
+
+
 def write_contents(path, contents, verbose=False, fatal=True):
     """
     :param str path: Path to file
@@ -289,9 +298,9 @@ def write_contents(path, contents, verbose=False, fatal=True):
         debug("Writing %s bytes to %s", len(contents), short(path))
 
     try:
-        with open(path, "w") as fh:
+        with io.open(path, "wt") as fh:
             if contents:
-                fh.write(contents)
+                fh.write(to_unicode(contents))
             else:
                 os.utime(path, None)
         return 1
@@ -365,7 +374,6 @@ def relocate_venv_file(path, source, destination, fatal=True, quiet=False):
     :param bool quiet: Don't log if True
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
-    content = None
     content = get_lines(path, fatal=fatal, quiet=quiet)
     if not content:
         return 0

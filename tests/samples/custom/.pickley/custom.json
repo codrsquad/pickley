@@ -4,7 +4,7 @@
       "virtualenv": "16.0.0"
     }
   },
-  "include": ["bogus.json", "bogus2.json", "bogus3.json", "bogus4.json", "bogus5.json", "bogus6.json", "bogus7.json", "bogus8.json", "bogus9.json"],
+  "include": ["bogus.json", "non-existent-config-file.json"],
   "install_timeout": 2,
   "select": {
     "virtualenv": {
