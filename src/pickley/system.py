@@ -112,7 +112,10 @@ def abort(*args, **kwargs):
     quiet = kwargs.pop("quiet", False)
     return_value = kwargs.pop("return_value", -1)
     if not quiet and args:
-        error(*args, **kwargs)
+        if code == 0:
+            info(*args, **kwargs)
+        else:
+            error(*args, **kwargs)
     if fatal:
         sys.exit(code)
     return return_value
