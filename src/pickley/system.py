@@ -64,19 +64,19 @@ PICKLEY_PROGRAM_PATH = resolved_path(pickley_program_path())
 sys.argv[0] = PICKLEY_PROGRAM_PATH
 
 
-def short(path, shorten=None, base=True):
+def short(path, shorten=None, meta=True):
     """
     :param path: Path to represent in its short form
     :param str|None shorten: Extra folder to relativise paths to
-    :param bool base: If True, shorten paths relatively to SYSTEM.base as well
+    :param bool meta: If True, shorten paths relatively to SYSTEM.meta as well
     :return str: Short form, using '~' if applicable
     """
     if not path:
         return path
     path = str(path)
     anchors = []
-    if base and SETTINGS:
-        anchors.append(SETTINGS.base.path)
+    if meta and SETTINGS:
+        anchors.append(SETTINGS.meta.path)
     if shorten:
         anchors.append(shorten)
     if anchors:
@@ -649,7 +649,7 @@ def run_program(program, *args, **kwargs):
 
         if include_error and error:
             output = "%s\n%s" % (output, error)
-        return output.strip()
+        return output and output.strip()
 
     except Exception as e:
         return abort("%s failed: %s", short(program, shorten=shorten), e, exc_info=e, fatal=fatal, quiet=quiet, return_value=None)

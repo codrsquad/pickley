@@ -145,5 +145,4 @@ class SharedVenv:
         program = kwargs.pop("program", package_name)
         program = os.path.join(self.bin, program)
         self._install_module(package_name, program)
-        kwargs["shorten"] = self.bin
         return system.run_program(program, *args, **kwargs)
