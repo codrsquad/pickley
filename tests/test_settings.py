@@ -205,13 +205,6 @@ def test_duration():
     assert system.to_int("50") == 50
 
 
-def simulated_is_executable(path):
-    if path == "/usr/bin/python":
-        return True
-
-    return path and os.path.isfile(path) and os.access(path, os.X_OK)
-
-
 def simulated_which(program, *args, **kwargs):
     if program == "python3.6":
         return "/test/python3.6/bin/python"
@@ -232,7 +225,7 @@ def simulated_run(program, *args, **kwargs):
     return None
 
 
-@patch("pickley.system.is_executable", side_effect=simulated_is_executable)
+@patch("os.path.realpath", side_effect=lambda x: x)
 @patch("pickley.system.which", side_effect=simulated_which)
 @patch("pickley.system.run_program", side_effect=simulated_run)
 def test_python_installation(_, __, ___, temp_base):
