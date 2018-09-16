@@ -12,5 +12,5 @@
       "packager": "pex"
     }
   },
-  "version_check_seconds": 60
+  "version_check_delay": 1
 }

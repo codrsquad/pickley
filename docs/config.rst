@@ -50,34 +50,38 @@ The above means:
 Layout
 ======
 
-```
-{
-    "bundle": {
-        "mybundle": "tox twine"
-    },
-    "channel": {
-        "stable": {
-            "tox": "1.0"
-        }
-    },
-    "default": {
-        "channel": "latest",
-        "delivery": "wrap, or symlink, or copy",
-        "packager": "venv"
-    },
-    "delivery": {
-        "wrap": "logfetch mgit"
-    },
-    "include": [
-        "~/foo/pickley.json"
-    ],
-    "index": "https://pypi.org/",
-    "select": {
-        "twine": {
+Sample::
+
+    {
+        "bundle": {
+            "mybundle": "tox twine"
+        },
+        "channel": {
+            "stable": {
+                "tox": "1.0"
+            }
+        },
+        "default": {
             "channel": "latest",
-            "delivery": "symlink",
-            "packager": "pex",
+            "delivery": "wrap, or symlink, or copy",
+            "packager": "venv"
+        },
+        "delivery": {
+            "wrap": "logfetch mgit"
+        },
+        "include": [
+            "~/foo/pickley.json"
+        ],
+        "index": "https://pypi.org/",
+        "python_installs": "~/.pyenv/versions",
+        "install_timeout": 30,
+        "version_check_delay": 10
+        "select": {
+            "twine": {
+                "channel": "latest",
+                "delivery": "symlink",
+                "packager": "pex",
+            }
         }
     }
-}
-```
+

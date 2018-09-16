@@ -1,4 +1,5 @@
 import os
+import sys
 
 from mock import patch
 
@@ -56,7 +57,7 @@ settings:
         virtualenv:
           delivery: wrap
           packager: pex
-      version_check_seconds: 60
+      version_check_delay: 1
     - {base}/.pickley/bogus.json: # empty
     - {base}/.pickley/non-existent-config-file.json: # empty
 """
@@ -202,3 +203,96 @@ def test_duration():
 
     assert system.to_int(50) == 50
     assert system.to_int("50") == 50
+
+
+def simulated_which(program, *args, **kwargs):
+    if program == "python3.6":
+        return "/test/python3.6/bin/python"
+
+    if program == "python3":
+        return "/test/python3"
+
+    return None
+
+
+def simulated_run(program, *args, **kwargs):
+    if program.startswith(sys.real_prefix) or program == os.path.realpath(sys.executable):
+        return "Python 2.7.10"
+
+    if program == "/usr/bin/python":
+        return "Python 2.7.10"
+
+    return None
+
+
+@patch("pickley.system.which", side_effect=simulated_which)
+@patch("pickley.system.run_program", side_effect=simulated_run)
+def test_python_installation(_, __, temp_base):
+
+    system.DESIRED_PYTHON = "/dev/null/foo"
+    p = system.target_python(fatal=False)
+    assert not p.is_valid
+    assert p.shebang() == "/dev/null/foo"
+
+    system.DESIRED_PYTHON = None
+    assert system.target_python(fatal=None).is_valid
+
+    p = system.default_python(prefix=None)
+    assert p.is_valid
+
+    with patch("pickley.system.default_python", return_value=None):
+        assert system.target_python(fatal=False) is None
+
+    assert not system.PythonInstallation("").is_valid
+
+    p = system.PythonInstallation("foo")
+    assert str(p) == "python 'foo'"
+    assert not p.is_valid
+    assert p.problem == "No python installation 'foo' found"
+    assert p.program_name == "python 'foo'"
+
+    p = system.PythonInstallation("pythonx")
+    assert not p.is_valid
+    # assert p.problem == "pythonx is not installed"
+    assert p.program_name == "pythonx"
+
+    p = system.PythonInstallation("/usr/bin/python")
+    assert str(p) == "/usr/bin/python [2.7]"
+    assert p.is_valid
+    assert p.problem is None
+    assert p.program_name == "python2.7"
+    assert p.short_name == "py27"
+    assert p.executable == "/usr/bin/python"
+    assert p.shebang(universal=True) == "/usr/bin/env python"
+    assert p.shebang() == "/usr/bin/python"
+
+    p = system.PythonInstallation("3.6")
+    assert str(p) == "/test/python3.6/bin/python [3.6]"
+    assert p.is_valid
+    assert p.problem is None
+    assert p.program_name == "python3.6"
+    assert p.short_name == "py36"
+    assert p.executable == "/test/python3.6/bin/python"
+    assert p.shebang() == "/usr/bin/env python3.6"
+
+    system.SETTINGS.cli.contents["python_installs"] = temp_base
+    system.touch("foo")
+    system.touch("python3.5")
+    system.touch("python3.7")
+
+    p = system.PythonInstallation("python3")
+    assert not p.is_valid
+    assert p.problem == "'/test/python3' is not a valid python installation"
+    assert p.program_name == "python3"
+
+    p = system.PythonInstallation("py3.7")
+    assert not p.is_valid
+    assert p.problem == "python3.7 is not installed"
+
+    system.delete_file("python3.7")
+    system.touch("3.7.0/bin/python")
+    system.make_executable("3.7.0/bin/python")
+    p = system.PythonInstallation("3.7")
+    assert p.is_valid
+    assert p.short_name == "py37"
+    assert p.executable == os.path.join(temp_base, "3.7.0/bin/python")

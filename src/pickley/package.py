@@ -74,7 +74,7 @@ class VersionMeta(JsonSerializable):
         if self._suffix != system.LATEST_CHANNEL:
             self.packager = PACKAGERS.resolved_name(self._name)
             self.delivery = DELIVERERS.resolved_name(self._name)
-            self.python = system.SETTINGS.resolved_value("python", self._name)
+            self.python = str(system.target_python(fatal=False))
         self.pickley = __version__
         self.timestamp = int(time.time())
 
@@ -231,12 +231,6 @@ class Packager(object):
             if self._entry_points is None:
                 return [self.name] if system.DRYRUN else []
         return self._entry_points
-
-    def resolved_python(self):
-        """
-        :return pickley.settings.Definition: Associated definition
-        """
-        return system.SETTINGS.resolved_definition("python", package_name=self.name)
 
     def refresh_entry_points(self, version):
         """
@@ -512,29 +506,14 @@ class PexPackager(Packager):
         :return str: None if successful, error message otherwise
         """
         system.ensure_folder(self.build_folder, folder=True)
-
         system.delete_file(destination)
-        python = self.resolved_python()
+
         args = ["--no-pypi", "--cache-dir", self.build_folder, "--repo", self.build_folder]
         args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.name, version)])
 
-        # Note: 'python.source' being 'system.SETTINGS.defaults' is the same as it being 'system.PYTHON'
-        # Writing it this way is easier to change in tests
-        explicit_python = python and python.value and python.source is not system.SETTINGS.defaults
-        if explicit_python:
-            shebang = python.value
-            args.append("--python=%s" % python.value)
-
-        elif not python or system.is_universal(self.build_folder, self.name, version):
-            shebang = "python"
-
-        else:
-            shebang = python.value
-
-        if shebang:
-            if not os.path.isabs(shebang):
-                shebang = "/usr/bin/env %s" % shebang
-            args.append("--python-shebang=%s" % shebang)
+        python = system.target_python()
+        shebang = python.shebang(universal=system.is_universal(self.build_folder, self.name, version))
+        args.append("--python-shebang=%s" % shebang)
 
         vrun("pex", *args, path_env={"PKG_CONFIG_PATH": "/usr/local/opt/openssl/lib/pkgconfig"})
 
@@ -584,7 +563,7 @@ class VenvPackager(Packager):
         """
         folder = os.path.join(self.dist_folder, template.format(name=self.name, version=version))
         system.ensure_folder(folder, folder=True)
-        vrun("virtualenv", "--python", self.resolved_python().value, folder)
+        vrun("virtualenv", folder)
 
         pip = os.path.join(folder, "bin", "pip")
         system.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))

@@ -30,7 +30,7 @@ from pickley.system import short
 
 DOT_PICKLEY = ".pickley"
 DEFAULT_INSTALL_TIMEOUT = 30
-DEFAULT_VERSION_CHECK_SECONDS = 600
+DEFAULT_VERSION_CHECK_DELAY = 10
 REPRESENTATION_WIDTH = 90
 
 
@@ -388,8 +388,7 @@ class Settings:
                 delivery=system.DEFAULT_DELIVERY,
                 install_timeout=DEFAULT_INSTALL_TIMEOUT,
                 packager=system.VENV_PACKAGER,
-                python=system.PYTHON,
-                version_check_seconds=DEFAULT_VERSION_CHECK_SECONDS,
+                version_check_delay=DEFAULT_VERSION_CHECK_DELAY,
             ),
         )
         self.config = None
@@ -448,7 +447,7 @@ class Settings:
         """
         :return float: How many seconds to wait before checking for upgrades again
         """
-        return system.to_int(self.get_value("version_check_seconds"), default=DEFAULT_VERSION_CHECK_SECONDS)
+        return system.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY) * 60
 
     def _add_config(self, path, base=None):
         """

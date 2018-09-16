@@ -38,6 +38,9 @@ class SoftLock:
         self.invalid = invalid * 60
         self.keep = keep * 60 * 60 * 24
 
+    def __repr__(self):
+        return self.lock
+
     def _locked(self):
         """
         :return bool: True if lock is held by another process
@@ -90,17 +93,19 @@ def vrun(package_name, *args, **kwargs):
     :param args: Command line args
     :param kwargs: Optional named args to pass-through to system.run_program()
     """
-    folder = system.SETTINGS.meta.full_path(".v")
+    python = system.target_python()
+    folder = system.SETTINGS.meta.full_path(".%s" % python.short_name)
     with SoftLock(folder, timeout=system.SETTINGS.install_timeout, invalid=system.SETTINGS.install_timeout, keep=10) as lock:
-        shared = SharedVenv(lock)
+        shared = SharedVenv(lock, python)
         return shared._run_from_venv(package_name, *args, **kwargs)
 
 
 class SharedVenv:
-    def __init__(self, lock):
+    def __init__(self, lock, venv_python):
         """
         :param SoftLock lock: Acquired lock
         """
+        self.venv_python = venv_python
         self.lock = lock
         self.folder = lock.folder
         self.bin = os.path.join(self.folder, "bin")
@@ -112,7 +117,8 @@ class SharedVenv:
         venv = system.virtualenv_path()
         if not venv:
             system.abort("Can't determine path to virtualenv.py")
-        system.run_program(system.PYTHON, venv, self.folder)
+
+        system.run_program(self.venv_python.executable, venv, self.folder)
 
     def _pip_install(self, *args, **kwargs):
         """Run 'pip install' with given args"""

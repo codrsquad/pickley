@@ -1,10 +1,9 @@
 import os
-import sys
 
 import pytest
 from mock import mock_open, patch
 
-from pickley import python_interpreter, system
+from pickley import system
 from pickley.context import CaptureOutput, ImplementationMap
 from pickley.lock import SharedVenv, SoftLock, SoftLockException
 from pickley.settings import Settings
@@ -19,11 +18,12 @@ def test_lock(temp_base):
         with pytest.raises(SoftLockException):
             with SoftLock(folder, timeout=0.01):
                 pass
-        system.delete_file(folder + ".lock")
+        assert str(lock) == folder + ".lock"
+        system.delete_file(str(lock))
         assert not lock._locked()
 
         with patch("pickley.system.virtualenv_path", return_value=None):
-            assert "Can't determine path to virtualenv.py" in verify_abort(SharedVenv, lock)
+            assert "Can't determine path to virtualenv.py" in verify_abort(SharedVenv, lock, None)
 
 
 def test_flattened():
@@ -122,14 +122,6 @@ def test_popen_crash(_):
 
 
 def test_real_run():
-    old_prefix = getattr(sys, "real_prefix", None)
-    sys.real_prefix = None
-    assert python_interpreter() == sys.executable
-    if old_prefix:
-        sys.real_prefix = old_prefix
-    else:
-        delattr(sys, "real_prefix")
-
     s = Settings()
     s.load_config()
     assert len(s.config_paths) == 1

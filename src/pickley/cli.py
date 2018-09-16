@@ -82,17 +82,16 @@ def main(debug, quiet, dryrun, base, index, config, python, delivery, packager):
             system.abort("Can't use %s as base: folder does not exist", short(base))
         system.SETTINGS.set_base(base)
 
-    system.SETTINGS.load_config(config=config, delivery=delivery, index=index, packager=packager, python=python)
-
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None
     logging.getLogger("pip").setLevel(logging.WARNING)
-
     logging.root.setLevel(logging.INFO if quiet else logging.DEBUG)
-
     if debug:
         # Log to console with --debug or --dryrun
         system.setup_debug_log()
+
+    system.SETTINGS.load_config(config=config, delivery=delivery, index=index, packager=packager)
+    system.DESIRED_PYTHON = python
 
 
 @main.command()
@@ -281,12 +280,16 @@ def settings(diagnostics):
     Show settings
     """
     if diagnostics:
-        system.info("python interpreter: %s", short(system.PYTHON))
-        system.info("sys.executable    : %s", short(sys.executable))
-        system.info("sys.prefix        : %s", short(getattr(sys, "prefix", None)))
-        system.info("sys.real_prefix   : %s", short(getattr(sys, "real_prefix", None)))
-        system.info("pickley           : %s" % short(system.PICKLEY_PROGRAM_PATH))
-        system.info("meta              : %s" % short(system.SETTINGS.meta.path))
+        prefix = getattr(sys, "prefix", None)
+        real_prefix = getattr(sys, "real_prefix", None)
+        system.info("python         : %s", short(system.target_python(fatal=False), base=False))
+        system.info("sys.executable : %s", short(sys.executable, base=False))
+        system.info("sys.prefix     : %s", short(prefix, base=False))
+        if real_prefix:
+            system.info("sys.real_prefix: %s", short(real_prefix, base=False))
+        if not system.SETTINGS.meta.path.startswith(system.PICKLEY_PROGRAM_PATH):
+            system.info("pickley        : %s" % short(system.PICKLEY_PROGRAM_PATH, base=False))
+        system.info("meta           : %s" % short(system.SETTINGS.meta.path, base=False))
         system.info("")
 
     system.info(system.SETTINGS.represented())

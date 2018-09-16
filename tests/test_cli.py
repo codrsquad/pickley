@@ -61,7 +61,7 @@ def test_help():
         "-n, --dryrun",
         "-b, --base PATH",
         "-c, --config PATH",
-        "--python PATH",
+        "-P, --python PATH",
         "-d, --delivery",
         "-p, --packager",
     )
@@ -79,7 +79,6 @@ def test_settings():
     expect_success(
         "settings -d",
         "settings:",
-        "python interpreter: %s" % short(system.PYTHON),
         "base: %s" % short(system.SETTINGS.base.path)
     )
 
