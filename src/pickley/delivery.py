@@ -12,10 +12,10 @@ GENERIC_WRAPPER = """
 %s
 
 if [[ -x {pickley} ]]; then
-    nohup {pickley} auto-upgrade {name} &> /dev/null &
+    {hook}nohup {pickley} auto-upgrade {name}{bg}
 fi
 if [[ -x {source} ]]; then
-    exec {source} "$@"
+    {hook}exec {source} "$@"
 else
     echo "{source} is not available anymore"
     echo ""
@@ -32,10 +32,10 @@ PICKLEY_WRAPPER = """
 %s
 
 if [[ -x {source} ]]; then
-    if [[ $* =~ "*auto-upgrade*" ]]; then
-        nohup {source} auto-upgrade {name} &> /dev/null &
+    if [[ "$*" != *"auto-upgrade"* ]]; then
+        {hook}nohup {source} auto-upgrade {name}{bg}
     fi
-    exec {source} "$@"
+    {hook}exec {source} "$@"
 else
     echo "{source} is not available anymore"
     echo ""
@@ -105,9 +105,15 @@ class DeliveryMethodWrap(DeliveryMethod):
     Deliver via a small wrap that ensures target executable is up-to-date
     """
 
+    # Can be set in tests to make wrapper a no-op
+    hook = ""
+    bg = " &> /dev/null &"
+
     def _install(self, target, source):
         wrapper = PICKLEY_WRAPPER if self.package_name == system.PICKLEY else GENERIC_WRAPPER
         contents = wrapper.lstrip().format(
+            hook=self.hook,
+            bg=self.bg,
             name=system.quoted(self.package_name),
             pickley=system.quoted(system.SETTINGS.base.full_path(system.PICKLEY)),
             source=system.quoted(source),
