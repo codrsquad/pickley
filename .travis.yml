@@ -30,5 +30,6 @@ deploy:
     file: ".tox/package/dist/pickley"
     skip_cleanup: true
     on:
+      python: 3.6
       repo: zsimic/pickley
       tags: true
