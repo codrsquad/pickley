@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 import zipfile
 
@@ -14,6 +13,13 @@ from pickley.uninstall import uninstall_existing
 
 
 PACKAGERS = ImplementationMap("packager")
+
+# These standard locations usually help avoid silly C compilation errors
+C_COMPILATION_HELP = {
+    "CPPFLAGS": " -I/usr/local/opt/openssl/include",
+    "LDFLAGS": " -L/usr/local/opt/openssl/lib",
+    "PKG_CONFIG_PATH": ":/usr/local/opt/openssl/lib/pkgconfig",
+}
 
 
 def find_prefix(prefixes, text):
@@ -310,9 +316,10 @@ class Packager(object):
         """
         system.ensure_folder(self.build_folder, folder=True)
         return vrun(
-            "pip",
+            "pip", "wheel",
+            "-i", system.SETTINGS.index,
             "--cache-dir", self.build_folder,
-            "wheel", "-i", system.SETTINGS.index, "--wheel-dir", self.build_folder,
+            "--wheel-dir", self.build_folder,
             self.source_folder if self.source_folder else "%s==%s" % (self.name, version)
         )
 
@@ -328,7 +335,7 @@ class Packager(object):
             setup_py = os.path.join(self.source_folder, "setup.py")
             if not os.path.isfile(setup_py):
                 return system.abort("No setup.py in %s", short(self.source_folder), return_value=[])
-            version = system.run_program(sys.executable, setup_py, "--version", fatal=False)
+            version = system.run_python(setup_py, "--version", fatal=False)
             if not version:
                 return system.abort("Could not determine version from %s", short(setup_py), return_value=[])
 
@@ -508,14 +515,16 @@ class PexPackager(Packager):
         system.ensure_folder(self.build_folder, folder=True)
         system.delete_file(destination)
 
-        args = ["--no-pypi", "--cache-dir", self.build_folder, "--repo", self.build_folder]
+        args = ["--cache-dir", self.build_folder, "--repo", self.build_folder]
         args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.name, version)])
 
         python = system.target_python()
         shebang = python.shebang(universal=system.is_universal(self.build_folder, self.name, version))
-        args.append("--python-shebang=%s" % shebang)
+        if shebang:
+            args.append("--python-shebang")
+            args.append(shebang)
 
-        vrun("pex", *args, path_env={"PKG_CONFIG_PATH": "/usr/local/opt/openssl/lib/pkgconfig"})
+        vrun("pex", *args, path_env=C_COMPILATION_HELP)
 
     def effective_package(self, template, version=None):
         """

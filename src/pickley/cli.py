@@ -261,7 +261,7 @@ def package(dist, build, folder):
 
     with CurrentFolder(folder):
         # Some setup.py's assume their working folder is the folder where they're in
-        name = system.run_program(sys.executable, setup_py, "--name", fatal=False)
+        name = system.run_python(setup_py, "--name", fatal=False)
         if not name:
             system.abort("Could not determine package name from %s", short(setup_py))
 

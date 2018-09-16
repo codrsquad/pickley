@@ -56,7 +56,7 @@ def test_file_operations(temp_base):
 
 
 def test_edge_cases(temp_base):
-    assert system.added_env_paths(dict(FOO="."), env=dict(FOO="bar:baz")) == dict(FOO="bar:baz:.")
+    assert system.added_env_paths(dict(FOO=":."), env=dict(FOO="bar:baz")) == dict(FOO="bar:baz:.")
 
     assert system.check_pid(None) is False
     assert system.check_pid("foo") is False

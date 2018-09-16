@@ -241,15 +241,17 @@ def added_env_paths(env_vars, env=None):
         env = dict(os.environ)
     result = dict(env)
     for env_var, paths in env_vars.items():
+        separator = paths[0]
+        paths = paths[1:]
         current = env.get(env_var, "")
-        current = [x for x in current.split(":") if x]
+        current = [x for x in current.split(separator) if x]
         added = 0
-        for path in paths.split(":"):
-            if os.path.isdir(path) and path not in current:
+        for path in paths.split(separator):
+            if path not in current:
                 added += 1
                 current.append(path)
         if added:
-            result[env_var] = ":".join(current)
+            result[env_var] = separator.join(current)
     return result
 
 
@@ -606,6 +608,12 @@ def which(program, ignore_own_venv=False):
     return None
 
 
+def run_python(*args, **kwargs):
+    """Invoke targetted python interpreter with given args"""
+    python = target_python()
+    return run_program(python.executable, *args, **kwargs)
+
+
 def run_program(program, *args, **kwargs):
     """Run 'program' with 'args'"""
     args = flattened(args, unique=False)
@@ -798,6 +806,7 @@ class PythonInstallation:
         Resolve python executable from a configured folder
         This aims to support pyenv like installations, as well as /usr/bin-like ones
         """
+        folder = resolved_path(folder)
         if not folder or not self.major or not self.minor or not os.path.isdir(folder):
             return None
 
