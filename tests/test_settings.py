@@ -238,12 +238,6 @@ def test_python_installation(_, __, ___, temp_base):
     system.DESIRED_PYTHON = None
     assert system.target_python(fatal=None).is_valid
 
-    p = system.default_python(prefix=None)
-    assert p.is_valid
-
-    with patch("pickley.system.default_python", return_value=None):
-        assert system.target_python(fatal=False) is None
-
     assert not system.PythonInstallation("").is_valid
 
     p = system.PythonInstallation("foo")

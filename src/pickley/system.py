@@ -30,6 +30,7 @@ DESIRED_PYTHON = None  # type: str # Desired python installation (if explicitly 
 LATEST_CHANNEL = "latest"
 VENV_PACKAGER = "venv"
 DEFAULT_DELIVERY = "symlink"
+INVOKER = "invoker"
 
 RE_PYTHON_LOOSE = re.compile(r"(py(thon ?)?)?([0-9])?\.?([0-9])?\.?[0-9]*", re.IGNORECASE)
 RE_PYTHON_STRICT = re.compile(r"(python([0-9]\.[0-9])|([0-9]\.[0-9])\.?[0-9]*)")
@@ -734,17 +735,11 @@ class FolderBase(object):
         return "%s: %s" % (self.name, short(self.path))
 
 
-def default_python(prefix=getattr(sys, "real_prefix", None)):
-    """
-    :param str|None prefix: sys.real_prefix, if defined
-    :return PythonInstallation: Default python installation to use (the one we were invoked with)
-    """
-    if prefix:
-        path = os.path.join(prefix, "bin", "python")
-        if is_executable(path):
-            return PythonInstallation(path)
-
-    return PythonInstallation(sys.executable)
+def parent_python():
+    prefix = getattr(sys, "real_prefix", None)
+    path = os.path.join(prefix, "bin", "python")
+    if is_executable(path):
+        return path
 
 
 def target_python(fatal=True):
@@ -752,14 +747,7 @@ def target_python(fatal=True):
     :param bool fatal: If True, abort execution if python invalid
     :return PythonInstallation: Python installation to use
     """
-    if DESIRED_PYTHON:
-        python = PythonInstallation(DESIRED_PYTHON)
-
-    else:
-        python = default_python()
-        if not python:
-            return abort("Could not find system python installation", fatal=fatal, quiet=not fatal, return_value=python)
-
+    python = PythonInstallation(DESIRED_PYTHON or INVOKER)
     if not python.is_valid:
         return abort(python.problem, fatal=fatal, quiet=not fatal, return_value=python)
 
@@ -778,13 +766,15 @@ class PythonInstallation:
         :param str text: Python, of the form: python, or python3.6, or py36, or full path to exe
         """
         self.text = text
-        if os.path.isabs(self.text):
-            path = os.path.realpath(self.text)
+        if text == INVOKER:
+            text = parent_python() or sys.executable
+        if os.path.isabs(text):
+            path = os.path.realpath(text)
             if is_executable(path):
                 self.executable = path
                 self.resolve_version()
             return
-        m = RE_PYTHON_LOOSE.match(self.text)
+        m = RE_PYTHON_LOOSE.match(text)
         if m:
             self.major = m.group(3)
             self.minor = m.group(4)

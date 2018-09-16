@@ -80,7 +80,10 @@ class VersionMeta(JsonSerializable):
         if self._suffix != system.LATEST_CHANNEL:
             self.packager = PACKAGERS.resolved_name(self._name)
             self.delivery = DELIVERERS.resolved_name(self._name)
-            self.python = str(system.target_python(fatal=False))
+            python = system.target_python(fatal=False)
+            if python:
+                # Record which python was used, as specified (if any)
+                self.python = python.text
         self.pickley = __version__
         self.timestamp = int(time.time())
 
