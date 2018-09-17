@@ -734,9 +734,10 @@ class FolderBase(object):
 
 def parent_python():
     prefix = getattr(sys, "real_prefix", None)
-    path = os.path.join(prefix, "bin", "python")
-    if is_executable(path):
-        return path
+    if prefix:
+        path = os.path.join(prefix, "bin", "python")
+        if is_executable(path):
+            return path
 
 
 def target_python(fatal=True):
