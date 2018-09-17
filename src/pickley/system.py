@@ -39,10 +39,11 @@ RE_PYTHON_STRICT = re.compile(r"(python([0-9]\.[0-9])|([0-9]\.[0-9])\.?[0-9]*)")
 class State:
     """Helps track state without using globals"""
 
-    quiet = False
-    output = True
-    testing = False
-    logging = False
+    output = True  # print() warning/error messages (turned off when we do have a logger to console)
+    testing = False  # print all messages, useful when running tests
+    logging = False  # If false, no loggers have been setup, so no point in logging
+
+    # Log handlers, allows to setup logging once
     audit_handler = None
     debug_handler = None
 
@@ -88,7 +89,7 @@ def short(path, shorten=None, meta=True):
 
 
 def debug(message, *args, **kwargs):
-    if not State.quiet and State.logging:
+    if State.logging:
         LOG.debug(message, *args, **kwargs)
     if State.testing:
         print(str(message) % args)
@@ -98,7 +99,7 @@ def info(message, *args, **kwargs):
     output = kwargs.pop("output", State.output)
     if State.logging:
         LOG.info(message, *args, **kwargs)
-    if (not State.quiet and output) or State.testing:
+    if output or State.testing:
         print(str(message) % args)
 
 
@@ -134,16 +135,6 @@ def abort(*args, **kwargs):
     if fatal:
         sys.exit(code)
     return return_value
-
-
-def relaunch():
-    """
-    Rerun with same args, to pick up freshly bootstrapped installation
-    """
-    State.output = False
-    run_program(*sys.argv, stdout=sys.stdout, stderr=sys.stderr)
-    if not DRYRUN:
-        sys.exit(0)
 
 
 def installed_names():

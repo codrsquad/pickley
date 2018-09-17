@@ -368,28 +368,24 @@ class Packager(object):
             system.error("%s is currently being installed by another process" % self.name)
             system.abort("If that is incorrect, please delete %s.lock", short(e.folder))
 
-    def internal_install(self, force=False, bootstrap=False):
+    def internal_install(self, force=False, verbose=True):
         """
         :param bool force: If True, re-install even if package is already installed
-        :param bool bootstrap: Bootstrap mode
+        :param bool verbose: If True, show more extensive info
         """
         with SoftLock(self.dist_folder, timeout=system.SETTINGS.install_timeout):
-            intent = "bootstrap" if bootstrap else "install"
             self.refresh_desired()
             if not self.desired.valid:
-                return system.abort("Can't %s %s: %s", intent, self.name, self.desired.problem)
+                return system.abort("Can't install %s: %s", self.name, self.desired.problem)
 
             self.refresh_current()
             self.desired.delivery = DELIVERERS.resolved_name(self.name, default=self.current.delivery)
             if not force and self.current.equivalent(self.desired):
-                if not bootstrap:
-                    system.info(self.desired.representation(verbose=True, note="is already installed"))
-                    self.cleanup()
+                system.info(self.desired.representation(verbose=verbose, note="is already installed"))
+                self.cleanup()
                 return
 
             system.setup_audit_log()
-            if bootstrap:
-                system.info("Bootstrapping %s with %s", system.PICKLEY, self.registered_name)
 
             prev_entry_points = self.entry_points
             self.effective_install(self.desired.version)
@@ -410,8 +406,8 @@ class Packager(object):
             self.current.set_from(self.desired)
             self.current.save()
 
-            msg = "Would %s" % intent if system.DRYRUN else "%sed" % (intent.title())
-            system.info("%s %s", msg, self.desired.representation(verbose=True))
+            msg = "Would install" if system.DRYRUN else "Installed"
+            system.info("%s %s", msg, self.desired.representation(verbose=verbose))
 
     def cleanup(self):
         """Cleanup older installs"""

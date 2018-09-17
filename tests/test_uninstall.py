@@ -2,8 +2,6 @@ import os
 
 from mock import patch
 
-from pickley import system
-from pickley.delivery import DeliveryMethodWrap
 from pickley.uninstall import brew_uninstall, find_brew_name, uninstall_existing
 
 
@@ -41,13 +39,6 @@ def brew_run_program(*args, **kwargs):
     if args[1] == "uninstall" and args[3] == "tox":
         return "OK"
     return None
-
-
-def test_uninstall_wrapped(temp_base):
-    d = DeliveryMethodWrap("test")
-    system.touch("bar")
-    d.install("foo", "bar")
-    assert uninstall_existing("foo", fatal=False) == 1
 
 
 def test_cant_uninstall():

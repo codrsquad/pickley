@@ -18,46 +18,9 @@ from pickley.system import short
 from pickley.uninstall import uninstall_existing
 
 
-def bootstrap(testing=False):
-    """
-    Bootstrap pickley: re-install it as venv if need be
-
-    Packaged as a pex, pickley is easy to distribute,
-    however there are some edge cases where running pip from a pex-packaged CLI doesn't work very well
-    So, first thing we do is re-package ourselves as a venv on the target machine
-    """
-    if not testing and (system.State.quiet or getattr(sys, "real_prefix", None)):
-        # Don't bootstrap in quiet mode, or if we're running from a venv already
-        return
-
-    delivery = DELIVERERS.resolved_name(system.PICKLEY)
-    if delivery != "wrap":
-        # Only bootstrap if we're using wrapper, no point otherwise
-        return
-
-    p = PACKAGERS.resolved(system.PICKLEY)
-    if p.registered_name != system.VENV_PACKAGER:
-        # Also no real point bootstrapping unless target packager is venv
-        return
-
-    p.refresh_current()
-    if p.current.packager == system.VENV_PACKAGER and p.current.delivery == delivery:
-        # We're already packaged correctly, no need to bootstrap
-        return
-
-    try:
-        # Re-install ourselves with correct packager
-        p.internal_install(bootstrap=True)
-        system.relaunch()
-
-    except SoftLockException:
-        return
-
-
 @click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=140), epilog=__doc__)
 @click.version_option()
 @click.option("--debug", is_flag=True, help="Show debug logs")
-@click.option("--quiet", "-q", is_flag=True, help="Quiet mode, do not output anything")
 @click.option("--dryrun", "-n", is_flag=True, help="Perform a dryrun")
 @click.option("--base", "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
 @click.option("--index", "-i", metavar="PATH", help="Pypi index to use")
@@ -65,16 +28,13 @@ def bootstrap(testing=False):
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", type=click.Choice(DELIVERERS.names()), help="Delivery method to use")
 @click.option("--packager", "-p", type=click.Choice(PACKAGERS.names()), help="Packager to use")
-def main(debug, quiet, dryrun, base, index, config, python, delivery, packager):
+def main(debug, dryrun, base, index, config, python, delivery, packager):
     """
     Package manager for python CLIs
     """
     if dryrun:
         debug = True
-    if debug:
-        quiet = False
     system.DRYRUN = bool(dryrun)
-    system.State.quiet = bool(quiet)
 
     if base:
         base = system.resolved_path(base)
@@ -85,7 +45,7 @@ def main(debug, quiet, dryrun, base, index, config, python, delivery, packager):
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None
     logging.getLogger("pip").setLevel(logging.WARNING)
-    logging.root.setLevel(logging.INFO if quiet else logging.DEBUG)
+    logging.root.setLevel(logging.DEBUG)
     if debug:
         # Log to console with --debug or --dryrun
         system.setup_debug_log()
@@ -151,7 +111,6 @@ def install(force, packages):
     Install a package from pypi
     """
     system.setup_audit_log()
-    bootstrap()
 
     packages = system.SETTINGS.resolved_packages(packages)
     for name in packages:
@@ -250,7 +209,6 @@ def package(dist, build, folder):
 
     system.SETTINGS.meta = meta_folder(build)
     system.setup_audit_log()
-    bootstrap()
 
     if not os.path.isdir(folder):
         system.abort("Folder %s does not exist", short(folder))

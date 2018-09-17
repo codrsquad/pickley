@@ -57,7 +57,6 @@ def test_help():
         "--help",  # Run --help
         "--version",  # Verify that below flags are mentioned in output
         "--debug",
-        "-q, --quiet",
         "-n, --dryrun",
         "-b, --base PATH",
         "-c, --config PATH",
@@ -72,7 +71,7 @@ def test_help():
 
 
 def test_version():
-    expect_success("-q --version", "version ")
+    expect_success("--version", "version ")
 
 
 def test_settings():
