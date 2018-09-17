@@ -445,29 +445,73 @@ def copy_file(source, destination, fatal=True):
     :param bool fatal: Abort execution on failure if True
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
+    return _with_relocation(source, destination, _copy, fatal)
+
+
+def move_file(source, destination, fatal=True):
+    """
+    Move source -> destination
+
+    :param str source: Source file or folder
+    :param str destination: Destination file or folder
+    :param bool fatal: Abort execution on failure if True
+    :return int: 1 if effectively done, 0 if no-op, -1 on failure
+    """
+    return _with_relocation(source, destination, _move, fatal)
+
+
+def _with_relocation(source, destination, func, fatal):
+    """
+    Call func(source, destination)
+
+    :param str source: Source file or folder
+    :param str destination: Destination file or folder
+    :param bool fatal: Abort execution on failure if True
+    :return int: 1 if effectively done, 0 if no-op, -1 on failure
+    """
     if not source or not destination or source == destination:
         return 0
 
+    action = func.__name__[1:]
     if DRYRUN:
-        debug("Would copy %s -> %s", short(source), short(destination))
+        debug("Would %s %s -> %s", action, short(source), short(destination))
         return 1
 
     if not os.path.exists(source):
-        return abort("%s does not exist, can't copy to %s", short(source), short(destination), fatal=fatal)
+        return abort("%s does not exist, can't %s to %s", short(source), action.title(), short(destination), fatal=fatal)
+
+    relocated = 0
+    for bin_folder in find_venvs(source):
+        for name in os.listdir(bin_folder):
+            fpath = os.path.join(bin_folder, name)
+            relocated += relocate_venv_file(fpath, source, destination, fatal=fatal)
+
+    info = " (relocated %s)" % relocated if relocated else ""
+    debug("%s %s -> %s%s", action.title(), short(source), short(destination), info)
 
     ensure_folder(destination, fatal=fatal)
-    delete_file(destination, fatal=fatal)
+    delete_file(destination, fatal=fatal, quiet=True)
     try:
-        if os.path.isdir(source):
-            shutil.copytree(source, destination, symlinks=True)
-        else:
-            shutil.copy(source, destination)
-
-        shutil.copystat(source, destination)  # Make sure last modification time is preserved
+        func(source, destination)
         return 1
 
     except Exception as e:
-        return abort("Can't copy %s -> %s: %s", short(source), short(destination), e, fatal=fatal)
+        return abort("Can't %s %s -> %s: %s", action, short(source), short(destination), e, fatal=fatal)
+
+
+def _copy(source, destination):
+    """Effective copy"""
+    if os.path.isdir(source):
+        shutil.copytree(source, destination, symlinks=True)
+    else:
+        shutil.copy(source, destination)
+
+    shutil.copystat(source, destination)  # Make sure last modification time is preserved
+
+
+def _move(source, destination):
+    """Effective move"""
+    shutil.move(source, destination)
 
 
 def find_venvs(folder, seen=None):
@@ -492,44 +536,6 @@ def find_venvs(folder, seen=None):
                 fname = os.path.join(folder, name)
                 for path in find_venvs(fname, seen=seen):
                     yield path
-
-
-def move_file(source, destination, fatal=True):
-    """
-    Move source -> destination
-
-    :param str source: Source file or folder
-    :param str destination: Destination file or folder
-    :param bool fatal: Abort execution on failure if True
-    :return int: 1 if effectively done, 0 if no-op, -1 on failure
-    """
-    if not source or not destination or source == destination:
-        return 0
-
-    if DRYRUN:
-        debug("Would move %s -> %s", short(source), short(destination))
-        return 1
-
-    if not os.path.exists(source):
-        return abort("%s does not exist, can't move to %s", short(source), short(destination), fatal=fatal)
-
-    relocated = 0
-    for bin_folder in find_venvs(source):
-        for name in os.listdir(bin_folder):
-            fpath = os.path.join(bin_folder, name)
-            relocated += relocate_venv_file(fpath, source, destination, fatal=fatal)
-
-    action = "Relocating venv" if relocated else "Moving"
-    debug("%s %s -> %s", action, short(source), short(destination))
-
-    ensure_folder(destination, fatal=fatal)
-    delete_file(destination, fatal=fatal, quiet=True)
-    try:
-        shutil.move(source, destination)
-        return 1
-
-    except Exception as e:
-        return abort("Can't move %s -> %s: %s", short(source), short(destination), e, fatal=fatal)
 
 
 def delete_file(path, fatal=True, quiet=False):

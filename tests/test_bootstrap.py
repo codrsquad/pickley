@@ -23,7 +23,8 @@ def test_bootstrap(_, temp_base):
 
     with CaptureOutput() as logged:
         bootstrap(testing=True)
-        assert "Relocating venv " in logged
+        assert "Move pickley/.tmp/pickley-" in logged
+        assert "relocated 12" in logged
         assert "Bootstraped pickley" in logged
 
     # Verify it works

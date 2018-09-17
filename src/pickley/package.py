@@ -495,7 +495,7 @@ class Packager(object):
         for name in self.required_entry_points():
             target = system.SETTINGS.base.full_path(name)
             if self.name != system.PICKLEY and not self.current.file_exists:
-                uninstall_existing(target, fatal=True)
+                uninstall_existing(target)
             path = template.format(meta=system.SETTINGS.meta.full_path(self.name), name=name, version=version)
             deliverer.install(target, path)
 

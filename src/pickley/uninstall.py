@@ -4,7 +4,7 @@ from pickley import system
 from pickley.system import short
 
 
-def uninstall_existing(target, fatal=False):
+def uninstall_existing(target, fatal=True):
     """
     :param str target: Path to executable to auto-uninstall if needed
     :param bool target: Abort if True
