@@ -608,7 +608,8 @@ def which(program, ignore_own_venv=False):
 
 def run_python(*args, **kwargs):
     """Invoke targetted python interpreter with given args"""
-    python = target_python()
+    package_name = kwargs.pop("package_name", None)
+    python = target_python(package_name=package_name)
     return run_program(python.executable, *args, **kwargs)
 
 
@@ -740,12 +741,16 @@ def parent_python():
             return path
 
 
-def target_python(fatal=True):
+def target_python(desired=None, package_name=None, fatal=True):
     """
+    :param str|None desired: Desired python (overrides anything else configured)
+    :param str|None package_name: Target pypi package
     :param bool fatal: If True, abort execution if python invalid
     :return PythonInstallation: Python installation to use
     """
-    python = PythonInstallation(DESIRED_PYTHON or INVOKER)
+    if not desired:
+        desired = DESIRED_PYTHON or SETTINGS.resolved_value("python", package_name=package_name) or INVOKER
+    python = PythonInstallation(desired)
     if not python.is_valid:
         return abort(python.problem, fatal=fatal, quiet=not fatal, return_value=python)
 
@@ -767,10 +772,7 @@ class PythonInstallation:
         if text == INVOKER:
             text = parent_python() or sys.executable
         if os.path.isabs(text):
-            path = os.path.realpath(text)
-            if is_executable(path):
-                self.executable = path
-                self.resolve_version()
+            self._set_executable(text)
             return
         m = RE_PYTHON_LOOSE.match(text)
         if m:
@@ -778,60 +780,58 @@ class PythonInstallation:
             self.minor = m.group(4)
             self.resolve_executable()
 
+    def _set_executable(self, path):
+        path = resolved_path(path)
+        if is_executable(path):
+            self.executable = path
+            if not self.major or not self.minor:
+                output = run_program(self.executable, "--version", dryrun=False, fatal=False, include_error=True, quiet=True)
+                if output:
+                    m = RE_PYTHON_LOOSE.match(output)
+                    if m:
+                        self.major = m.group(3)
+                        self.minor = m.group(4)
+
     def resolve_executable(self):
         """Resolve executable from given major/minor"""
-        self.executable = self.resolve_from_configured(SETTINGS.get_value("python_installs"))
-        if self.executable:
-            return
-        self.executable = which(self.program_name, ignore_own_venv=True)
+        self._set_executable(self._resolve_from_configured(SETTINGS.get_value("python_installs")))
         if not self.executable:
-            return
-        if not self.major or not self.minor:
-            self.resolve_version()
+            self._set_executable(which(self.program_name, ignore_own_venv=True))
 
-    def resolve_from_configured(self, folder):
+    def _resolve_from_configured(self, folder):
         """
         Resolve python executable from a configured folder
         This aims to support pyenv like installations, as well as /usr/bin-like ones
         """
         folder = resolved_path(folder)
-        if not folder or not self.major or not self.minor or not os.path.isdir(folder):
+        if not folder or not self.major or not os.path.isdir(folder):
             return None
 
         timestamp = None
         result = None
-        interesting = [self.program_name, "%s.%s" % (self.major, self.minor)]
+        interesting = [self.program_name, "%s.%s" % (self.major, self.minor or "")]
         for fname in os.listdir(folder):
             m = RE_PYTHON_STRICT.match(fname)
             if not m:
                 continue
             m = m.group(2) or m.group(3)
-            if not m or m not in interesting:
+            if not m or not any(m.startswith(x) for x in interesting):
                 continue
             ts = os.path.getmtime(os.path.join(folder, fname))
             if timestamp is None or timestamp < ts:
                 timestamp = ts
                 result = fname
 
-        return result and self.first_executable(
+        return result and self._first_executable(
             os.path.join(folder, result, "bin", "python"),
             os.path.join(folder, result),
         )
 
-    def first_executable(self, *paths):
+    def _first_executable(self, *paths):
         for path in paths:
             if is_executable(path):
                 return path
         return None
-
-    def resolve_version(self):
-        """Resolve major/minor from given executable"""
-        output = run_program(self.executable, "--version", dryrun=False, fatal=False, include_error=True, quiet=True)
-        if output:
-            m = RE_PYTHON_LOOSE.match(output)
-            if m:
-                self.major = m.group(3)
-                self.minor = m.group(4)
 
     def __repr__(self):
         if self.is_valid:

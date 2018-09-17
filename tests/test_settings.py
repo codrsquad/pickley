@@ -205,6 +205,16 @@ def test_duration():
     assert system.to_int("50") == 50
 
 
+def simulated_is_executable(path):
+    if not path:
+        return False
+
+    if path in ("/test/python3.6/bin/python", "/test/python3"):
+        return True
+
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
 def simulated_which(program, *args, **kwargs):
     if program == "python3.6":
         return "/test/python3.6/bin/python"
@@ -216,7 +226,7 @@ def simulated_which(program, *args, **kwargs):
 
 
 def simulated_run(program, *args, **kwargs):
-    if program.startswith(sys.real_prefix) or program == os.path.realpath(sys.executable):
+    if program.startswith(sys.real_prefix) or program == sys.executable:
         return "Python 2.7.10"
 
     if program == "/usr/bin/python":
@@ -225,7 +235,7 @@ def simulated_run(program, *args, **kwargs):
     return None
 
 
-@patch("os.path.realpath", side_effect=lambda x: x)
+@patch("pickley.system.is_executable", side_effect=simulated_is_executable)
 @patch("pickley.system.which", side_effect=simulated_which)
 @patch("pickley.system.run_program", side_effect=simulated_run)
 def test_python_installation(_, __, ___, temp_base):
@@ -236,7 +246,7 @@ def test_python_installation(_, __, ___, temp_base):
     assert p.shebang() == "/dev/null/foo"
 
     system.DESIRED_PYTHON = None
-    assert system.target_python(fatal=None).is_valid
+    assert system.target_python(fatal=False).is_valid
 
     assert not system.PythonInstallation("").is_valid
 

@@ -68,7 +68,7 @@ def find_brew_name(target):
 def brew_uninstall(target, fatal=False):
     """
     :param str target: Path of file to uninstall
-    :param bool target: Abort if True
+    :param bool fatal: Abort if True
     :return int: 1 if successfully uninstalled, 0 if nothing to do, -1 if failed
     """
     brew, name = find_brew_name(target)

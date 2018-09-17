@@ -84,20 +84,21 @@ class SoftLock:
         system.delete_file(self.lock, quiet=True)
 
 
-def vrun(package_name, *args, **kwargs):
+def vrun(package_name, command, *args, **kwargs):
     """
-    Run package_name + args from an on-the-fly create virtualenv, with 'package_name' auto-installed into it.
+    Run command + args from an on-the-fly create virtualenv, for associated pypi 'package_name'.
     This allows us to run commands like 'pex ...' with pex installed when/if needed
 
-    :param str package_name: Virtualized command to run (pip, pex, etc...)
+    :param str package_name: Associated pypi package the run is for
+    :param str command: Command to run (pip, pex, etc...)
     :param args: Command line args
     :param kwargs: Optional named args to pass-through to system.run_program()
     """
-    python = system.target_python()
+    python = system.target_python(package_name=package_name)
     folder = system.SETTINGS.meta.full_path(".%s" % python.short_name)
     with SoftLock(folder, timeout=system.SETTINGS.install_timeout, invalid=system.SETTINGS.install_timeout, keep=10) as lock:
         shared = SharedVenv(lock, python)
-        return shared._run_from_venv(package_name, *args, **kwargs)
+        return shared._run_from_venv(command, *args, **kwargs)
 
 
 class SharedVenv:

@@ -240,7 +240,7 @@ def settings(diagnostics):
     if diagnostics:
         prefix = getattr(sys, "prefix", None)
         real_prefix = getattr(sys, "real_prefix", None)
-        system.info("python         : %s", short(system.target_python(fatal=False), meta=False))
+        system.info("python         : %s", short(system.target_python(desired=system.INVOKER, fatal=False), meta=False))
         system.info("sys.executable : %s", short(sys.executable, meta=False))
         system.info("sys.prefix     : %s", short(prefix, meta=False))
         if real_prefix:

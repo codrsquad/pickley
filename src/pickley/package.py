@@ -80,10 +80,8 @@ class VersionMeta(JsonSerializable):
         if self._suffix != system.LATEST_CHANNEL:
             self.packager = PACKAGERS.resolved_name(self._name)
             self.delivery = DELIVERERS.resolved_name(self._name)
-            python = system.target_python(fatal=False)
-            if python:
-                # Record which python was used, as specified (if any)
-                self.python = python.text
+            python = system.target_python(package_name=self._name)
+            self.python = python.text  # Record which python was used, as specified
         self.pickley = __version__
         self.timestamp = int(time.time())
 
@@ -319,6 +317,7 @@ class Packager(object):
         """
         system.ensure_folder(self.build_folder, folder=True)
         return vrun(
+            self.name,
             "pip", "wheel",
             "-i", system.SETTINGS.index,
             "--cache-dir", self.build_folder,
@@ -338,7 +337,7 @@ class Packager(object):
             setup_py = os.path.join(self.source_folder, "setup.py")
             if not os.path.isfile(setup_py):
                 return system.abort("No setup.py in %s", short(self.source_folder), return_value=[])
-            version = system.run_python(setup_py, "--version", fatal=False)
+            version = system.run_python(setup_py, "--version", fatal=False, package_name=self.name)
             if not version:
                 return system.abort("Could not determine version from %s", short(setup_py), return_value=[])
 
@@ -517,13 +516,13 @@ class PexPackager(Packager):
         args = ["--cache-dir", self.build_folder, "--repo", self.build_folder]
         args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.name, version)])
 
-        python = system.target_python()
+        python = system.target_python(package_name=self.name)
         shebang = python.shebang(universal=system.is_universal(self.build_folder, self.name, version))
         if shebang:
             args.append("--python-shebang")
             args.append(shebang)
 
-        vrun("pex", *args, path_env=C_COMPILATION_HELP)
+        vrun(self.name, "pex", *args, path_env=C_COMPILATION_HELP)
 
     def effective_package(self, template, version=None):
         """
@@ -571,7 +570,7 @@ class VenvPackager(Packager):
         """
         folder = os.path.join(self.dist_folder, template.format(name=self.name, version=version))
         system.ensure_folder(folder, folder=True)
-        vrun("virtualenv", folder)
+        vrun(self.name, "virtualenv", folder)
 
         pip = os.path.join(folder, "bin", "pip")
         system.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))
