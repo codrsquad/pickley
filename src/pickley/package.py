@@ -278,10 +278,10 @@ class Packager(object):
         if not self.current.valid:
             self.current.invalidate("is not installed")
 
-    def refresh_latest(self):
+    def refresh_latest(self, force=False):
         """Refresh self.latest"""
         self.latest.load()
-        if self.latest.still_valid:
+        if not force and self.latest.still_valid:
             return
 
         version = latest_pypi_version(system.SETTINGS.index, self.name)
@@ -293,7 +293,7 @@ class Packager(object):
         else:
             self.latest.invalidate(version or "can't determine latest version from %s" % source)
 
-    def refresh_desired(self):
+    def refresh_desired(self, force=False):
         """Refresh self.desired"""
         channel = system.SETTINGS.resolved_definition("channel", package_name=self.name)
         v = system.SETTINGS.get_definition("channel.%s.%s" % (channel.value, self.name))
@@ -302,7 +302,7 @@ class Packager(object):
             return
 
         if channel.value == system.LATEST_CHANNEL:
-            self.refresh_latest()
+            self.refresh_latest(force=force)
             self.desired.set_from(self.latest)
             return
 
@@ -373,7 +373,7 @@ class Packager(object):
         :param bool verbose: If True, show more extensive info
         """
         with SoftLock(self.dist_folder, timeout=system.SETTINGS.install_timeout):
-            self.refresh_desired()
+            self.refresh_desired(force=force)
             if not self.desired.valid:
                 return system.abort("Can't install %s: %s", self.name, self.desired.problem)
 

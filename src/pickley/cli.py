@@ -55,9 +55,10 @@ def main(debug, dryrun, base, index, config, python, delivery, packager):
 
 
 @main.command()
+@click.option("--force", "-f", is_flag=True, help="Force check, even if checked recently")
 @click.option("--verbose", "-v", is_flag=True, help="Show more information")
 @click.argument("packages", nargs=-1, required=False)
-def check(verbose, packages):
+def check(force, verbose, packages):
     """
     Check whether specified packages need an upgrade
     """
@@ -70,7 +71,7 @@ def check(verbose, packages):
         for name in packages:
             p = PACKAGERS.resolved(name)
             p.refresh_current()
-            p.refresh_desired()
+            p.refresh_desired(force=force)
             if not p.desired.valid:
                 system.error(p.desired.representation(verbose))
                 code = 1
