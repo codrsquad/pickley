@@ -14,7 +14,7 @@ class ImplementationMap:
 
     def __init__(self, key):
         """
-        :param str key: Key in setting where to lookup default to use
+        :param str key: Key identifying this implementation map
         """
         self.key = key
         self.map = {}
@@ -51,7 +51,7 @@ class ImplementationMap:
     def resolved_name(self, package_name, default=None):
         """
         :param str package_name: Name of pypi package
-        :param default: Optional default value (takes precendence over system.SETTINGS.defaults only)
+        :param default: Optional default value (takes precedence over system.SETTINGS.defaults only)
         :return str: Corresponding implementation name to use
         """
         definition = system.SETTINGS.resolved_definition(self.key, package_name=package_name, default=default)
@@ -70,11 +70,14 @@ class ImplementationMap:
         if not name:
             system.abort("No %s type configured for %s", self.key, package_name)
 
+        name, spec = system.despecced(name)
         implementation = self.get(name)
         if not implementation:
             system.abort("Unknown %s type '%s'", self.key, name)
 
-        return implementation(package_name)
+        imp = implementation(package_name)
+        imp.spec = spec
+        return imp
 
 
 class CurrentFolder:

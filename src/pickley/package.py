@@ -203,6 +203,7 @@ class Packager(object):
     """
 
     registered_name = None  # type: str # Injected by ImplementationMap
+    spec = None  # type: str # Optional, version of underlying implementation to use (example: ==1.4.5)
 
     def __init__(self, name):
         """
@@ -219,6 +220,15 @@ class Packager(object):
 
     def __repr__(self):
         return "%s %s" % (self.registered_name, self.name)
+
+    @property
+    def specced_name(self):
+        """
+        :return str: Name of underlying pypi package to use, optionally with pinned version
+        """
+        if self.spec:
+            return "%s==%s" % (self.registered_name, self.spec)
+        return self.registered_name
 
     @property
     def entry_points_path(self):
@@ -525,7 +535,7 @@ class PexPackager(Packager):
             args.append("--python-shebang")
             args.append(shebang)
 
-        vrun(self.name, "pex", *args, path_env=C_COMPILATION_HELP)
+        vrun(self.name, self.specced_name, *args, path_env=C_COMPILATION_HELP)
 
     def effective_package(self, template, version=None):
         """

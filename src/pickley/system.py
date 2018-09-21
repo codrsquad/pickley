@@ -137,6 +137,19 @@ def abort(*args, **kwargs):
     return return_value
 
 
+def despecced(text):
+    """
+    :param str text: Text of form <name>==<version>, or just <name>
+    :return str, str|None: Name and version
+    """
+    spec = None
+    if "==" in text:
+        i = text.strip().index("==")
+        spec = text[i + 2:]
+        text = text[:i]
+    return text, spec
+
+
 def installed_names():
     """Yield names of currently installed packages"""
     result = []
@@ -457,6 +470,7 @@ def _with_relocation(source, destination, func, fatal):
 
     :param str source: Source file or folder
     :param str destination: Destination file or folder
+    :param callable func: Implementation function
     :param bool fatal: Abort execution on failure if True
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """

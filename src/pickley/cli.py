@@ -27,7 +27,7 @@ from pickley.uninstall import uninstall_existing
 @click.option("--config", "-c", metavar="PATH", help="Extra config to load")
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", type=click.Choice(DELIVERERS.names()), help="Delivery method to use")
-@click.option("--packager", "-p", type=click.Choice(PACKAGERS.names()), help="Packager to use")
+@click.option("--packager", "-p", help="Packager to use (one of: %s)" % ",".join(PACKAGERS.names()))
 def main(debug, dryrun, base, index, config, python, delivery, packager):
     """
     Package manager for python CLIs

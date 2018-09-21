@@ -2,6 +2,7 @@ import os
 import time
 
 from pickley import system
+from pickley.settings import JsonSerializable
 
 
 class SoftLockException(Exception):
@@ -112,6 +113,7 @@ class SharedVenv:
         self.bin = os.path.join(self.folder, "bin")
         self.python = os.path.join(self.bin, "python")
         self.pip = os.path.join(self.bin, "pip")
+        self._frozen = None
         if system.file_younger(self.python, self.lock.keep):
             return
         system.delete_file(self.folder)
@@ -121,18 +123,47 @@ class SharedVenv:
 
         system.run_program(self.venv_python.executable, venv, self.folder)
 
-    def _pip_install(self, *args, **kwargs):
-        """Run 'pip install' with given args"""
-        self._run_from_venv("pip", "install", "-i", system.SETTINGS.index, *args, **kwargs)
+    @property
+    def frozen_path(self):
+        return os.path.join(self.folder, "frozen.json")
 
-    def _install_module(self, package_name, program):
+    @property
+    def frozen(self):
+        if self._frozen is None:
+            self._frozen = JsonSerializable.get_json(self.frozen_path)
+        return self._frozen or {}
+
+    def _run_pip(self, *args, **kwargs):
+        args = system.flattened(args, unique=False)
+        return system.run_program(self.pip, *args, **kwargs)
+
+    def _refresh_frozen(self):
+        output = self._run_pip("freeze", fatal=False, return_value=None)
+        versions = {}
+        if output:
+            for line in output.split("\n"):
+                name, version = system.despecced(line)
+                versions[name] = version
+        if versions:
+            JsonSerializable.save_json(versions, self.frozen_path)
+        return versions
+
+    def _installed_module(self, package_name, version=None):
         """
         :param str package_name: Pypi module to install in venv, if not already installed
-        :param str program: Full path to corresponding executable in this venv
+        :param str|None version: Version (default: latest)
         """
-        if system.DRYRUN or system.is_executable(program):
-            return
-        self._pip_install(package_name)
+        program = os.path.join(self.bin, package_name)
+        current = self.frozen.get(package_name)
+        if not current and system.is_executable(program):
+            # Edge case for older versions that weren't based on freeze
+            self._refresh_frozen()
+            current = self.frozen.get(package_name)
+        if not current or (version and current != version):
+            spec = package_name if not version else "%s==%s" % (package_name, version)
+            self._run_pip("install", "-i", system.SETTINGS.index, spec)
+            self._refresh_frozen()
+        return program
 
     def _run_from_venv(self, package_name, *args, **kwargs):
         """
@@ -142,8 +173,10 @@ class SharedVenv:
         :param args: Args to invoke program with
         :param kwargs: Additional args, use program= if entry point differs from 'package_name'
         """
+        if package_name == "pip":
+            return self._run_pip(*args, **kwargs)
         args = system.flattened(args, unique=False)
         program = kwargs.pop("program", package_name)
-        program = os.path.join(self.bin, program)
-        self._install_module(package_name, program)
-        return system.run_program(program, *args, **kwargs)
+        program, version = system.despecced(program)
+        full_path = self._installed_module(program, version=version)
+        return system.run_program(full_path, *args, **kwargs)

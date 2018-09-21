@@ -98,6 +98,9 @@ def test_version_meta():
 @patch("pickley.package.DELIVERERS.resolved", return_value=None)
 def test_versions(_, __, temp_base):
     p = PACKAGERS.get("pex")("foo")
+    assert p.specced_name == "pex"
+    p.spec = "1.4.5"
+    assert p.specced_name == "pex==1.4.5"
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo: can't determine latest version from pypi (channel: latest, source: pypi)"
 
