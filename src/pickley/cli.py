@@ -9,7 +9,7 @@ import sys
 
 import click
 
-from pickley import system
+from pickley import __version__, system
 from pickley.context import CurrentFolder
 from pickley.lock import SoftLockException
 from pickley.package import DELIVERERS, PACKAGERS
@@ -19,7 +19,7 @@ from pickley.uninstall import uninstall_existing
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=140), epilog=__doc__)
-@click.version_option()
+@click.version_option(version=__version__)
 @click.option("--debug", is_flag=True, help="Show debug logs")
 @click.option("--dryrun", "-n", is_flag=True, help="Perform a dryrun")
 @click.option("--base", "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
@@ -142,7 +142,7 @@ def uninstall(force, packages):
         ep_missed = 0
         meta_deleted = system.delete_file(system.SETTINGS.meta.full_path(name), fatal=False)
         if not eps and force:
-            eps = [name]
+            eps = {name: ""}
         if eps and meta_deleted >= 0:
             for entry_point in eps:
                 path = system.SETTINGS.base.full_path(entry_point)

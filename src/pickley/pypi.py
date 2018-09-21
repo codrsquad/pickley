@@ -96,9 +96,9 @@ def latest_pypi_version(url, name):
 def read_entry_points(lines):
     """
     :param lines: Contents of entry_points.txt
-    :return list: List of entry points defined in 'lines'
+    :return dict: Entry points defined in 'lines', key is entry point name, value is python function path
     """
-    result = []
+    result = {}
     section = None
 
     for line in lines:
@@ -114,6 +114,6 @@ def read_entry_points(lines):
         key = key.strip()
         value = value.strip()
         if value:
-            result.append(key)
+            result[key] = value
 
     return result

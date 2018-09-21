@@ -231,12 +231,15 @@ class Packager(object):
     @property
     def entry_points(self):
         """
-        :return list|None: Determined entry points from produced wheel, if available
+        :return dict: Determined entry points from produced wheel, if available
         """
         if self._entry_points is None:
             self._entry_points = JsonSerializable.get_json(self.entry_points_path)
+            if isinstance(self._entry_points, list):
+                # For backwards compatibility with pickley <= v1.4.2
+                self._entry_points = dict((k, "") for k in self._entry_points)
             if self._entry_points is None:
-                return [self.name] if system.DRYRUN else []
+                return {self.name: ""} if system.DRYRUN else {}
         return self._entry_points
 
     def refresh_entry_points(self, version):
@@ -251,7 +254,7 @@ class Packager(object):
     def get_entry_points(self, version):
         """
         :param str version: Version of package
-        :return list|None: Determine entry points for pypi package with 'self.name'
+        :return dict|None: Determined entry points for pypi package with 'self.name'
         """
         if not os.path.isdir(self.build_folder):
             return None
