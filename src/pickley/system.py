@@ -478,6 +478,11 @@ def _with_relocation(source, destination, func, fatal):
         return 0
 
     action = func.__name__[1:]
+    psource = parent_folder(source)
+    pdest = resolved_path(destination)
+    if psource != pdest and psource.startswith(pdest):
+        return abort("Can't %s %s -> %s: source contained in destination", action, short(source), short(destination), fatal=fatal)
+
     if DRYRUN:
         debug("Would %s %s -> %s", action, short(source), short(destination))
         return 1

@@ -26,6 +26,18 @@ def test_lock(temp_base):
             assert "Can't determine path to virtualenv.py" in verify_abort(SharedVenv, lock, None)
 
 
+@patch("pickley.system.run_program", return_value="pex==1.0")
+@patch("pickley.system.file_younger", return_value=True)
+def test_ensure_freeze(_, __, temp_base):
+    # Test edge case for _installed_module()
+    with SoftLock(temp_base) as lock:
+        fake_pex = os.path.join(temp_base, "bin/pex")
+        system.touch(fake_pex)
+        system.make_executable(fake_pex)
+        v = SharedVenv(lock, None)
+        assert v._installed_module("pex")
+
+
 def test_flattened():
     assert len(system.flattened(None)) == 0
     assert len(system.flattened("")) == 0
@@ -80,6 +92,13 @@ def test_edge_cases(temp_base):
 
     assert system.copy_file("", "") == 0
     assert system.move_file("", "") == 0
+
+    with CaptureOutput(dryrun=True) as logged:
+        assert system.copy_file("foo/bar/baz", "foo", fatal=False) == -1
+        assert "source contained in destination" in logged
+
+        assert system.copy_file("foo/bar/baz", "foo/baz", fatal=False) == 1
+        assert system.copy_file("foo/bar/baz", "foo/bar", fatal=False) == 1
 
     assert system.delete_file("/dev/null", fatal=False) == -1
     assert system.delete_file("/dev/null", fatal=False) == -1
