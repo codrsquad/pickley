@@ -140,7 +140,7 @@ class SharedVenv:
         return runez.run_program(self.pip, *args, **kwargs)
 
     def _refresh_frozen(self):
-        output = self._run_pip("freeze", fatal=False, return_value=None)
+        output = self._run_pip("freeze", fatal=False)
         versions = {}
         if output:
             for line in output.split("\n"):
