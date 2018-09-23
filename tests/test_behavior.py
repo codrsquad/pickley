@@ -19,7 +19,7 @@ def test_lock(temp_base):
             with SoftLock(folder, timeout=0.01):
                 pass
         assert str(lock) == folder + ".lock"
-        system.delete_file(str(lock))
+        system.delete(str(lock))
         assert not lock._locked()
 
         with patch("pickley.system.virtualenv_path", return_value=None):
@@ -55,11 +55,11 @@ def test_flattened():
 def test_file_operations(temp_base):
     system.touch("foo")
     with CaptureOutput(dryrun=True) as logged:
-        system.copy_file("foo", "bar")
-        system.move_file("foo", "bar")
-        system.delete_file("foo")
+        system.copy("foo", "bar")
+        system.move("foo", "bar")
+        system.delete("foo")
         assert system.make_executable("foo") == 1
-        assert system.write_contents("foo", "bar", verbose=True) == 1
+        assert system.write_contents("foo", "bar", quiet=False) == 1
         assert "Would copy foo -> bar" in logged
         assert "Would move foo -> bar" in logged
         assert "Would delete foo" in logged
@@ -86,22 +86,22 @@ def test_edge_cases(temp_base):
 
     assert system.ensure_folder("") == 0
 
-    assert "does not exist" in verify_abort(system.move_file, INEXISTING_FILE, "bar")
+    assert "does not exist" in verify_abort(system.move, INEXISTING_FILE, "bar")
 
     assert "Can't create folder" in verify_abort(system.ensure_folder, INEXISTING_FILE)
 
-    assert system.copy_file("", "") == 0
-    assert system.move_file("", "") == 0
+    assert system.copy("", "") == 0
+    assert system.move("", "") == 0
 
     with CaptureOutput(dryrun=True) as logged:
-        assert system.copy_file("foo/bar/baz", "foo", fatal=False) == -1
+        assert system.copy("foo/bar/baz", "foo", fatal=False) == -1
         assert "source contained in destination" in logged
 
-        assert system.copy_file("foo/bar/baz", "foo/baz", fatal=False) == 1
-        assert system.copy_file("foo/bar/baz", "foo/bar", fatal=False) == 1
+        assert system.copy("foo/bar/baz", "foo/baz", fatal=False) == 1
+        assert system.copy("foo/bar/baz", "foo/bar", fatal=False) == 1
 
-    assert system.delete_file("/dev/null", fatal=False) == -1
-    assert system.delete_file("/dev/null", fatal=False) == -1
+    assert system.delete("/dev/null", fatal=False) == -1
+    assert system.delete("/dev/null", fatal=False) == -1
     assert system.make_executable(INEXISTING_FILE, fatal=False) == -1
     assert system.make_executable("/dev/null", fatal=False) == -1
 
@@ -113,14 +113,14 @@ def test_edge_cases(temp_base):
 
     # Can't copy non-existing file
     with patch("os.path.exists", return_value=False):
-        assert system.copy_file("foo", "bar", fatal=False) == -1
+        assert system.copy("foo", "bar", fatal=False) == -1
 
     # Can't read
     with patch("os.path.isfile", return_value=True):
         with patch("os.path.getsize", return_value=10):
             with patch("io.open", mock_open()) as m:
                 m.side_effect = Exception
-                assert "Can't read" in verify_abort(system.relocate_venv_file, "foo", "source", "dest")
+                assert "Can't read" in verify_abort(system.relocate_venv, "foo", "source", "dest")
 
     # Can't write
     with patch("pickley.system.open", mock_open()) as m:
@@ -130,9 +130,9 @@ def test_edge_cases(temp_base):
     # Copy/move crash
     with patch("os.path.exists", return_value=True):
         with patch("shutil.copy", side_effect=Exception):
-                assert system.copy_file("foo", "bar", fatal=False) == -1
+                assert system.copy("foo", "bar", fatal=False) == -1
         with patch("shutil.move", side_effect=Exception):
-            assert system.move_file("foo", "bar", fatal=False) == -1
+            assert system.move("foo", "bar", fatal=False) == -1
 
 
 @patch("subprocess.Popen", side_effect=Exception)
@@ -157,9 +157,9 @@ def test_missing_implementation():
     assert "Unknown custom type" in verify_abort(m.resolved, "foo")
 
 
-def test_relocate_venv_file_successfully(temp_base):
-    system.write_contents("foo", "line 1: source\nline 2\n", verbose=True)
-    assert system.relocate_venv_file("foo", "source", "dest", fatal=False) == 1
+def test_relocate_venv_successfully(temp_base):
+    system.write_contents("foo", "line 1: source\nline 2\n", quiet=False)
+    assert system.relocate_venv("foo", "source", "dest", fatal=False) == 1
     assert system.get_lines("foo") == ["line 1: dest\n", "line 2\n"]
 
 

@@ -296,11 +296,11 @@ def to_unicode(s):
     return six.text_type(s)
 
 
-def write_contents(path, contents, verbose=False, fatal=True):
+def write_contents(path, contents, quiet=True, fatal=True):
     """
     :param str path: Path to file
     :param str contents: Contents to write
-    :param bool verbose: Don't log if False (dryrun being always logged)
+    :param bool quiet: Don't log if False (dryrun being always logged)
     :param bool fatal: Abort execution on failure if True
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
@@ -313,7 +313,7 @@ def write_contents(path, contents, verbose=False, fatal=True):
         return 1
 
     ensure_folder(path, fatal=fatal)
-    if verbose and contents:
+    if not quiet and contents:
         debug("Writing %s bytes to %s", len(contents), short(path))
 
     try:
@@ -384,7 +384,7 @@ def flattened(value, separator=None, unique=True):
     return result
 
 
-def relocate_venv_file(path, source, destination, fatal=True, quiet=False):
+def relocate_venv(path, source, destination, fatal=True, quiet=False):
     """
     :param str path: Path of file to relocate (change mentions of 'source' to 'destination')
     :param str source: Where venv used to be
@@ -440,7 +440,7 @@ def ensure_folder(path, folder=False, fatal=True):
         return abort("Can't create folder %s: %s", short(folder), e, fatal=fatal)
 
 
-def copy_file(source, destination, fatal=True):
+def copy(source, destination, fatal=True):
     """
     Copy source -> destination
 
@@ -452,7 +452,7 @@ def copy_file(source, destination, fatal=True):
     return _with_relocation(source, destination, _copy, fatal, _relocator)
 
 
-def move_file(source, destination, fatal=True):
+def move(source, destination, fatal=True):
     """
     Move source -> destination
 
@@ -495,7 +495,7 @@ def _with_relocation(source, destination, func, fatal, adapter):
     debug("%s %s -> %s%s", action.title(), short(source), short(destination), info)
 
     ensure_folder(destination, fatal=fatal)
-    delete_file(destination, fatal=fatal, quiet=True)
+    delete(destination, fatal=fatal, quiet=True)
     try:
         func(source, destination)
         return 1
@@ -510,7 +510,7 @@ def _relocator(source, destination, fatal):
     for bin_folder in find_venvs(source):
         for name in os.listdir(bin_folder):
             fpath = os.path.join(bin_folder, name)
-            relocated += relocate_venv_file(fpath, source, destination, fatal=fatal)
+            relocated += relocate_venv(fpath, source, destination, fatal=fatal)
 
     return " (relocated %s)" % relocated if relocated else ""
 
@@ -554,7 +554,7 @@ def find_venvs(folder, seen=None):
                     yield path
 
 
-def delete_file(path, fatal=True, quiet=False):
+def delete(path, fatal=True, quiet=False):
     """
     :param str|None path: Path to file or folder to delete
     :param bool fatal: Abort execution on failure if True

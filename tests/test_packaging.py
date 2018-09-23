@@ -123,7 +123,7 @@ def test_versions(_, __, temp_base):
         system.touch(whl)
         assert p.get_entry_points("0.0.0") is None
         assert "Can't read wheel" in logged
-        system.delete_file(whl)
+        system.delete(whl)
 
     # Ambiguous package() call
     assert "Need either source_folder or version in order to package" in verify_abort(p.package)

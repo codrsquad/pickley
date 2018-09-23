@@ -72,7 +72,7 @@ class SoftLock:
         system.write_contents(self.lock, "%s\n" % os.getpid())
 
         if not self._should_keep():
-            system.delete_file(self.folder, quiet=not self.keep)
+            system.delete(self.folder, quiet=not self.keep)
 
         return self
 
@@ -81,8 +81,8 @@ class SoftLock:
         Release lock
         """
         if not self._should_keep():
-            system.delete_file(self.folder, quiet=not self.keep)
-        system.delete_file(self.lock, quiet=True)
+            system.delete(self.folder, quiet=not self.keep)
+        system.delete(self.lock, quiet=True)
 
 
 def vrun(package_name, command, *args, **kwargs):
@@ -116,7 +116,7 @@ class SharedVenv:
         self._frozen = None
         if system.file_younger(self.python, self.lock.keep):
             return
-        system.delete_file(self.folder)
+        system.delete(self.folder)
         venv = system.virtualenv_path()
         if not venv:
             system.abort("Can't determine path to virtualenv.py")

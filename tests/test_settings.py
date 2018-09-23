@@ -294,7 +294,7 @@ def test_python_installation(_, __, ___, temp_base):
     assert not p.is_valid
     assert p.problem == "python3.7 is not installed"
 
-    system.delete_file("python3.7")
+    system.delete("python3.7")
     system.touch("3.7.0/bin/python")
     system.make_executable("3.7.0/bin/python")
     p = system.PythonInstallation("3.7")

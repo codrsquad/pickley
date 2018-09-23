@@ -165,7 +165,7 @@ def test_install(temp_base):
     assert "tox" in output
 
     expect_success("auto-upgrade tox", "Skipping auto-upgrade", base=temp_base)
-    system.delete_file(system.SETTINGS.meta.full_path("tox", ".ping"))
+    system.delete(system.SETTINGS.meta.full_path("tox", ".ping"))
     expect_success("auto-upgrade tox", "already installed", base=temp_base)
 
     version = output.partition(" ")[0]
@@ -208,7 +208,7 @@ def test_install(temp_base):
     expect_success("uninstall twine", "Uninstalled twine", base=temp_base)
 
     p.refresh_current()
-    system.delete_file(p.current._path)
+    system.delete(p.current._path)
     system.touch(p.current._path)
     expect_failure("check", "tox", "Invalid json file", "is not installed", base=temp_base)
 

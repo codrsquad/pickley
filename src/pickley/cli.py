@@ -140,13 +140,13 @@ def uninstall(force, packages):
         eps = p.entry_points
         ep_uninstalled = 0
         ep_missed = 0
-        meta_deleted = system.delete_file(system.SETTINGS.meta.full_path(name), fatal=False)
+        meta_deleted = system.delete(system.SETTINGS.meta.full_path(name), fatal=False)
         if not eps and force:
             eps = {name: ""}
         if eps and meta_deleted >= 0:
             for entry_point in eps:
                 path = system.SETTINGS.base.full_path(entry_point)
-                handler = system.delete_file if meta_deleted > 0 else uninstall_existing
+                handler = system.delete if meta_deleted > 0 else uninstall_existing
                 r = handler(path, fatal=False)
                 if r < 0:
                     ep_missed += 1
@@ -180,7 +180,7 @@ def copy(source, destination):
     Copy file or folder, relocate venvs accordingly (if any)
     """
     system.setup_audit_log()
-    system.copy_file(source, destination)
+    system.copy(source, destination)
     system.info("Copied %s -> %s", short(source), short(destination))
 
 
@@ -192,7 +192,7 @@ def move(source, destination):
     Copy file or folder, relocate venvs accordingly (if any)
     """
     system.setup_audit_log()
-    system.move_file(source, destination)
+    system.move(source, destination)
     system.info("Moved %s -> %s", short(source), short(destination))
 
 

@@ -62,7 +62,7 @@ class DeliveryMethod:
         :param str target: Full path of executable to deliver (<base>/<entry_point>)
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
-        system.delete_file(target, quiet=True)
+        system.delete(target, quiet=True)
         if system.DRYRUN:
             system.debug("Would %s %s (source: %s)", self.registered_name, short(target), short(source))
             return
@@ -129,4 +129,4 @@ class DeliveryMethodCopy(DeliveryMethod):
     """
 
     def _install(self, target, source):
-        system.copy_file(source, target)
+        system.copy(source, target)

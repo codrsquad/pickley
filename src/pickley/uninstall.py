@@ -20,21 +20,21 @@ def uninstall_existing(target, fatal=True):
 def find_uninstaller(target):
     if not target or not os.path.exists(target):
         # Bogus path, or dangling symlink
-        return system.delete_file
+        return system.delete
 
     path = os.path.realpath(target)
     if path.startswith(os.path.realpath(system.SETTINGS.meta.path)):
         # Pickley symlink, can be simply deleted
-        return system.delete_file
+        return system.delete
 
     if os.path.isfile(target) and os.path.getsize(target) == 0:
         # Empty file
-        return system.delete_file
+        return system.delete
 
     content = system.get_lines(target, fatal=False, quiet=True)
     if content and any(line.startswith(system.WRAPPER_MARK) for line in content):
         # pickley's own wrapper also fine to simply delete
-        return system.delete_file
+        return system.delete
 
     brew, name = find_brew_name(target)
     if brew and name:

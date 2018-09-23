@@ -411,7 +411,7 @@ class Packager(object):
 
             # Delete wrapper/symlinks of removed entry points immediately
             for name in removed:
-                system.delete_file(system.SETTINGS.base.full_path(name))
+                system.delete(system.SETTINGS.base.full_path(name))
 
             self.cleanup()
 
@@ -470,10 +470,10 @@ class Packager(object):
                 cleanable = cleanable[1:]
 
             for _, path in cleanable:
-                system.delete_file(path)
+                system.delete(path)
 
         if rem_cleaned >= len(removed_entry_points):
-            system.delete_file(self.removed_entry_points_path)
+            system.delete(self.removed_entry_points_path)
 
     def effective_install(self, version):
         """
@@ -487,7 +487,7 @@ class Packager(object):
         """
         ep = self.entry_points
         if not ep:
-            system.delete_file(system.SETTINGS.meta.full_path(self.name))
+            system.delete(system.SETTINGS.meta.full_path(self.name))
             system.abort("'%s' is not a CLI, it has no console_scripts entry points", self.name)
         return ep
 
@@ -524,7 +524,7 @@ class PexPackager(Packager):
         :return str: None if successful, error message otherwise
         """
         system.ensure_folder(self.build_folder, folder=True)
-        system.delete_file(destination)
+        system.delete(destination)
 
         args = ["--cache-dir", self.build_folder, "--repo", self.build_folder]
         args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.name, version)])
@@ -563,7 +563,7 @@ class PexPackager(Packager):
         for path in packaged:
             name = os.path.basename(path)
             target = system.SETTINGS.meta.full_path(self.name, name)
-            system.move_file(path, target)
+            system.move(path, target)
             result.append(target)
         self.perform_delivery(version, "{meta}/{name}-{version}")
         return result
@@ -599,7 +599,7 @@ class VenvPackager(Packager):
         packaged = self.package(version=version)
         for path in packaged:
             target = system.SETTINGS.meta.full_path(self.name, os.path.basename(path))
-            system.move_file(path, target)
+            system.move(path, target)
             result.append(target)
             self.perform_delivery(version, os.path.join(target, "bin", "{name}"))
         return result

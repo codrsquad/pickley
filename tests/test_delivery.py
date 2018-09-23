@@ -37,7 +37,7 @@ def test_wrapper(temp_base):
     assert "nohup" not in output
     assert "repeat.sh --debug auto-upgrade foo" in output
 
-    system.delete_file(repeater)
+    system.delete(repeater)
     with CaptureOutput() as logged:
         system.run_program(target, "foo", fatal=False)
         assert "Please reinstall with" in logged
