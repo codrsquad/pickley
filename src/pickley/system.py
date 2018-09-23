@@ -317,9 +317,9 @@ def write_contents(path, contents, verbose=False, fatal=True):
         debug("Writing %s bytes to %s", len(contents), short(path))
 
     try:
-        with io.open(path, "wt") as fh:
+        with open(path, "wt") as fh:
             if contents:
-                fh.write(to_unicode(contents))
+                fh.write(decode(contents))
             else:
                 os.utime(path, None)
         return 1
@@ -449,7 +449,7 @@ def copy_file(source, destination, fatal=True):
     :param bool fatal: Abort execution on failure if True
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
-    return _with_relocation(source, destination, _copy, fatal)
+    return _with_relocation(source, destination, _copy, fatal, _relocator)
 
 
 def move_file(source, destination, fatal=True):
@@ -461,10 +461,10 @@ def move_file(source, destination, fatal=True):
     :param bool fatal: Abort execution on failure if True
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
-    return _with_relocation(source, destination, _move, fatal)
+    return _with_relocation(source, destination, _move, fatal, _relocator)
 
 
-def _with_relocation(source, destination, func, fatal):
+def _with_relocation(source, destination, func, fatal, adapter):
     """
     Call func(source, destination)
 
@@ -472,6 +472,7 @@ def _with_relocation(source, destination, func, fatal):
     :param str destination: Destination file or folder
     :param callable func: Implementation function
     :param bool fatal: Abort execution on failure if True
+    :param callable adapter: Optional function to call on 'source' before copy
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
     if not source or not destination or source == destination:
@@ -490,13 +491,7 @@ def _with_relocation(source, destination, func, fatal):
     if not os.path.exists(source):
         return abort("%s does not exist, can't %s to %s", short(source), action.title(), short(destination), fatal=fatal)
 
-    relocated = 0
-    for bin_folder in find_venvs(source):
-        for name in os.listdir(bin_folder):
-            fpath = os.path.join(bin_folder, name)
-            relocated += relocate_venv_file(fpath, source, destination, fatal=fatal)
-
-    info = " (relocated %s)" % relocated if relocated else ""
+    info = adapter(source, destination, fatal=fatal) if adapter else ""
     debug("%s %s -> %s%s", action.title(), short(source), short(destination), info)
 
     ensure_folder(destination, fatal=fatal)
@@ -507,6 +502,17 @@ def _with_relocation(source, destination, func, fatal):
 
     except Exception as e:
         return abort("Can't %s %s -> %s: %s", action, short(source), short(destination), e, fatal=fatal)
+
+
+def _relocator(source, destination, fatal):
+    """Adapter for move/copy file"""
+    relocated = 0
+    for bin_folder in find_venvs(source):
+        for name in os.listdir(bin_folder):
+            fpath = os.path.join(bin_folder, name)
+            relocated += relocate_venv_file(fpath, source, destination, fatal=fatal)
+
+    return " (relocated %s)" % relocated if relocated else ""
 
 
 def _copy(source, destination):
