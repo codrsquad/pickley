@@ -1,6 +1,7 @@
 import os
 import sys
 
+import runez
 from mock import patch
 
 import pickley.settings
@@ -134,7 +135,7 @@ def test_same_type():
     assert pickley.settings.same_type(["foo"], [u"bar"])
 
 
-@patch("pickley.system.run_program", side_effect=Exception)
+@patch("runez.run_program", side_effect=Exception)
 def test_pypi(_):
     assert latest_pypi_version(None, "") is None
     assert latest_pypi_version(None, "tox")
@@ -153,7 +154,7 @@ def test_pypi(_):
         # GET fails, and fallback curl also fails
         assert request_get("") is None
 
-        with patch("pickley.system.run_program", return_value="foo"):
+        with patch("runez.run_program", return_value="foo"):
             # GET fails, but curl succeeds
             assert request_get("") == "foo"
 
@@ -195,16 +196,6 @@ def test_serialization():
     j.save()  # Warns: Couldn't save...
 
 
-def test_duration():
-    assert system.to_int("", default=60) == 60
-    assert system.to_int("") is None
-    assert system.to_int("foo") is None
-    assert system.to_int("1m") is None
-
-    assert system.to_int(50) == 50
-    assert system.to_int("50") == 50
-
-
 def simulated_is_executable(path):
     if not path:
         return False
@@ -235,9 +226,9 @@ def simulated_run(program, *args, **kwargs):
     return None
 
 
-@patch("pickley.system.is_executable", side_effect=simulated_is_executable)
-@patch("pickley.system.which", side_effect=simulated_which)
-@patch("pickley.system.run_program", side_effect=simulated_run)
+@patch("runez.is_executable", side_effect=simulated_is_executable)
+@patch("runez.which", side_effect=simulated_which)
+@patch("runez.run_program", side_effect=simulated_run)
 def test_python_installation(_, __, ___, temp_base):
 
     system.DESIRED_PYTHON = "/dev/null/foo"
@@ -281,9 +272,9 @@ def test_python_installation(_, __, ___, temp_base):
     assert p.shebang() == "/usr/bin/env python3.6"
 
     system.SETTINGS.cli.contents["python_installs"] = temp_base
-    system.touch("foo")
-    system.touch("python3.5")
-    system.touch("python3.7")
+    runez.touch("foo")
+    runez.touch("python3.5")
+    runez.touch("python3.7")
 
     p = system.PythonInstallation("python3")
     assert not p.is_valid
@@ -294,9 +285,9 @@ def test_python_installation(_, __, ___, temp_base):
     assert not p.is_valid
     assert p.problem == "python3.7 is not installed"
 
-    system.delete("python3.7")
-    system.touch("3.7.0/bin/python")
-    system.make_executable("3.7.0/bin/python")
+    runez.delete("python3.7")
+    runez.touch("3.7.0/bin/python")
+    runez.make_executable("3.7.0/bin/python")
     p = system.PythonInstallation("3.7")
     assert p.is_valid
     assert p.short_name == "py37"

@@ -1,5 +1,7 @@
 import os
 
+import runez
+
 from pickley import system
 from pickley.context import ImplementationMap
 from pickley.system import short
@@ -62,20 +64,20 @@ class DeliveryMethod:
         :param str target: Full path of executable to deliver (<base>/<entry_point>)
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
-        system.delete(target, quiet=True)
-        if system.DRYRUN:
-            system.debug("Would %s %s (source: %s)", self.registered_name, short(target), short(source))
+        runez.delete(target, quiet=True)
+        if runez.DRYRUN:
+            runez.debug("Would %s %s (source: %s)", self.registered_name, short(target), short(source))
             return
 
         if not os.path.exists(source):
-            system.abort("Can't %s, source %s does not exist", self.registered_name, short(source))
+            runez.abort("Can't %s, source %s does not exist", self.registered_name, short(source))
 
         try:
-            system.debug("Delivering %s %s -> %s", self.registered_name, short(target), short(source))
+            runez.debug("Delivering %s %s -> %s", self.registered_name, short(target), short(source))
             self._install(target, source)
 
         except Exception as e:
-            system.abort("Failed %s %s: %s", self.registered_name, short(target), e)
+            runez.abort("Failed %s %s: %s", self.registered_name, short(target), e)
 
     def _install(self, target, source):
         """
@@ -92,8 +94,8 @@ class DeliveryMethodSymlink(DeliveryMethod):
 
     def _install(self, target, source):
         if os.path.isabs(source) and os.path.isabs(target):
-            parent = system.parent_folder(target)
-            if system.parent_folder(source).startswith(parent):
+            parent = runez.parent_folder(target)
+            if runez.parent_folder(source).startswith(parent):
                 # Use relative path if source is under target
                 source = os.path.relpath(source, parent)
         os.symlink(source, target)
@@ -114,12 +116,12 @@ class DeliveryMethodWrap(DeliveryMethod):
         contents = wrapper.lstrip().format(
             hook=self.hook,
             bg=self.bg,
-            name=system.quoted(self.package_name),
-            pickley=system.quoted(system.SETTINGS.base.full_path(system.PICKLEY)),
-            source=system.quoted(source),
+            name=runez.quoted(self.package_name),
+            pickley=runez.quoted(system.SETTINGS.base.full_path(system.PICKLEY)),
+            source=runez.quoted(source),
         )
-        system.write_contents(target, contents)
-        system.make_executable(target)
+        runez.write_contents(target, contents)
+        runez.make_executable(target)
 
 
 @DELIVERERS.register

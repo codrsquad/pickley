@@ -53,7 +53,7 @@ def test_cant_uninstall():
 
 @patch("os.path.islink", side_effect=is_brew_link)
 @patch("os.path.realpath", side_effect=brew_realpath)
-@patch("pickley.system.is_executable", return_value=False)
+@patch("runez.is_executable", return_value=False)
 def test_find_brew_edge_case(*_):
     assert find_brew_name("%s/tox" % BREW_INSTALL) == (None, None)
 
@@ -61,8 +61,8 @@ def test_find_brew_edge_case(*_):
 @patch("os.path.exists", side_effect=brew_exists)
 @patch("os.path.islink", side_effect=is_brew_link)
 @patch("os.path.realpath", side_effect=brew_realpath)
-@patch("pickley.system.is_executable", side_effect=is_brew_link)
-@patch("pickley.system.run_program", side_effect=brew_run_program)
+@patch("runez.is_executable", side_effect=is_brew_link)
+@patch("runez.run_program", side_effect=brew_run_program)
 def test_uninstall_brew(*_):
     # Simulate successful uninstall
     assert uninstall_existing("%s/tox" % BREW_INSTALL, fatal=False) == 1

@@ -1,10 +1,10 @@
 import os
 import time
 
+import runez
 from mock import patch
 
 from pickley import system
-from pickley.context import CaptureOutput
 from pickley.package import DELIVERERS, find_prefix, Packager, PACKAGERS, VersionMeta
 from pickley.settings import Definition
 
@@ -22,7 +22,7 @@ def test_delivery(temp_base):
     target = os.path.join(temp_base, "t1")
     source = os.path.join(temp_base, "t1-source")
     source_file = os.path.join(source, "foo")
-    system.touch(source_file)
+    runez.touch(source_file)
     deliver.install(target, source)
     assert os.path.isdir(target)
     assert os.path.isfile(os.path.join(target, "foo"))
@@ -31,7 +31,7 @@ def test_delivery(temp_base):
     deliver = DELIVERERS.get("copy")("tox")
     target = os.path.join(temp_base, "t2")
     source = os.path.join(temp_base, "t2-source")
-    system.touch(source)
+    runez.touch(source)
     deliver.install(target, source)
     assert os.path.isfile(target)
 
@@ -39,7 +39,7 @@ def test_delivery(temp_base):
     deliver = DELIVERERS.get("symlink")("tox")
     target = os.path.join(temp_base, "l2")
     source = os.path.join(temp_base, "l2-source")
-    system.touch(source)
+    runez.touch(source)
     deliver.install(target, source)
     assert os.path.islink(target)
 
@@ -48,14 +48,10 @@ def test_delivery(temp_base):
     assert str(p) == "venv tox"
     target = os.path.join(temp_base, "tox")
     source = os.path.join(temp_base, "tox-source")
-    system.touch(source)
+    runez.touch(source)
     deliver = DELIVERERS.get("wrap")("tox")
     deliver.install(target, source)
-    assert system.is_executable(target)
-
-    # Cover edge case for make_executable():
-    assert system.make_executable(target) == 0
-    assert system.is_executable(target)
+    assert runez.is_executable(target)
 
 
 def test_bogus_delivery():
@@ -114,16 +110,16 @@ def test_versions(_, __, temp_base):
     assert p.get_entry_points("0.0.0") is None
 
     # With an empty build fodler
-    system.ensure_folder(p.build_folder, folder=True)
+    runez.ensure_folder(p.build_folder, folder=True)
     assert p.get_entry_points("0.0.0") is None
 
     # With a bogus wheel
-    with CaptureOutput() as logged:
+    with runez.CaptureOutput() as logged:
         whl = os.path.join(p.build_folder, "foo-0.0.0-py2.py3-none-any.whl")
-        system.touch(whl)
+        runez.touch(whl)
         assert p.get_entry_points("0.0.0") is None
         assert "Can't read wheel" in logged
-        system.delete(whl)
+        runez.delete(whl)
 
     # Ambiguous package() call
     assert "Need either source_folder or version in order to package" in verify_abort(p.package)
@@ -134,11 +130,11 @@ def test_versions(_, __, temp_base):
 
     # Package with a bogus setup.py
     setup_py = os.path.join(temp_base, "setup.py")
-    system.touch(setup_py)
+    runez.touch(setup_py)
     assert "Could not determine version" in verify_abort(p.package)
 
     # Provide a minimal setup.py
-    system.write_contents(setup_py, "from setuptools import setup\nsetup(name='foo', version='0.0.0')\n")
+    runez.write_contents(setup_py, "from setuptools import setup\nsetup(name='foo', version='0.0.0')\n")
 
     # Package project without entry points
     p.get_entry_points = lambda *_: None

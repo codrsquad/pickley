@@ -1,5 +1,6 @@
 import os
 
+import runez
 from click.testing import CliRunner
 from mock import patch
 
@@ -28,7 +29,7 @@ def run_cli(args, **kwargs):
     result = runner.invoke(main, args=args)
     if "--dryrun" in args:
         # Restore default non-dryrun state after a --dryrun test
-        system.DRYRUN = False
+        runez.DRYRUN = False
     return result
 
 
@@ -83,20 +84,20 @@ def test_settings():
 
 
 def run_program(program, *args):
-    return system.run_program(program, *args, fatal=False)
+    return runez.run_program(program, *args, fatal=False)
 
 
 def test_package(temp_base):
     pickley = system.SETTINGS.base.full_path("pickley")
 
     # Package pickley as pex
-    expect_success(["-ppex", "package", "-d", ".", PROJECT], "Packaged %s successfully" % short(PROJECT))
+    expect_success(["-ppex==1.4.5", "package", "-d", ".", PROJECT], "Packaged %s successfully" % short(PROJECT))
 
     # Verify that it packaged OK
-    assert system.is_executable(pickley)
+    assert runez.is_executable(pickley)
     output = run_program(pickley, "--version")
     assert "version " in output
-    assert system.first_line(pickley) == "#!/usr/bin/env python"
+    assert runez.first_line(pickley) == "#!/usr/bin/env python"
 
 
 def test_bogus_install(temp_base):
@@ -105,7 +106,7 @@ def test_bogus_install(temp_base):
     expect_failure("auto-upgrade foo", "not currently installed")
     expect_failure("package foo/bar", "Folder", "does not exist")
     expect_failure(["package", temp_base], "No setup.py")
-    system.touch(os.path.join(temp_base, "setup.py"))
+    runez.touch(os.path.join(temp_base, "setup.py"))
     expect_failure(["package", temp_base], "Could not determine package name")
 
     expect_success("check", "No packages installed", base=temp_base)
@@ -117,7 +118,7 @@ def test_bogus_install(temp_base):
 def test_install(temp_base):
     tox = system.SETTINGS.base.full_path("tox")
     assert not os.path.exists(tox)
-    assert system.first_line(tox) is None
+    assert runez.first_line(tox) is None
 
     expect_success("--dryrun --delivery wrap install tox", "Would wrap", "Would install tox", base=temp_base)
     expect_success("--dryrun --delivery symlink install tox", "Would symlink", "Would install tox", base=temp_base)
@@ -125,13 +126,13 @@ def test_install(temp_base):
 
     expect_success("--dryrun uninstall /dev/null --force", "Nothing to uninstall")
 
-    system.touch("foo")
+    runez.touch("foo")
     assert os.path.exists("foo")
     expect_failure("uninstall foo", "foo was not installed with pickley")
     expect_success("uninstall foo --force", "Uninstalled foo")
 
     assert not os.path.exists("foo")
-    assert system.ensure_folder("foo", folder=True) == 1
+    assert runez.ensure_folder("foo", folder=True) == 1
     expect_failure("uninstall foo --force", "Can't automatically uninstall")
 
     expect_failure("check tox foo/bar", "is not installed", "can't determine latest version", base=temp_base)
@@ -143,12 +144,12 @@ def test_install(temp_base):
     tep11 = system.SETTINGS.meta.full_path("tox", "tox-old-entrypoint1-1.1")
     t00 = system.SETTINGS.meta.full_path("tox", "tox-0.0.0")
     tfoo = system.SETTINGS.meta.full_path("tox", "tox-foo")
-    system.touch(wep1)
-    system.touch(tep10)
-    system.touch(tep11)
-    system.touch(t00)
-    system.touch(tfoo)
-    system.write_contents(system.SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-old-entrypoint1", "tox-old-entrypoint2"]\n')
+    runez.touch(wep1)
+    runez.touch(tep10)
+    runez.touch(tep11)
+    runez.touch(t00)
+    runez.touch(tfoo)
+    runez.write_contents(system.SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-old-entrypoint1", "tox-old-entrypoint2"]\n')
     expect_success("--delivery wrap install tox", "Installed tox", base=temp_base)
 
     # Old entry point removed immediately
@@ -160,12 +161,12 @@ def test_install(temp_base):
     assert not os.path.exists(t00)
     assert os.path.exists(tfoo)
 
-    assert system.is_executable(tox)
+    assert runez.is_executable(tox)
     output = run_program(tox, "--version")
     assert "tox" in output
 
     expect_success("auto-upgrade tox", "Skipping auto-upgrade", base=temp_base)
-    system.delete(system.SETTINGS.meta.full_path("tox", ".ping"))
+    runez.delete(system.SETTINGS.meta.full_path("tox", ".ping"))
     expect_success("auto-upgrade tox", "already installed", base=temp_base)
 
     version = output.partition(" ")[0]
@@ -208,8 +209,8 @@ def test_install(temp_base):
     expect_success("uninstall twine", "Uninstalled twine", base=temp_base)
 
     p.refresh_current()
-    system.delete(p.current._path)
-    system.touch(p.current._path)
+    runez.delete(p.current._path)
+    runez.touch(p.current._path)
     expect_failure("check", "tox", "Invalid json file", "is not installed", base=temp_base)
 
     expect_success("uninstall tox", "Uninstalled tox", "entry points", base=temp_base)

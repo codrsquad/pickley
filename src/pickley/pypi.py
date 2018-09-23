@@ -3,9 +3,8 @@ import os
 import re
 from distutils.version import StrictVersion
 
+import runez
 from six.moves.urllib.request import Request, urlopen
-
-from pickley import decode, system
 
 
 RE_HTML_VERSION = re.compile(r'href=".+/([^/]+)\.tar\.gz#')
@@ -17,10 +16,10 @@ def request_get(url):
     :return str: Response body
     """
     try:
-        system.debug("GET %s", url)
+        runez.debug("GET %s", url)
         request = Request(url)  # nosec
         response = urlopen(request).read()  # nosec
-        return response and decode(response).strip()
+        return response and runez.decode(response).strip()
 
     except Exception as e:
         code = getattr(e, "code", None)
@@ -29,11 +28,11 @@ def request_get(url):
 
         try:
             # Some old python installations have trouble with SSL (OSX for example), try curl
-            data = system.run_program("curl", "-s", url, dryrun=False, fatal=False)
-            return data and decode(data).strip()
+            data = runez.run_program("curl", "-s", url, dryrun=False, fatal=False)
+            return data and runez.decode(data).strip()
 
         except Exception as e:
-            system.debug("GET %s failed: %s", url, e, exc_info=e)
+            runez.debug("GET %s failed: %s", url, e, exc_info=e)
 
     return None
 
@@ -65,7 +64,7 @@ def latest_pypi_version(url, name):
             return data.get("info", {}).get("version")
 
         except Exception as e:
-            system.warning("Failed to parse pypi json: %s\n%s", e, data)
+            runez.warning("Failed to parse pypi json: %s\n%s", e, data)
 
         return "can't determine latest version from '%s'" % url
 
@@ -102,7 +101,7 @@ def read_entry_points(lines):
     section = None
 
     for line in lines:
-        line = decode(line).strip()
+        line = runez.decode(line).strip()
         if not line:
             continue
         if line.startswith("["):

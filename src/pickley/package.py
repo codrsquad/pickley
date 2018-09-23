@@ -2,6 +2,8 @@ import os
 import time
 import zipfile
 
+import runez
+
 from pickley import __version__, system
 from pickley.context import ImplementationMap
 from pickley.delivery import DELIVERERS
@@ -249,14 +251,14 @@ class Packager(object):
                 # For backwards compatibility with pickley <= v1.4.2
                 self._entry_points = dict((k, "") for k in self._entry_points)
             if self._entry_points is None:
-                return {self.name: ""} if system.DRYRUN else {}
+                return {self.name: ""} if runez.DRYRUN else {}
         return self._entry_points
 
     def refresh_entry_points(self, version):
         """
         :param str version: Version of package
         """
-        if system.DRYRUN:
+        if runez.DRYRUN:
             return
         self._entry_points = self.get_entry_points(version)
         JsonSerializable.save_json(self._entry_points, self.entry_points_path)
@@ -281,7 +283,7 @@ class Packager(object):
                                     return read_entry_points(fh)
 
                 except Exception as e:
-                    system.error("Can't read wheel %s: %s", wheel_path, e, exc_info=e)
+                    runez.error("Can't read wheel %s: %s", wheel_path, e, exc_info=e)
 
         return None
 
@@ -328,7 +330,7 @@ class Packager(object):
         :param str version: Version to use
         :return str: None if successful, error message otherwise
         """
-        system.ensure_folder(self.build_folder, folder=True)
+        runez.ensure_folder(self.build_folder, folder=True)
         return vrun(
             self.name,
             "pip", "wheel",
@@ -344,20 +346,20 @@ class Packager(object):
         :return list: List of produced packages (files), if successful
         """
         if not version and not self.source_folder:
-            return system.abort("Need either source_folder or version in order to package", return_value=[])
+            return runez.abort("Need either source_folder or version in order to package", return_value=[])
 
         if not version:
             setup_py = os.path.join(self.source_folder, "setup.py")
             if not os.path.isfile(setup_py):
-                return system.abort("No setup.py in %s", short(self.source_folder), return_value=[])
+                return runez.abort("No setup.py in %s", short(self.source_folder), return_value=[])
             version = system.run_python(setup_py, "--version", fatal=False, package_name=self.name)
             if not version:
-                return system.abort("Could not determine version from %s", short(setup_py), return_value=[])
+                return runez.abort("Could not determine version from %s", short(setup_py), return_value=[])
 
         self.pip_wheel(version)
 
         self.refresh_entry_points(version)
-        system.ensure_folder(self.dist_folder, folder=True)
+        runez.ensure_folder(self.dist_folder, folder=True)
         template = "{name}" if self.source_folder else "{name}-{version}"
         return self.effective_package(template, version)
 
@@ -377,8 +379,8 @@ class Packager(object):
             self.internal_install(force=force)
 
         except SoftLockException as e:
-            system.error("%s is currently being installed by another process" % self.name)
-            system.abort("If that is incorrect, please delete %s.lock", short(e.folder))
+            runez.error("%s is currently being installed by another process" % self.name)
+            runez.abort("If that is incorrect, please delete %s.lock", short(e.folder))
 
     def internal_install(self, force=False, verbose=True):
         """
@@ -388,12 +390,12 @@ class Packager(object):
         with SoftLock(self.dist_folder, timeout=system.SETTINGS.install_timeout):
             self.refresh_desired(force=force)
             if not self.desired.valid:
-                return system.abort("Can't install %s: %s", self.name, self.desired.problem)
+                return runez.abort("Can't install %s: %s", self.name, self.desired.problem)
 
             self.refresh_current()
             self.desired.delivery = DELIVERERS.resolved_name(self.name, default=self.current.delivery)
             if not force and self.current.equivalent(self.desired):
-                system.info(self.desired.representation(verbose=verbose, note="is already installed"))
+                runez.info(self.desired.representation(verbose=verbose, note="is already installed"))
                 self.cleanup()
                 return
 
@@ -411,15 +413,15 @@ class Packager(object):
 
             # Delete wrapper/symlinks of removed entry points immediately
             for name in removed:
-                system.delete(system.SETTINGS.base.full_path(name))
+                runez.delete(system.SETTINGS.base.full_path(name))
 
             self.cleanup()
 
             self.current.set_from(self.desired)
             self.current.save()
 
-            msg = "Would install" if system.DRYRUN else "Installed"
-            system.info("%s %s", msg, self.desired.representation(verbose=verbose))
+            msg = "Would install" if runez.DRYRUN else "Installed"
+            runez.info("%s %s", msg, self.desired.representation(verbose=verbose))
 
     def cleanup(self):
         """Cleanup older installs"""
@@ -470,10 +472,10 @@ class Packager(object):
                 cleanable = cleanable[1:]
 
             for _, path in cleanable:
-                system.delete(path)
+                runez.delete(path)
 
         if rem_cleaned >= len(removed_entry_points):
-            system.delete(self.removed_entry_points_path)
+            runez.delete(self.removed_entry_points_path)
 
     def effective_install(self, version):
         """
@@ -487,8 +489,8 @@ class Packager(object):
         """
         ep = self.entry_points
         if not ep:
-            system.delete(system.SETTINGS.meta.full_path(self.name))
-            system.abort("'%s' is not a CLI, it has no console_scripts entry points", self.name)
+            runez.delete(system.SETTINGS.meta.full_path(self.name))
+            runez.abort("'%s' is not a CLI, it has no console_scripts entry points", self.name)
         return ep
 
     def perform_delivery(self, version, template):
@@ -497,7 +499,7 @@ class Packager(object):
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
         # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-        system.touch(system.SETTINGS.meta.full_path(self.name, ".ping"))
+        runez.touch(system.SETTINGS.meta.full_path(self.name, ".ping"))
 
         deliverer = DELIVERERS.resolved(self.name, default=self.desired.delivery)
         for name in self.required_entry_points():
@@ -523,8 +525,8 @@ class PexPackager(Packager):
         :param str destination: Path to file where to produce pex
         :return str: None if successful, error message otherwise
         """
-        system.ensure_folder(self.build_folder, folder=True)
-        system.delete(destination)
+        runez.ensure_folder(self.build_folder, folder=True)
+        runez.delete(destination)
 
         args = ["--cache-dir", self.build_folder, "--repo", self.build_folder]
         args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.name, version)])
@@ -582,11 +584,11 @@ class VenvPackager(Packager):
         :return list: List of produced packages (files), if successful
         """
         folder = os.path.join(self.dist_folder, template.format(name=self.name, version=version))
-        system.ensure_folder(folder, folder=True)
+        runez.ensure_folder(folder, folder=True)
         vrun(self.name, "virtualenv", folder)
 
         pip = os.path.join(folder, "bin", "pip")
-        system.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))
+        runez.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))
 
         return [folder]
 

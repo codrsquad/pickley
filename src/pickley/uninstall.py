@@ -1,5 +1,7 @@
 import os
 
+import runez
+
 from pickley import system
 from pickley.system import short
 
@@ -14,27 +16,27 @@ def uninstall_existing(target, fatal=True):
     if handler:
         return handler(target, fatal=fatal)
 
-    return system.abort("Can't automatically uninstall %s", short(target), fatal=fatal)
+    return runez.abort("Can't automatically uninstall %s", short(target), fatal=fatal)
 
 
 def find_uninstaller(target):
     if not target or not os.path.exists(target):
         # Bogus path, or dangling symlink
-        return system.delete
+        return runez.delete
 
     path = os.path.realpath(target)
     if path.startswith(os.path.realpath(system.SETTINGS.meta.path)):
         # Pickley symlink, can be simply deleted
-        return system.delete
+        return runez.delete
 
     if os.path.isfile(target) and os.path.getsize(target) == 0:
         # Empty file
-        return system.delete
+        return runez.delete
 
-    content = system.get_lines(target, fatal=False, quiet=True)
+    content = runez.get_lines(target, fatal=False, quiet=True)
     if content and any(line.startswith(system.WRAPPER_MARK) for line in content):
         # pickley's own wrapper also fine to simply delete
-        return system.delete
+        return runez.delete
 
     brew, name = find_brew_name(target)
     if brew and name:
@@ -52,13 +54,13 @@ def find_brew_name(target):
         return None, None
 
     path = os.path.realpath(target)
-    folder = system.parent_folder(target)
-    cellar = os.path.join(system.parent_folder(folder), "Cellar")
+    folder = runez.parent_folder(target)
+    cellar = os.path.join(runez.parent_folder(folder), "Cellar")
     if not path.startswith(cellar):
         return None, None
 
     brew = os.path.join(folder, "brew")
-    if not system.is_executable(brew):
+    if not runez.is_executable(brew):
         return None, None
 
     name, _, _ = path[len(cellar) + 1:].partition("/")
@@ -75,10 +77,10 @@ def brew_uninstall(target, fatal=False):
     if not brew or not name:
         return -1
 
-    output = system.run_program(brew, "uninstall", "-f", name, fatal=False, dryrun=system.DRYRUN, logger=system.info)
+    output = runez.run_program(brew, "uninstall", "-f", name, fatal=False, dryrun=runez.DRYRUN, logger=runez.info)
     if output is None:
         # Failed brew uninstall
-        return system.abort("'%s uninstall %s' failed, please check", brew, name, fatal=fatal)
+        return runez.abort("'%s uninstall %s' failed, please check", brew, name, fatal=fatal)
 
     # All good
     return 1

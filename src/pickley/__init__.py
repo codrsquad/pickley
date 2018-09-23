@@ -4,19 +4,10 @@ Brew style python CLI installation
 
 import sys
 
-
-try:
-    from pkg_resources import get_distribution
-    __version__ = get_distribution(__name__).version
-except Exception:  # pragma: no cover
-    __version__ = '0.0.0'
+import runez
 
 
-def decode(value):
-    """ Python 2/3 friendly decoding of output """
-    if isinstance(value, bytes) and not isinstance(value, str):
-        return value.decode("utf-8")
-    return value
+__version__ = runez.get_version(__name__)
 
 
 def pickley_program_path():

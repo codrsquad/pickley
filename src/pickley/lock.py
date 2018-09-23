@@ -1,6 +1,8 @@
 import os
 import time
 
+import runez
+
 from pickley import system
 from pickley.settings import JsonSerializable
 
@@ -46,17 +48,17 @@ class SoftLock:
         """
         :return bool: True if lock is held by another process
         """
-        if not system.file_younger(self.lock, self.invalid):
+        if not runez.file_younger(self.lock, self.invalid):
             # Lock file does not exist or invalidation age reached
             return False
 
         # Consider locked if pid stated in lock file is still valid
-        pid = system.to_int(system.first_line(self.lock))
-        return system.check_pid(pid)
+        pid = runez.to_int(runez.first_line(self.lock))
+        return runez.check_pid(pid)
 
     def _should_keep(self):
         """Should we keep folder after lock release?"""
-        return system.file_younger(self.folder, self.keep)
+        return runez.file_younger(self.folder, self.keep)
 
     def __enter__(self):
         """
@@ -69,10 +71,10 @@ class SoftLock:
             time.sleep(1)
 
         # We got the soft lock
-        system.write_contents(self.lock, "%s\n" % os.getpid())
+        runez.write_contents(self.lock, "%s\n" % os.getpid())
 
         if not self._should_keep():
-            system.delete(self.folder, quiet=not self.keep)
+            runez.delete(self.folder, quiet=not self.keep)
 
         return self
 
@@ -81,8 +83,8 @@ class SoftLock:
         Release lock
         """
         if not self._should_keep():
-            system.delete(self.folder, quiet=not self.keep)
-        system.delete(self.lock, quiet=True)
+            runez.delete(self.folder, quiet=not self.keep)
+        runez.delete(self.lock, quiet=True)
 
 
 def vrun(package_name, command, *args, **kwargs):
@@ -93,7 +95,7 @@ def vrun(package_name, command, *args, **kwargs):
     :param str package_name: Associated pypi package the run is for
     :param str command: Command to run (pip, pex, etc...)
     :param args: Command line args
-    :param kwargs: Optional named args to pass-through to system.run_program()
+    :param kwargs: Optional named args to pass-through to runez.run_program()
     """
     python = system.target_python(package_name=package_name)
     folder = system.SETTINGS.meta.full_path(".%s" % python.short_name)
@@ -114,14 +116,14 @@ class SharedVenv:
         self.python = os.path.join(self.bin, "python")
         self.pip = os.path.join(self.bin, "pip")
         self._frozen = None
-        if system.file_younger(self.python, self.lock.keep):
+        if runez.file_younger(self.python, self.lock.keep):
             return
-        system.delete(self.folder)
+        runez.delete(self.folder)
         venv = system.virtualenv_path()
         if not venv:
-            system.abort("Can't determine path to virtualenv.py")
+            runez.abort("Can't determine path to virtualenv.py")
 
-        system.run_program(self.venv_python.executable, venv, self.folder)
+        runez.run_program(self.venv_python.executable, venv, self.folder)
 
     @property
     def frozen_path(self):
@@ -134,8 +136,8 @@ class SharedVenv:
         return self._frozen or {}
 
     def _run_pip(self, *args, **kwargs):
-        args = system.flattened(args, unique=False)
-        return system.run_program(self.pip, *args, **kwargs)
+        args = runez.flattened(args, unique=False)
+        return runez.run_program(self.pip, *args, **kwargs)
 
     def _refresh_frozen(self):
         output = self._run_pip("freeze", fatal=False, return_value=None)
@@ -155,7 +157,7 @@ class SharedVenv:
         """
         program = os.path.join(self.bin, package_name)
         current = self.frozen.get(package_name)
-        if not current and system.is_executable(program):
+        if not current and runez.is_executable(program):
             # Edge case for older versions that weren't based on freeze
             self._refresh_frozen()
             current = self.frozen.get(package_name)
@@ -175,8 +177,8 @@ class SharedVenv:
         """
         if package_name == "pip":
             return self._run_pip(*args, **kwargs)
-        args = system.flattened(args, unique=False)
+        args = runez.flattened(args, unique=False)
         program = kwargs.pop("program", package_name)
         program, version = system.despecced(program)
         full_path = self._installed_module(program, version=version)
-        return system.run_program(full_path, *args, **kwargs)
+        return runez.run_program(full_path, *args, **kwargs)

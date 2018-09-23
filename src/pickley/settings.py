@@ -22,6 +22,7 @@ import io
 import json
 import os
 
+import runez
 from six import string_types
 
 from pickley import system
@@ -66,7 +67,7 @@ def add_representation(result, data, indent=""):
     if isinstance(data, dict):
         for key, value in sorted(data.items()):
             if isinstance(value, list):
-                brief = system.represented_args(value, separator=", ")
+                brief = runez.represented_args(value, separator=", ")
                 if len(brief) < REPRESENTATION_WIDTH:
                     result.append("%s%s: [%s]" % (indent, short(key), brief))
                     continue
@@ -112,11 +113,11 @@ class JsonSerializable:
         for key, value in data.items():
             key = key.replace("-", "_")
             if not hasattr(self, key):
-                system.debug("%s is not an attribute of %s", key, self.__class__.__name__)
+                runez.debug("%s is not an attribute of %s", key, self.__class__.__name__)
                 continue
             attr = getattr(self, key)
             if attr is not None and not same_type(value, attr):
-                system.debug(
+                runez.debug(
                     "Wrong type %s for %s.%s in %s, expecting %s", type(value), self.__class__.__name__, key, self._source, type(attr)
                 )
                 continue
@@ -175,17 +176,17 @@ class JsonSerializable:
         if data is None or not path:
             return
         try:
-            path = system.resolved_path(path)
-            system.ensure_folder(path, fatal=False)
-            if system.DRYRUN:
-                system.debug("Would save %s", short(path))
+            path = runez.resolved_path(path)
+            runez.ensure_folder(path, fatal=False)
+            if runez.DRYRUN:
+                runez.debug("Would save %s", short(path))
             else:
                 s = "%s\n" % json.dumps(data, sort_keys=True, indent=2).strip()
                 with io.open(path, "wt") as fh:
                     fh.write(system.to_unicode(s))
 
         except Exception as e:
-            system.warning("Couldn't save %s: %s" % (short(path), e))
+            runez.warning("Couldn't save %s: %s" % (short(path), e))
 
     @staticmethod
     def get_json(path, default=None):
@@ -194,7 +195,7 @@ class JsonSerializable:
         :param dict|list default: Default if file is not present, or if it's not json
         :return dict|list: Deserialized data from file
         """
-        path = system.resolved_path(path)
+        path = runez.resolved_path(path)
         if not path or not os.path.exists(path):
             return default
 
@@ -202,11 +203,11 @@ class JsonSerializable:
             with io.open(path, "rt") as fh:
                 data = json.load(fh)
                 if default is not None and type(data) != type(default):
-                    system.debug("Wrong type %s for %s, expecting %s" % (type(data), short(path), type(default)))
+                    runez.debug("Wrong type %s for %s, expecting %s" % (type(data), short(path), type(default)))
                 return data
 
         except Exception as e:
-            system.warning("Invalid json file %s: %s" % (short(path), e))
+            runez.warning("Invalid json file %s: %s" % (short(path), e))
             return default
 
 
@@ -244,7 +245,7 @@ class SettingsFile:
         """
         self.parent = parent
         self.path = path or name
-        self.folder = system.parent_folder(path)
+        self.folder = runez.parent_folder(path)
         self._contents = None
 
     def __repr__(self):
@@ -275,10 +276,10 @@ class SettingsFile:
                 if name.startswith("bundle:"):
                     bundle = self.get_definition("bundle.%s" % name[7:])
                     if bundle and bundle.value:
-                        result.extend(system.flattened(bundle.value, separator=" "))
+                        result.extend(runez.flattened(bundle.value, separator=" "))
                         continue
                 result.append(name)
-        return system.flattened(result, separator=" ")
+        return runez.flattened(result, separator=" ")
 
     def flatten(self, key, separator=None, direct=False):
         if not self._contents:
@@ -287,11 +288,11 @@ class SettingsFile:
         if not node:
             return
         if direct:
-            self._contents[key] = system.flattened(node, separator=separator)
+            self._contents[key] = runez.flattened(node, separator=separator)
             return
         result = {}
         for name, value in node.items():
-            result[name] = system.flattened(value, separator=separator)
+            result[name] = runez.flattened(value, separator=separator)
         self._contents[key] = result
 
     @property
@@ -352,7 +353,7 @@ class SettingsFile:
                     return Definition(value, self, key)
                 return None
             if definition.value is not None:
-                system.debug("'%s' is of type %s (not a dict) in '%s'", prefix, type(definition.value), short(self.path))
+                runez.debug("'%s' is of type %s (not a dict) in '%s'", prefix, type(definition.value), short(self.path))
             return None
         value = self.contents.get(key)
         if value is not None:
@@ -418,14 +419,14 @@ class Settings:
         if not base:
             base = os.environ.get("PICKLEY_ROOT")
         if not base:
-            base = system.parent_folder(system.PICKLEY_PROGRAM_PATH)
+            base = runez.parent_folder(system.PICKLEY_PROGRAM_PATH)
             if DOT_PICKLEY in base:
                 # Don't consider meta folder .pickley/... as installation base
                 i = base.index(DOT_PICKLEY)
                 base = base[:i].rstrip("/")
             elif ".venv" in base:
                 # Convenience for development
-                base = system.parent_folder(base)
+                base = runez.parent_folder(base)
                 base = os.path.join(base, "root")
 
         if isinstance(base, system.FolderBase):
@@ -440,21 +441,21 @@ class Settings:
         """
         :return float: How many minutes to give an installation to complete before assuming it failed
         """
-        return system.to_int(self.get_value("install_timeout"), default=DEFAULT_INSTALL_TIMEOUT)
+        return runez.to_int(self.get_value("install_timeout"), default=DEFAULT_INSTALL_TIMEOUT)
 
     @property
     def version_check_seconds(self):
         """
         :return float: How many seconds to wait before checking for upgrades again
         """
-        return system.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY) * 60
+        return runez.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY) * 60
 
     def _add_config(self, path, base=None):
         """
         :param str path: Path to config file
         :param str|None base: Base path to use to resolve relative paths (default: current working dir)
         """
-        path = system.resolved_path(path, base=base)
+        path = runez.resolved_path(path, base=base)
         if path not in self.config_paths:
             settings_file = SettingsFile(self, path)
             self.config_paths.append(path)
@@ -542,7 +543,7 @@ class Settings:
                         result.extend(bundle)
                         continue
                 result.append(name)
-        return system.flattened(result)
+        return runez.flattened(result)
 
     def represented(self, include_defaults=True):
         """

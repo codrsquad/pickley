@@ -1,10 +1,6 @@
-import logging
-import os
-import sys
+import runez
 
-from six import StringIO
-
-from pickley import decode, system
+from pickley import system
 
 
 class ImplementationMap:
@@ -68,89 +64,13 @@ class ImplementationMap:
         """
         name = self.resolved_name(package_name, default=default)
         if not name:
-            system.abort("No %s type configured for %s", self.key, package_name)
+            runez.abort("No %s type configured for %s", self.key, package_name)
 
         name, spec = system.despecced(name)
         implementation = self.get(name)
         if not implementation:
-            system.abort("Unknown %s type '%s'", self.key, name)
+            runez.abort("Unknown %s type '%s'", self.key, name)
 
         imp = implementation(package_name)
         imp.spec = spec
         return imp
-
-
-class CurrentFolder:
-    """Context manager for changing the current working directory"""
-
-    def __init__(self, destination):
-        self.destination = system.resolved_path(destination)
-
-    def __enter__(self):
-        self.current_folder = os.getcwd()
-        os.chdir(self.destination)
-
-    def __exit__(self, *_):
-        os.chdir(self.current_folder)
-
-
-class CaptureOutput:
-    """
-    Context manager allowing to temporarily grab stdout/stderr output.
-    Output is captured and made available only for the duration of the context.
-
-    Sample usage:
-
-    with CaptureOutput() as logged:
-        ... do something that generates output ...
-        assert "some message" in logged
-    """
-
-    def __init__(self, stdout=True, stderr=True, dryrun=None):
-        """
-        :param bool stdout: Capture stdout
-        :param bool stderr: Capture stderr
-        :param bool|None dryrun: Override dryrun (when provided)
-        """
-        self.dryrun = dryrun
-        self.old_out = sys.stdout
-        self.old_err = sys.stderr
-        self.old_handlers = logging.root.handlers
-
-        self.out_buffer = StringIO() if stdout else self.old_out
-        self.err_buffer = StringIO() if stderr else self.old_err
-
-        self.handler = logging.StreamHandler(stream=self.err_buffer)
-        self.handler.setLevel(logging.DEBUG)
-        self.handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
-
-    def __repr__(self):
-        result = ""
-        if self.out_buffer:
-            result += decode(self.out_buffer.getvalue())
-        if self.err_buffer:
-            result += decode(self.err_buffer.getvalue())
-        return result
-
-    def __enter__(self):
-        sys.stdout = self.out_buffer
-        sys.stderr = self.err_buffer
-        logging.root.handlers = [self.handler]
-
-        if self.dryrun is not None:
-            (system.DRYRUN, self.dryrun) = (bool(self.dryrun), bool(system.DRYRUN))
-
-        return self
-
-    def __exit__(self, *args):
-        sys.stdout = self.old_out
-        sys.stderr = self.old_err
-        self.out_buffer = None
-        self.err_buffer = None
-        logging.root.handlers = self.old_handlers
-
-        if self.dryrun is not None:
-            system.DRYRUN = self.dryrun
-
-    def __contains__(self, item):
-        return item is not None and item in str(self)

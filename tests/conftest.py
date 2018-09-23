@@ -3,17 +3,17 @@ import shutil
 from tempfile import mkdtemp
 
 import pytest
+import runez
 
 from pickley import system
-from pickley.context import CaptureOutput
 from pickley.settings import DOT_PICKLEY  # noqa: imported to ensure that system.SETTINGS is set
 
 
-TESTS = system.parent_folder(__file__)
-PROJECT = system.parent_folder(TESTS)
+TESTS = runez.parent_folder(__file__)
+PROJECT = runez.parent_folder(TESTS)
 INEXISTING_FILE = "/dev/null/foo/bar"
 
-system.State.testing = True
+runez.State.testing = True
 
 
 def sample_path(*relative):
@@ -22,7 +22,7 @@ def sample_path(*relative):
 
 def verify_abort(func, *args, **kwargs):
     exception = kwargs.pop('exception', SystemExit)
-    with CaptureOutput() as logged:
+    with runez.CaptureOutput() as logged:
         with pytest.raises(exception):
             func(*args, **kwargs)
         return str(logged)
