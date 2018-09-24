@@ -86,7 +86,7 @@ def setup_audit_log():
     LogHandlers.audit_handler.setLevel(logging.DEBUG)
     LogHandlers.audit_handler.setFormatter(logging.Formatter("%(asctime)s [%(process)s] %(levelname)s - %(message)s"))
     logging.root.addHandler(LogHandlers.audit_handler)
-    LogHandlers.logging = True
+    runez.State.logging = True
     runez.info(":: %s", runez.represented_args(sys.argv), output=False)
 
 
@@ -95,13 +95,13 @@ def setup_debug_log():
     # Log to console with --debug or --dryrun
     if LogHandlers.debug_handler:
         return
-    LogHandlers.output = False
+    runez.State.output = False
     LogHandlers.debug_handler = logging.StreamHandler()
     LogHandlers.debug_handler.setLevel(logging.DEBUG)
     LogHandlers.debug_handler.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
     logging.root.addHandler(LogHandlers.debug_handler)
     logging.root.setLevel(logging.DEBUG)
-    LogHandlers.logging = True
+    runez.State.logging = True
 
 
 def virtualenv_path():
