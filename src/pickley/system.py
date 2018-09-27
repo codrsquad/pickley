@@ -131,7 +131,7 @@ def to_unicode(s):
     return six.text_type(s)
 
 
-def relocate_venv(path, source, destination, fatal=True, quiet=False):
+def relocate_venv(path, source, destination, fatal=True, quiet=False, _seen=None):
     """
     :param str path: Path of file to relocate (change mentions of 'source' to 'destination')
     :param str source: Where venv used to be
@@ -140,6 +140,22 @@ def relocate_venv(path, source, destination, fatal=True, quiet=False):
     :param bool quiet: Don't log if True
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
+    if _seen is None:
+        _seen = set()
+
+    if path in _seen:
+        return 0
+
+    _seen.add(path)
+    if path and os.path.isdir(path):
+        count = 0
+        for name in os.listdir(path):
+            r = relocate_venv(os.path.join(path, name), source, destination, fatal=fatal, quiet=quiet, _seen=_seen)
+            if r < 0:
+                return r
+            count += r
+        return count
+
     content = runez.get_lines(path, fatal=fatal, quiet=quiet)
     if not content:
         return 0
@@ -155,7 +171,10 @@ def relocate_venv(path, source, destination, fatal=True, quiet=False):
     if not modified:
         return 0
 
-    return runez.write_contents(path, "".join(lines), fatal=fatal)
+    r = runez.write_contents(path, "".join(lines), fatal=fatal)
+    if r >= 0 and not quiet:
+        runez.debug("Relocated %s", short(path))
+    return r
 
 
 def copy(source, destination, fatal=True):

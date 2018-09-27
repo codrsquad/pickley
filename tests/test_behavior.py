@@ -57,9 +57,28 @@ def test_missing_implementation():
 
 
 def test_relocate_venv_successfully(temp_base):
-    runez.write_contents("foo", "line 1: source\nline 2\n", quiet=False)
-    assert system.relocate_venv("foo", "source", "dest", fatal=False) == 1
-    assert runez.get_lines("foo") == ["line 1: dest\n", "line 2\n"]
+    with runez.CaptureOutput() as logged:
+        runez.write_contents("foo/bar/baz", "line 1: source\nline 2\n", quiet=False)
+        runez.write_contents("foo/empty", "", quiet=False)
+        assert "Created" in logged.pop()
+
+        # Simulate already seen
+        expected = ["line 1: source\n", "line 2\n"]
+        assert system.relocate_venv("foo", "source", "dest", fatal=False, _seen={"foo"}) == 0
+        assert runez.get_lines("foo/bar/baz") == expected
+        assert not logged
+
+        # Simulate failure to write
+        with patch("runez.write_contents", return_value=-1):
+            assert system.relocate_venv("foo", "source", "dest", fatal=False) == -1
+        assert runez.get_lines("foo/bar/baz") == expected
+        assert not logged
+
+        # Simulate effective relocation
+        expected = ["line 1: dest\n", "line 2\n"]
+        assert system.relocate_venv("foo", "source", "dest", fatal=False) == 1
+        assert runez.get_lines("foo/bar/baz") == expected
+        assert "Relocated " in logged
 
 
 def test_find_venvs():

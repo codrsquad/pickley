@@ -600,7 +600,12 @@ class VenvPackager(Packager):
         runez.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, self.version))
 
         if self.relocatable:
-            vrun(self.name, "virtualenv", "-p", self.venv_python(), "--relocatable", os.path.join(self.dist_folder, self.name))
+            path = os.path.join(self.dist_folder, self.name)
+            abs_python = os.path.join(path, "bin", "python")
+            rel_python = self.venv_python()
+            if not os.path.isabs(rel_python):
+                rel_python = "/usr/bin/env %s" % rel_python
+            system.relocate_venv(path, abs_python, rel_python)
 
         return [folder]
 
