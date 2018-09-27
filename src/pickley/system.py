@@ -56,12 +56,12 @@ def despecced(text):
     :param str text: Text of form <name>==<version>, or just <name>
     :return str, str|None: Name and version
     """
-    spec = None
-    if "==" in text:
+    version = None
+    if text and "==" in text:
         i = text.strip().index("==")
-        spec = text[i + 2:]
+        version = text[i + 2:]
         text = text[:i]
-    return text, spec
+    return text, version
 
 
 def installed_names():
@@ -120,8 +120,8 @@ def is_universal(wheels_folder):
     :param str wheels_folder: Path to folder where wheels reside
     :return bool: True if all wheels in the folder are universal
     """
-    if os.path.isdir(wheels_folder):
-        return any(not n.endswith("-py2.py3-none-any.whl") for n in os.listdir(wheels_folder))
+    if wheels_folder and os.path.isdir(wheels_folder):
+        return not any(n.endswith(".whl") and not n.endswith("-py2.py3-none-any.whl") for n in os.listdir(wheels_folder))
 
 
 def to_unicode(s):
@@ -245,7 +245,7 @@ class FolderBase(object):
         return os.path.relpath(path, self.path)
 
     def relativize(self, component):
-        return component if not component or not component.startswith("/") else component[1:]
+        return component or "" if not component or not component.startswith("/") else component[1:]
 
     def full_path(self, *relative):
         """

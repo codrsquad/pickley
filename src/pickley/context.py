@@ -27,7 +27,7 @@ class ImplementationMap:
             elif name.endswith(parent):
                 name = name[:-len(parent)]
         name = name.lower()
-        implementation.registered_name = name
+        implementation.implementation_name = name
         self.map[name] = implementation
         return implementation
 
@@ -62,15 +62,16 @@ class ImplementationMap:
         :param default: Optional default value (takes precendence over system.SETTINGS.defaults only)
         :return: Corresponding implementation to use
         """
+        package_name, _ = system.despecced(package_name)
         name = self.resolved_name(package_name, default=default)
+        name, version = system.despecced(name)
         if not name:
             runez.abort("No %s type configured for %s", self.key, package_name)
 
-        name, spec = system.despecced(name)
         implementation = self.get(name)
         if not implementation:
             runez.abort("Unknown %s type '%s'", self.key, name)
 
         imp = implementation(package_name)
-        imp.spec = spec
+        imp.implementation_version = version
         return imp

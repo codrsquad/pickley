@@ -199,7 +199,7 @@ def move(source, destination):
 @main.command()
 @click.option("--build", "-b", default="./build", show_default=True, help="Folder to use as build cache")
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
-@click.option("--relocatable", is_flag=True, default=True, show_default=True, help="Make produced target relocatable")
+@click.option("--relocatable/--absolute", "-r/-a", is_flag=True, default=True, help="Relocatable venv or not  [default: relocatable]")
 @click.option("--sanity-check", "-s", default="--version", show_default=True, help="Args to invoke produced package for sanity check")
 @click.argument("folder", required=True)
 def package(build, dist, relocatable, sanity_check, folder):

@@ -2,7 +2,7 @@ import os
 import time
 
 import runez
-from mock import patch
+from mock import MagicMock, patch
 
 from pickley import system
 from pickley.package import DELIVERERS, find_prefix, Packager, PACKAGERS, VersionMeta
@@ -12,8 +12,8 @@ from .conftest import INEXISTING_FILE, verify_abort
 
 
 def test_edge_cases():
-    p = Packager("")
-    assert not p.effective_package("", "")
+    p = Packager(None)
+    assert not p.effective_package(None)
 
 
 def test_delivery(temp_base):
@@ -60,6 +60,19 @@ def test_bogus_delivery():
     assert "Failed symlink" in verify_abort(deliver.install, None, __file__)
 
 
+def test_venv_python():
+    p = PACKAGERS.get(system.VENV_PACKAGER)("foo")
+
+    system.DESIRED_PYTHON = "/dev/null/foo"
+    assert p.venv_python() == system.DESIRED_PYTHON
+
+    system.DESIRED_PYTHON = None
+    assert p.venv_python() == system.target_python().program_name
+
+    with patch("pickley.system.target_python", return_value=MagicMock(text="/foo", executable="/foo")):
+        assert p.venv_python() == "/foo"
+
+
 def test_version_meta():
     assert find_prefix({}, "") is None
 
@@ -94,9 +107,11 @@ def test_version_meta():
 @patch("pickley.package.DELIVERERS.resolved", return_value=None)
 def test_versions(_, __, temp_base):
     p = PACKAGERS.get("pex")("foo")
-    assert p.specced_name == "pex"
-    p.spec = "1.4.5"
-    assert p.specced_name == "pex==1.4.5"
+    p.pip_wheel = lambda *_: None
+
+    assert p.specced_command() == "pex"
+    p.implementation_version = "1.4.5"
+    assert p.specced_command() == "pex==1.4.5"
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo: can't determine latest version from pypi (channel: latest, source: pypi)"
 
@@ -104,22 +119,25 @@ def test_versions(_, __, temp_base):
     p.refresh_desired()
     assert p.desired.representation() == "foo: can't determine stable version"
 
+    p.version = None
     assert "can't determine stable version" in verify_abort(p.install)
 
-    # Without a build fodler
-    assert p.get_entry_points("0.0.0") is None
+    # Without a build folder
+    assert p.get_entry_points() is None
 
     # With an empty build fodler
     runez.ensure_folder(p.build_folder, folder=True)
-    assert p.get_entry_points("0.0.0") is None
+    assert p.get_entry_points() is None
 
     # With a bogus wheel
     with runez.CaptureOutput() as logged:
+        p.version = "0.0.0"
         whl = os.path.join(p.build_folder, "foo-0.0.0-py2.py3-none-any.whl")
         runez.touch(whl)
-        assert p.get_entry_points("0.0.0") is None
+        assert p.get_entry_points() is None
         assert "Can't read wheel" in logged
         runez.delete(whl)
+        p.version = None
 
     # Ambiguous package() call
     assert "Need either source_folder or version in order to package" in verify_abort(p.package)

@@ -54,7 +54,7 @@ class DeliveryMethod:
     Various implementation of delivering the actual executables
     """
 
-    registered_name = None  # type: str # Injected by ImplementationMap
+    implementation_name = None  # type: str # Injected by ImplementationMap
 
     def __init__(self, package_name):
         self.package_name = package_name
@@ -66,18 +66,18 @@ class DeliveryMethod:
         """
         runez.delete(target, quiet=True)
         if runez.DRYRUN:
-            runez.debug("Would %s %s (source: %s)", self.registered_name, short(target), short(source))
+            runez.debug("Would %s %s (source: %s)", self.implementation_name, short(target), short(source))
             return
 
         if not os.path.exists(source):
-            runez.abort("Can't %s, source %s does not exist", self.registered_name, short(source))
+            runez.abort("Can't %s, source %s does not exist", self.implementation_name, short(source))
 
         try:
-            runez.debug("Delivering %s %s -> %s", self.registered_name, short(target), short(source))
+            runez.debug("Delivering %s %s -> %s", self.implementation_name, short(target), short(source))
             self._install(target, source)
 
         except Exception as e:
-            runez.abort("Failed %s %s: %s", self.registered_name, short(target), e)
+            runez.abort("Failed %s %s: %s", self.implementation_name, short(target), e)
 
     def _install(self, target, source):
         """
