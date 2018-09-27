@@ -88,10 +88,10 @@ def run_program(program, *args):
 
 
 def test_package(temp_base):
-    pickley = system.SETTINGS.base.full_path("pickley")
+    pickley = system.SETTINGS.base.full_path("dist", "pickley", "bin", "pickley")
 
     # Package pickley as pex
-    expect_success(["-ppex==1.4.5", "package", "-d", ".", PROJECT], "Packaged %s successfully" % short(PROJECT))
+    expect_success(["package", "-d", "dist", PROJECT], "Packaged %s successfully" % short(PROJECT))
 
     # Verify that it packaged OK
     assert runez.is_executable(pickley)

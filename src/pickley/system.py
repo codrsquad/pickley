@@ -115,18 +115,13 @@ def virtualenv_path():
     return path
 
 
-def is_universal(wheels_folder, package_name, version):
+def is_universal(wheels_folder):
     """
     :param str wheels_folder: Path to folder where wheels reside
-    :param str package_name: Pypi package name
-    :param str version: Specific version of 'package_name' to examine
-    :return bool: True if wheel exists and is universal
+    :return bool: True if all wheels in the folder are universal
     """
     if os.path.isdir(wheels_folder):
-        prefix = "%s-%s-" % (package_name, version)
-        for fname in os.listdir(wheels_folder):
-            if fname.startswith(prefix) and fname.endswith(".whl"):
-                return "py2.py3-none" in fname
+        return any(not n.endswith("-py2.py3-none-any.whl") for n in os.listdir(wheels_folder))
 
 
 def to_unicode(s):

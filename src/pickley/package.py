@@ -211,13 +211,15 @@ class Packager(object):
         """
         :param str name: Name of pypi package
         """
-        self.name = name
+        self.name, self.version = system.despecced(name)
         self._entry_points = None
         self.current = VersionMeta(self.name, "current")
         self.latest = VersionMeta(self.name, system.LATEST_CHANNEL)
         self.desired = VersionMeta(self.name)
         self.dist_folder = system.SETTINGS.meta.full_path(self.name, ".tmp")
         self.build_folder = os.path.join(self.dist_folder, "build")
+        self.relocatable = False
+        self.sanity_check = None
         self.source_folder = None
 
     def __repr__(self):
@@ -253,6 +255,20 @@ class Packager(object):
             if self._entry_points is None:
                 return {self.name: ""} if runez.DRYRUN else {}
         return self._entry_points
+
+    @property
+    def venv_python(self):
+        """
+        :return str: Python to use for relocatable venv
+        """
+        if system.DESIRED_PYTHON and os.path.isabs(system.DESIRED_PYTHON):
+            return system.DESIRED_PYTHON
+        if system.is_universal(self.build_folder):
+            return "python"
+        python = system.target_python(package_name=self.name)
+        if os.path.isabs(python.text):
+            return python.executable
+        return python.program_name
 
     def refresh_entry_points(self, version):
         """
@@ -361,7 +377,10 @@ class Packager(object):
         self.refresh_entry_points(version)
         runez.ensure_folder(self.dist_folder, folder=True)
         template = "{name}" if self.source_folder else "{name}-{version}"
-        return self.effective_package(template, version)
+        r = self.effective_package(template, version)
+        if self.sanity_check:
+            pass
+        return r
 
     def effective_package(self, template, version=None):
         """
@@ -532,7 +551,7 @@ class PexPackager(Packager):
         args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.name, version)])
 
         python = system.target_python(package_name=self.name)
-        shebang = python.shebang(universal=system.is_universal(self.build_folder, self.name, version))
+        shebang = python.shebang(universal=system.is_universal(self.build_folder))
         if shebang:
             args.append("--python-shebang")
             args.append(shebang)
@@ -589,6 +608,9 @@ class VenvPackager(Packager):
 
         pip = os.path.join(folder, "bin", "pip")
         runez.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, version))
+
+        if self.relocatable:
+            vrun(self.name, "virtualenv", "-p", self.venv_python, "--relocatable", os.path.join(self.dist_folder, self.name))
 
         return [folder]
 

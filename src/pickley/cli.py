@@ -197,15 +197,17 @@ def move(source, destination):
 
 
 @main.command()
-@click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
 @click.option("--build", "-b", default="./build", show_default=True, help="Folder to use as build cache")
+@click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
+@click.option("--relocatable", is_flag=True, default=True, show_default=True, help="Make produced target relocatable")
+@click.option("--sanity-check", "-s", default="--version", show_default=True, help="Args to invoke produced package for sanity check")
 @click.argument("folder", required=True)
-def package(dist, build, folder):
+def package(build, dist, relocatable, sanity_check, folder):
     """
     Package a project from source checkout
     """
-    dist = runez.resolved_path(dist)
     build = runez.resolved_path(build)
+    dist = runez.resolved_path(dist)
     folder = runez.resolved_path(folder)
 
     system.SETTINGS.meta = meta_folder(build)
@@ -220,13 +222,15 @@ def package(dist, build, folder):
 
     with runez.CurrentFolder(folder):
         # Some setup.py's assume their working folder is the folder where they're in
-        name = system.run_python(setup_py, "--name", fatal=False)
+        name = system.run_python(setup_py, "--name", fatal=False, dryrun=False)
         if not name:
             runez.abort("Could not determine package name from %s", short(setup_py))
 
     p = PACKAGERS.resolved(name)
-    p.dist_folder = runez.resolved_path(dist)
     p.build_folder = runez.resolved_path(build)
+    p.dist_folder = runez.resolved_path(dist)
+    p.relocatable = relocatable
+    p.sanity_check = sanity_check
     p.source_folder = runez.resolved_path(folder)
     r = p.package()
     runez.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(r, anchors=folder))
