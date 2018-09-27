@@ -133,28 +133,35 @@ def to_unicode(s):
 
 def relocate_venv(path, source, destination, fatal=True, quiet=False, _seen=None):
     """
-    :param str path: Path of file to relocate (change mentions of 'source' to 'destination')
+    :param str path: Path of file or folder to relocate (change mentions of 'source' to 'destination')
     :param str source: Where venv used to be
     :param str destination: Where venv is moved to
     :param bool fatal: Abort execution on failure if True
     :param bool quiet: Don't log if True
-    :return int: 1 if effectively done, 0 if no-op, -1 on failure
+    :return int: Number of relocated files (0 if no-op, -1 on failure)
     """
+    original_call = False
     if _seen is None:
+        original_call = True
         _seen = set()
 
-    if path in _seen:
+    if not path or path in _seen:
         return 0
 
     _seen.add(path)
-    if path and os.path.isdir(path):
-        count = 0
-        for name in os.listdir(path):
-            r = relocate_venv(os.path.join(path, name), source, destination, fatal=fatal, quiet=quiet, _seen=_seen)
-            if r < 0:
-                return r
-            count += r
-        return count
+    if os.path.isdir(path):
+        relocated = 0
+        if original_call:
+            for bin_folder in find_venvs(path):
+                for name in os.listdir(bin_folder):
+                    fpath = os.path.join(bin_folder, name)
+                    r = relocate_venv(fpath, source, destination, fatal=fatal, quiet=quiet, _seen=_seen)
+                    if r < 0:
+                        return r
+                    relocated += r
+            if not quiet and relocated:
+                runez.debug("Relocated %s files in %s: %s -> %s", relocated, short(path), short(source), short(destination))
+        return relocated
 
     content = runez.get_lines(path, fatal=fatal, quiet=quiet)
     if not content:
@@ -172,58 +179,22 @@ def relocate_venv(path, source, destination, fatal=True, quiet=False, _seen=None
         return 0
 
     r = runez.write_contents(path, "".join(lines), fatal=fatal)
-    if r >= 0 and not quiet:
-        runez.debug("Relocated %s", short(path))
+    if r > 0 and not quiet and original_call:
+        runez.debug("Relocated %s: %s -> %s", short(path), short(source), short(destination))
     return r
 
 
-def copy(source, destination, fatal=True):
-    """
-    Copy source -> destination
-
-    :param str source: Source file or folder
-    :param str destination: Destination file or folder
-    :param bool fatal: Abort execution on failure if True
-    :return int: 1 if effectively done, 0 if no-op, -1 on failure
-    """
-    return runez.copy(source, destination, adapter=_relocator, fatal=fatal)
-
-
-def move(source, destination, fatal=True):
-    """
-    Move source -> destination
-
-    :param str source: Source file or folder
-    :param str destination: Destination file or folder
-    :param bool fatal: Abort execution on failure if True
-    :return int: 1 if effectively done, 0 if no-op, -1 on failure
-    """
-    return runez.move(source, destination, adapter=_relocator, fatal=fatal)
-
-
-def _relocator(source, destination, fatal):
-    """Adapter for move/copy file"""
-    relocated = 0
-    for bin_folder in find_venvs(source):
-        for name in os.listdir(bin_folder):
-            fpath = os.path.join(bin_folder, name)
-            relocated += relocate_venv(fpath, source, destination, fatal=fatal)
-
-    return " (relocated %s)" % relocated if relocated else ""
-
-
-def find_venvs(folder, seen=None):
+def find_venvs(folder, _seen=None):
     """
     :param str folder: Folder to scan for venvs
-    :param dict|None seen: Allows to not get stuck on circular symlinks
+    :param set|None _seen: Allows to not get stuck on circular symlinks
     """
     if folder and os.path.isdir(folder):
-        if seen is None:
+        if _seen is None:
             folder = os.path.realpath(folder)
-            seen = set()
-
-        if folder not in seen:
-            seen.add(folder)
+            _seen = set()
+        if folder not in _seen:
+            _seen.add(folder)
             files = os.listdir(folder)
             if "bin" in files:
                 bin_folder = os.path.join(folder, "bin")
@@ -232,8 +203,40 @@ def find_venvs(folder, seen=None):
                     return
             for name in files:
                 fname = os.path.join(folder, name)
-                for path in find_venvs(fname, seen=seen):
+                for path in find_venvs(fname, _seen=_seen):
                     yield path
+
+
+def copy(source, destination, fatal=True, quiet=False):
+    """
+    Copy source -> destination
+
+    :param str source: Source file or folder
+    :param str destination: Destination file or folder
+    :param bool fatal: Abort execution on failure if True
+    :param bool quiet: Don't log if True
+    :return int: 1 if effectively done, 0 if no-op, -1 on failure
+    """
+    return runez.copy(source, destination, adapter=_relocator, fatal=fatal, quiet=quiet)
+
+
+def move(source, destination, fatal=True, quiet=False):
+    """
+    Move source -> destination
+
+    :param str source: Source file or folder
+    :param str destination: Destination file or folder
+    :param bool fatal: Abort execution on failure if True
+    :param bool quiet: Don't log if True
+    :return int: 1 if effectively done, 0 if no-op, -1 on failure
+    """
+    return runez.move(source, destination, adapter=_relocator, fatal=fatal, quiet=quiet)
+
+
+def _relocator(source, destination, fatal=True, quiet=False):
+    """Adapter for move/copy file"""
+    relocated = relocate_venv(source, source, destination, fatal=fatal, quiet=True)
+    return " (relocated %s)" % relocated if relocated else ""
 
 
 def run_python(*args, **kwargs):

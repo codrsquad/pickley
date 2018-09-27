@@ -31,9 +31,9 @@ class SoftLock:
     def __init__(self, folder, timeout=0, invalid=10, keep=0):
         """
         :param str folder: Folder to lock access to
-        :param int timeout: Timeout in minutes after which to abort if lock could not be acquired
-        :param int invalid: Age in minutes after which to consider existing lock as invalid
-        :param int keep: Age in days for which to keep the folder around
+        :param int|float timeout: Timeout in minutes after which to abort if lock could not be acquired
+        :param int|float invalid: Age in minutes after which to consider existing lock as invalid
+        :param int|float keep: Age in days for which to keep the folder around
         """
         self.folder = folder
         self.lock = self.folder + ".lock"

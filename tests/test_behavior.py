@@ -9,7 +9,7 @@ from pickley.context import ImplementationMap
 from pickley.lock import SharedVenv, SoftLock, SoftLockException
 from pickley.settings import Settings
 
-from .conftest import PROJECT, verify_abort
+from .conftest import verify_abort
 
 
 def test_lock(temp_base):
@@ -58,32 +58,37 @@ def test_missing_implementation():
 
 def test_relocate_venv_successfully(temp_base):
     with runez.CaptureOutput() as logged:
-        runez.write_contents("foo/bar/baz", "line 1: source\nline 2\n", quiet=False)
-        runez.write_contents("foo/empty", "", quiet=False)
+        original = "line 1: source\nline 2\n"
+        runez.write_contents("foo/bar/bin/baz", original, quiet=False)
+        runez.write_contents("foo/bar/bin/empty", "", quiet=False)
+        runez.write_contents("foo/bar/bin/python", "", quiet=False)
+        runez.make_executable("foo/bar/bin/baz")
+        runez.make_executable("foo/bar/bin/empty")
+        runez.make_executable("foo/bar/bin/python")
         assert "Created" in logged.pop()
 
         # Simulate already seen
         expected = ["line 1: source\n", "line 2\n"]
         assert system.relocate_venv("foo", "source", "dest", fatal=False, _seen={"foo"}) == 0
-        assert runez.get_lines("foo/bar/baz") == expected
+        assert runez.get_lines("foo/bar/bin/baz") == expected
         assert not logged
 
         # Simulate failure to write
         with patch("runez.write_contents", return_value=-1):
             assert system.relocate_venv("foo", "source", "dest", fatal=False) == -1
-        assert runez.get_lines("foo/bar/baz") == expected
+        assert runez.get_lines("foo/bar/bin/baz") == expected
         assert not logged
 
-        # Simulate effective relocation
+        # Simulate effective relocation, by folder
         expected = ["line 1: dest\n", "line 2\n"]
         assert system.relocate_venv("foo", "source", "dest", fatal=False) == 1
-        assert runez.get_lines("foo/bar/baz") == expected
+        assert runez.get_lines("foo/bar/bin/baz") == expected
         assert "Relocated " in logged
 
+        # Second relocation is a no-op
+        assert system.relocate_venv("foo", "source", "dest", fatal=False) == 0
 
-def test_find_venvs():
-    # There's always at least one venv in project when running tests
-    # Just need to check that we yield bin folders
-    venvs = list(system.find_venvs(PROJECT))
-    assert venvs
-    assert os.path.basename(venvs[0]) == "bin"
+        # Test relocating a single file
+        runez.write_contents("foo/bar/bin/baz", original, quiet=False)
+        assert system.relocate_venv("foo/bar/bin/baz", "source", "dest", fatal=False) == 1
+        assert "Relocated " in logged

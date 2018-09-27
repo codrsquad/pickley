@@ -12,8 +12,8 @@ from .conftest import INEXISTING_FILE, verify_abort
 
 
 def test_edge_cases():
-    p = Packager(None)
-    assert not p.effective_package(None)
+    p = Packager("")
+    assert not p.effective_package("")
 
 
 def test_delivery(temp_base):
