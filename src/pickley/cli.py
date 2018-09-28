@@ -19,7 +19,7 @@ from pickley.uninstall import uninstall_existing
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=140), epilog=__doc__)
-@click.version_option(version=__version__)
+@click.version_option(version=__version__, message="%(version)s")
 @click.option("--debug", is_flag=True, help="Show debug logs")
 @click.option("--dryrun", "-n", is_flag=True, help="Perform a dryrun")
 @click.option("--base", "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
@@ -232,8 +232,8 @@ def package(build, dist, relocatable, sanity_check, folder):
     p.relocatable = relocatable
     p.sanity_check = sanity_check
     p.source_folder = runez.resolved_path(folder)
-    r = p.package()
-    runez.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(r, anchors=folder))
+    p.package()
+    runez.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(p.executables, anchors=folder))
 
 
 @main.command()

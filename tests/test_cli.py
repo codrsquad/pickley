@@ -4,7 +4,7 @@ import runez
 from click.testing import CliRunner
 from mock import patch
 
-from pickley import system
+from pickley import __version__, system
 from pickley.cli import main
 from pickley.lock import SoftLockException
 from pickley.package import PACKAGERS
@@ -72,7 +72,7 @@ def test_help():
 
 
 def test_version():
-    expect_success("--version", "version ")
+    expect_success("--version", __version__)
 
 
 def test_settings():
@@ -90,14 +90,13 @@ def run_program(program, *args):
 def test_package(temp_base):
     pickley = system.SETTINGS.base.full_path("dist", "pickley", "bin", "pickley")
 
-    # Package pickley as pex
+    # Package pickley as venv
     expect_success(["package", "-d", "dist", PROJECT], "Packaged %s successfully" % short(PROJECT))
 
-    # Verify that it packaged OK
+    # Verify that it packaged OK, and is relocatable
     assert runez.is_executable(pickley)
-    output = run_program(pickley, "--version")
-    assert "version " in output
-    assert runez.first_line(pickley) == "#!/usr/bin/env python"
+    assert run_program(pickley, "--version") == __version__
+    assert runez.first_line(pickley).startswith("#!/usr/bin/env python")
 
 
 def test_bogus_install(temp_base):

@@ -2,18 +2,13 @@ import os
 import time
 
 import runez
-from mock import MagicMock, patch
+from mock import patch
 
 from pickley import system
-from pickley.package import DELIVERERS, find_prefix, Packager, PACKAGERS, VersionMeta
+from pickley.package import DELIVERERS, find_prefix, PACKAGERS, VersionMeta
 from pickley.settings import Definition
 
 from .conftest import INEXISTING_FILE, verify_abort
-
-
-def test_edge_cases():
-    p = Packager("")
-    assert not p.effective_package("")
 
 
 def test_delivery(temp_base):
@@ -58,19 +53,6 @@ def test_bogus_delivery():
     deliver = DELIVERERS.get(system.DEFAULT_DELIVERY)("foo")
     assert "does not exist" in verify_abort(deliver.install, None, INEXISTING_FILE)
     assert "Failed symlink" in verify_abort(deliver.install, None, __file__)
-
-
-def test_venv_python():
-    p = PACKAGERS.get(system.VENV_PACKAGER)("foo")
-
-    system.DESIRED_PYTHON = "/dev/null/foo"
-    assert p.venv_python() == system.DESIRED_PYTHON
-
-    system.DESIRED_PYTHON = None
-    assert p.venv_python() == system.target_python().program_name
-
-    with patch("pickley.system.target_python", return_value=MagicMock(text="/foo", executable="/foo")):
-        assert p.venv_python() == "/foo"
 
 
 def test_version_meta():

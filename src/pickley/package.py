@@ -221,6 +221,8 @@ class Packager(object):
         self.relocatable = False
         self.sanity_check = None
         self.source_folder = None
+        self.packaged = []  # Paths to what was packaged (populated by self.effective_package())
+        self.executables = []  # Paths to delivered exes (populated by perform_delivery())
 
     def __repr__(self):
         specced = "%s==%s" % (self.name, self.version) if self.version else self.name
@@ -255,19 +257,6 @@ class Packager(object):
             if self._entry_points is None:
                 return {self.name: ""} if runez.DRYRUN else {}
         return self._entry_points
-
-    def venv_python(self):
-        """
-        :return str: Python to use for relocatable venv
-        """
-        if system.DESIRED_PYTHON and os.path.isabs(system.DESIRED_PYTHON):
-            return system.DESIRED_PYTHON
-        if system.is_universal(self.build_folder):
-            return "python"
-        python = system.target_python(package_name=self.name)
-        if os.path.isabs(python.text):
-            return python.executable
-        return python.program_name
 
     def refresh_entry_points(self):
         """Refresh entry point from saved json and/or build folder"""
@@ -352,9 +341,7 @@ class Packager(object):
         )
 
     def package(self):
-        """
-        :return list: List of produced packages (files), if successful
-        """
+        """Package pypi module with 'self.name'"""
         if not self.version and not self.source_folder:
             return runez.abort("Need either source_folder or version in order to package", return_value=[])
 
@@ -371,18 +358,17 @@ class Packager(object):
         self.refresh_entry_points()
         runez.ensure_folder(self.dist_folder, folder=True)
         template = "{name}" if self.source_folder else "{name}-{version}"
-        r = self.effective_package(template)
+        self.packaged = []
+        self.effective_package(template)
         if self.sanity_check:
-            # runez.run_program()
-            pass
-        return r
+            for path in self.executables:
+                output = runez.run_program(path, self.sanity_check)
+                runez.info("Sanity check: %s %s -> %s", short(path), self.sanity_check, output)
 
     def effective_package(self, template):
         """
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
-        :return list: List of produced packages (files), if successful
         """
-        return []
 
     def install(self, force=False):
         """
@@ -493,9 +479,7 @@ class Packager(object):
             runez.delete(self.removed_entry_points_path)
 
     def effective_install(self):
-        """
-        :return list: Full path to installed files/folders
-        """
+        """Install this pypi cli to self.dist_folder"""
 
     def required_entry_points(self):
         """
@@ -514,6 +498,7 @@ class Packager(object):
         # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
         runez.touch(system.SETTINGS.meta.full_path(self.name, ".ping"))
 
+        self.executables = []
         deliverer = DELIVERERS.resolved(self.name, default=self.desired.delivery)
         for name in self.required_entry_points():
             target = system.SETTINGS.base.full_path(name)
@@ -521,6 +506,7 @@ class Packager(object):
                 uninstall_existing(target)
             path = template.format(meta=system.SETTINGS.meta.full_path(self.name), name=name, version=self.version)
             deliverer.install(target, path)
+            self.executables.append(target)
 
 
 @PACKAGERS.register
@@ -554,31 +540,23 @@ class PexPackager(Packager):
     def effective_package(self, template):
         """
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
-        :return list: List of produced packages (files), if successful
         """
-        result = []
+        self.executables = []
         for name in self.required_entry_points():
             dest = template.format(name=name, version=self.version)
             dest = os.path.join(self.dist_folder, dest)
-
             self.pex_build(name, dest)
-            result.append(dest)
-
-        return result
+            self.packaged.append(dest)
+            self.executables.append(dest)
 
     def effective_install(self):
-        """
-        :return list: Full path to installed files/folders
-        """
-        result = []
-        packaged = self.package()
-        for path in packaged:
+        """Install this pypi cli to self.dist_folder"""
+        self.package()
+        for path in self.packaged:
             name = os.path.basename(path)
             target = system.SETTINGS.meta.full_path(self.name, name)
             system.move(path, target)
-            result.append(target)
         self.perform_delivery("{meta}/{name}-{version}")
-        return result
 
 
 @PACKAGERS.register
@@ -590,34 +568,28 @@ class VenvPackager(Packager):
     def effective_package(self, template):
         """
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
-        :return list: List of produced packages (files), if successful
         """
         folder = os.path.join(self.dist_folder, template.format(name=self.name, version=self.version))
-        runez.ensure_folder(folder, folder=True)
+        runez.delete(folder, quiet=True)
+        runez.ensure_folder(folder, folder=True, quiet=True)
         vrun(self.name, "virtualenv", folder)
 
-        pip = os.path.join(folder, "bin", "pip")
-        runez.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, "%s==%s" % (self.name, self.version))
+        bin_folder = os.path.join(folder, "bin")
+        pip = os.path.join(bin_folder, "pip")
+        spec = self.source_folder if self.source_folder else "%s==%s" % (self.name, self.version)
+        runez.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, spec)
 
         if self.relocatable:
-            path = os.path.join(self.dist_folder, self.name)
-            abs_python = os.path.join(path, "bin", "python")
-            rel_python = self.venv_python()
-            if not os.path.isabs(rel_python):
-                rel_python = "/usr/bin/env %s" % rel_python
-            system.relocate_venv(path, abs_python, rel_python)
+            python = system.target_python(package_name=self.name).executable
+            vrun(self.name, "virtualenv", "--relocatable", "--python=%s" % python, folder)
 
-        return [folder]
+        self.packaged.append(folder)
+        self.executables = [os.path.join(bin_folder, name) for name in self.entry_points]
 
     def effective_install(self):
-        """
-        :return list: Full path to installed files/folders
-        """
-        result = []
-        packaged = self.package()
-        for path in packaged:
-            target = system.SETTINGS.meta.full_path(self.name, os.path.basename(path))
-            system.move(path, target)
-            result.append(target)
-            self.perform_delivery(os.path.join(target, "bin", "{name}"))
-        return result
+        """Install this pypi cli to self.dist_folder"""
+        self.package()
+        path = self.packaged[0]
+        target = system.SETTINGS.meta.full_path(self.name, os.path.basename(path))
+        system.move(path, target)
+        self.perform_delivery(os.path.join(target, "bin", "{name}"))
