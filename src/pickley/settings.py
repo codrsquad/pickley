@@ -376,6 +376,9 @@ class Settings:
     Collection of settings files
     """
 
+    base = None  # type: system.FolderBase # Installation folder
+    meta = None  # type: system.FolderBase # .pickley folder
+
     def __init__(self, base=None):
         """
         :param str|None base: Base folder to use
@@ -434,7 +437,10 @@ class Settings:
         else:
             self.base = system.FolderBase(base, name="base")
 
+        if self.meta:
+            runez.pop_anchors(self.meta.path)
         self.meta = meta_folder(self.base.path)
+        runez.add_anchors(self.meta.path)
 
     @property
     def install_timeout(self):

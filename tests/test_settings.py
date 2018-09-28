@@ -32,7 +32,7 @@ settings:
 
   config:
     - cli: # empty
-    - {base}/.pickley/config.json:
+    - config.json:
       bundle:
         dev: [tox, twine]
         dev2: [tox, twine, pipenv]
@@ -46,7 +46,7 @@ settings:
         venv: tox pipenv
       include: [custom.json]
       index: https://pypi.org/
-    - {base}/.pickley/custom.json:
+    - custom.json:
       channel:
         alpha:
           virtualenv: 16.0.0
@@ -59,8 +59,8 @@ settings:
           delivery: wrap
           packager: pex
       version_check_delay: 1
-    - {base}/.pickley/bogus.json: # empty
-    - {base}/.pickley/non-existent-config-file.json: # empty
+    - bogus.json: # empty
+    - non-existent-config-file.json: # empty
 """
 
 
@@ -79,7 +79,7 @@ def test_custom_settings():
     assert s.base.relative_path(p) == "foo/bar"
 
     d = s.resolved_definition("delivery", package_name="dict_sample")
-    assert str(d) == "%s/config.json:delivery.copy" % short(s.meta.path)
+    assert str(d) == "config.json:delivery.copy"
 
     assert s.resolved_value("delivery", package_name="tox") == "venv"
     assert s.resolved_value("delivery", package_name="virtualenv") == "wrap"

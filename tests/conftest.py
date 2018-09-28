@@ -33,7 +33,7 @@ def temp_base():
     old_base = system.SETTINGS.base
     old_config = system.SETTINGS.config
     old_cwd = os.getcwd()
-    path = mkdtemp()
+    path = os.path.realpath(mkdtemp())
 
     try:
         os.chdir(path)

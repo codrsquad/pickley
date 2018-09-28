@@ -48,7 +48,12 @@ def short(path, meta=True):
     """
     if not path:
         return path
-    return runez.short(str(path), anchors=SETTINGS.meta.path if meta and SETTINGS else None)
+    if not meta:
+        runez.pop_anchors(SETTINGS.meta.path)
+    result = runez.short(str(path))
+    if not meta:
+        runez.add_anchors(SETTINGS.meta.path)
+    return result
 
 
 def despecced(text):

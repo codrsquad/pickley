@@ -226,14 +226,16 @@ def package(build, dist, relocatable, sanity_check, folder):
         if not name:
             runez.abort("Could not determine package name from %s", short(setup_py))
 
-    p = PACKAGERS.resolved(name)
-    p.build_folder = runez.resolved_path(build)
-    p.dist_folder = runez.resolved_path(dist)
-    p.relocatable = relocatable
-    p.sanity_check = sanity_check
-    p.source_folder = runez.resolved_path(folder)
-    p.package()
-    runez.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(p.executables, anchors=folder))
+    folder = runez.resolved_path(folder)
+    with runez.CurrentFolder(folder, anchor=True):
+        p = PACKAGERS.resolved(name)
+        p.build_folder = runez.resolved_path(build)
+        p.dist_folder = runez.resolved_path(dist)
+        p.relocatable = relocatable
+        p.sanity_check = sanity_check
+        p.source_folder = folder
+        p.package()
+        runez.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(p.executables))
 
 
 @main.command()
