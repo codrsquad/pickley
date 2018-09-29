@@ -228,7 +228,6 @@ class Packager(object):
         self.dist_folder = system.SETTINGS.meta.full_path(self.name, ".tmp")
         self.build_folder = os.path.join(self.dist_folder, "build")
         self.relocatable = False
-        self.sanity_check = None
         self.source_folder = None
         self.packaged = []  # Paths to what was packaged (populated by self.effective_package())
         self.executables = []  # Paths to delivered exes (populated by perform_delivery())
@@ -371,10 +370,41 @@ class Packager(object):
         template = "{name}" if self.source_folder else "{name}-{version}"
         self.packaged = []
         self.effective_package(template)
-        if self.sanity_check:
+
+    def create_symlinks(self, symlink, fatal=True):
+        """
+        Use case: preparing a .tox/package/root folder to be packaged as a debian
+        With a spec of "root:root/usr/local/bin", all executables produced under ./root will be symlinked to /usr/local/bin
+
+        :param str symlink: A specification of the form "root:root/usr/local/bin"
+        :param bool fatal: Abort execution on failure if True
+        :return int: 1 if effectively done, 0 if no-op, -1 on failure
+        """
+        # Example: -s
+        if not symlink:
+            return 0
+        base, _, target = symlink.partition(":")
+        if not target:
+            return runez.abort("Invalid symlink specification '%s'", symlink, fatal=fatal)
+        base = runez.resolved_path(base)
+        target = runez.resolved_path(target)
+        for path in self.executables:
+            if not path.startswith(base) or len(path) <= len(base):
+                return runez.abort("Symlink base '%s' does not cover '%s'", base, path, fatal=fatal)
+            source = path[len(base):]
+            basename = os.path.basename(path)
+            destination = os.path.join(target, basename)
+            runez.symlink(source, destination, must_exist=False, fatal=fatal)
+        return 1 if self.executables else 0
+
+    def sanity_check(self, args):
+        """
+        :param str args: Args to run as sanity-check against all packaged exes, example: "--version"
+        """
+        if args:
             for path in self.executables:
-                output = runez.run_program(path, self.sanity_check)
-                runez.info("Sanity check: %s %s -> %s", short(path), self.sanity_check, output)
+                output = runez.run_program(path, args)
+                runez.info("Sanity check: %s %s -> %s", short(path), args, output)
 
     def effective_package(self, template):
         """

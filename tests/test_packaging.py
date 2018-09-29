@@ -40,6 +40,10 @@ def test_delivery(temp_base):
 
     # Test wrapper
     p = PACKAGERS.get(system.VENV_PACKAGER)("tox")
+    assert p.create_symlinks(None) == 0
+    assert p.create_symlinks("foo", fatal=False) == -1
+    p.executables = ["foo"]
+    assert p.create_symlinks("foo:bar", fatal=False) == -1
     assert str(p) == "venv tox"
     target = os.path.join(temp_base, "tox")
     source = os.path.join(temp_base, "tox-source")
@@ -161,8 +165,14 @@ def get_definition(key, package_name=None):
     return None
 
 
+@patch("runez.resolved_path", side_effect=lambda x, **_: x)
 @patch("pickley.settings.SettingsFile.get_definition", side_effect=get_definition)
-def test_channel(_):
+def test_channel(*_):
     p = PACKAGERS.get(system.VENV_PACKAGER)("foo")
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo 1.0 (as venv wrap, channel: stable, source: test:channel.stable.foo)"
+
+    with runez.CaptureOutput(dryrun=True) as logged:
+        p.executables = ["foo/bar"]
+        assert p.create_symlinks("foo:baz", fatal=False) == 1
+        assert "Would symlink /bar -> baz/bar" in logged.pop()

@@ -196,10 +196,11 @@ def move(source, destination):
 @main.command()
 @click.option("--build", "-b", default="./build", show_default=True, help="Folder to use as build cache")
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
-@click.option("--relocatable/--absolute", "-r/-a", is_flag=True, default=True, help="Relocatable venv or not  [default: relocatable]")
-@click.option("--sanity-check", "-s", default="--version", show_default=True, help="Args to invoke produced package for sanity check")
+@click.option("--symlink", "-s", help="Create symlinks for debian-style packaging, example: root:root/usr/local/bin")
+@click.option("--relocatable/--absolute", is_flag=True, default=True, help="Create a relocatable venv or not  [default: relocatable]")
+@click.option("--sanity-check", default="--version", show_default=True, help="Args to invoke produced package for sanity check")
 @click.argument("folder", required=True)
-def package(build, dist, relocatable, sanity_check, folder):
+def package(build, dist, symlink, relocatable, sanity_check, folder):
     """
     Package a project from source checkout
     """
@@ -229,9 +230,10 @@ def package(build, dist, relocatable, sanity_check, folder):
         p.build_folder = runez.resolved_path(build)
         p.dist_folder = runez.resolved_path(dist)
         p.relocatable = relocatable
-        p.sanity_check = sanity_check
         p.source_folder = folder
         p.package()
+        p.create_symlinks(symlink)
+        p.sanity_check(sanity_check)
         runez.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(p.executables))
 
 
