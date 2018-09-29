@@ -8,7 +8,7 @@ from pickley import __version__, system
 from pickley.context import ImplementationMap
 from pickley.delivery import DELIVERERS
 from pickley.lock import SoftLock, SoftLockException, vrun
-from pickley.pypi import latest_pypi_version, read_entry_points
+from pickley.pypi import latest_pypi_version
 from pickley.settings import JsonSerializable
 from pickley.system import short
 from pickley.uninstall import uninstall_existing
@@ -289,7 +289,7 @@ class Packager(object):
                         for wname in wheel.namelist():
                             if os.path.basename(wname) == "entry_points.txt":
                                 with wheel.open(wname) as fh:
-                                    return read_entry_points(fh)
+                                    return runez.get_conf(fh.readlines(), default={}).get("console_scripts")
 
                 except Exception as e:
                     runez.error("Can't read wheel %s: %s", wheel_path, e, exc_info=e)
@@ -393,7 +393,7 @@ class Packager(object):
             source = path[len(base):]
             basename = os.path.basename(path)
             destination = os.path.join(target, basename)
-            runez.symlink(source, destination, must_exist=False, fatal=fatal)
+            runez.symlink(source, destination, must_exist=False, fatal=fatal, logger=runez.info)
         return 1 if self.executables else 0
 
     def sanity_check(self, args):

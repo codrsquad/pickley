@@ -7,6 +7,7 @@ import runez
 from six.moves.urllib.request import Request, urlopen
 
 
+DEFAULT_PYPI = "https://pypi.org/pypi/{name}/json"
 RE_HTML_VERSION = re.compile(r'href=".+/([^/]+)\.tar\.gz#')
 
 
@@ -23,7 +24,7 @@ def request_get(url):
 
     except Exception as e:
         code = getattr(e, "code", None)
-        if isinstance(code, int) and code >= 400 and code < 500:
+        if isinstance(code, int) and 400 <= code < 500:
             return None
 
         try:
@@ -37,6 +38,11 @@ def request_get(url):
     return None
 
 
+def pypi_url():
+    conf = runez.get_conf(runez.resolved_path("~/.config/pip/pip.conf"), fatal=None, default={})
+    return conf.get("global", {}).get("index-url", DEFAULT_PYPI)
+
+
 def latest_pypi_version(url, name):
     """
     :param str|None url: Pypi index to use (default: pypi.org)
@@ -47,7 +53,10 @@ def latest_pypi_version(url, name):
         return None
 
     if not url:
-        url = "https://pypi.org/pypi/%s/json" % name
+        url = pypi_url()
+
+    if "{name}" in url:
+        url = url.format(name=name)
 
     else:
         # Assume legacy only for now for custom pypi indices
@@ -64,7 +73,7 @@ def latest_pypi_version(url, name):
             return data.get("info", {}).get("version")
 
         except Exception as e:
-            runez.warning("Failed to parse pypi json: %s\n%s", e, data)
+            runez.warning("Failed to parse pypi json from %s: %s\n%s", url, e, data)
 
         return "can't determine latest version from '%s'" % url
 
@@ -90,29 +99,3 @@ def latest_pypi_version(url, name):
                     pass
 
     return latest_text or "can't determine latest version from '%s'" % url
-
-
-def read_entry_points(lines):
-    """
-    :param lines: Contents of entry_points.txt
-    :return dict: Entry points defined in 'lines', key is entry point name, value is python function path
-    """
-    result = {}
-    section = None
-
-    for line in lines:
-        line = runez.decode(line).strip()
-        if not line:
-            continue
-        if line.startswith("["):
-            section = line.strip("[]").strip()
-            continue
-        if section != "console_scripts":
-            continue
-        key, _, value = line.partition("=")
-        key = key.strip()
-        value = value.strip()
-        if value:
-            result[key] = value
-
-    return result
