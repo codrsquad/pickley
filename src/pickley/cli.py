@@ -70,7 +70,6 @@ def check(force, verbose, packages):
     else:
         for name in packages:
             p = PACKAGERS.resolved(name)
-            p.refresh_current()
             p.refresh_desired(force=force)
             if not p.desired.valid:
                 runez.error(p.desired.representation(verbose))
@@ -100,7 +99,6 @@ def list(verbose):
     else:
         for name in packages:
             p = PACKAGERS.resolved(name)
-            p.refresh_current()
             runez.info(p.current.representation(verbose))
 
 
@@ -131,7 +129,6 @@ def uninstall(force, packages):
     errors = 0
     for name in packages:
         p = PACKAGERS.resolved(name)
-        p.refresh_current()
         if not force and not p.current.file_exists:
             errors += 1
             runez.error("%s was not installed with pickley", name)
@@ -261,18 +258,18 @@ def settings(diagnostics):
 
 
 @main.command(name="auto-upgrade")
+@click.option("--force", "-f", is_flag=True, help="Force auto-upgrade check, even if recently checked")
 @click.argument("package", required=True)
-def auto_upgrade(package):
+def auto_upgrade(force, package):
     """
     Auto-upgrade a package
     """
     p = PACKAGERS.resolved(package)
-    p.refresh_current()
     if not p.current.valid:
         runez.abort("%s is not currently installed", package)
 
     ping = system.SETTINGS.meta.full_path(package, ".ping")
-    if runez.file_younger(ping, system.SETTINGS.version_check_seconds):
+    if not force and runez.file_younger(ping, system.SETTINGS.version_check_seconds):
         # We checked for auto-upgrade recently, no need to check again yet
         runez.abort("Skipping auto-upgrade, checked recently", code=0)
     runez.touch(ping)

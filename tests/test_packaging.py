@@ -119,7 +119,15 @@ def test_versions(_, __, temp_base):
         assert p.get_entry_points() is None
         assert "Can't read wheel" in logged
         runez.delete(whl)
+
+        p.refresh_desired()
+        assert p.desired.channel == "adhoc"
+        assert p.desired.source == "cli"
+        assert p.desired.version == "0.0.0"
+        assert not p.desired.problem
         p.version = None
+        p.refresh_desired()
+        assert p.desired.problem
 
     # Ambiguous package() call
     assert "Need either source_folder or version in order to package" in verify_abort(p.package)

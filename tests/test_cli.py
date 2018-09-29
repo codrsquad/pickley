@@ -116,6 +116,9 @@ def test_bogus_install(temp_base):
 
 def test_install(temp_base):
     tox = system.SETTINGS.base.full_path("tox")
+    p = PACKAGERS.resolved("tox")
+    p.refresh_desired()
+    tox_version = p.desired.version
     assert not os.path.exists(tox)
     assert runez.first_line(tox) is None
 
@@ -163,6 +166,7 @@ def test_install(temp_base):
     assert runez.is_executable(tox)
     output = run_program(tox, "--version")
     assert "tox" in output
+    assert tox_version in output
 
     expect_success("auto-upgrade tox", "Skipping auto-upgrade", base=temp_base)
     runez.delete(system.SETTINGS.meta.full_path("tox", ".ping"))
@@ -207,7 +211,6 @@ def test_install(temp_base):
 
     expect_success("uninstall twine", "Uninstalled twine", base=temp_base)
 
-    p.refresh_current()
     runez.delete(p.current._path)
     runez.touch(p.current._path)
     expect_failure("check", "tox", "Invalid json file", "is not installed", base=temp_base)

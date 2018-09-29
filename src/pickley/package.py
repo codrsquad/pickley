@@ -46,6 +46,7 @@ class VersionMeta(JsonSerializable):
     """
 
     # Dields starting with '_' are not stored to json file
+    _base = None                    # type: VersionMeta # Base meta
     _problem = None                 # type: str # Detected problem, if any
     _suffix = None                  # type: str # Suffix of json file where this object is persisted
     _name = None                    # type: str # Associated pypi package name
@@ -64,13 +65,15 @@ class VersionMeta(JsonSerializable):
     pickley = ""                    # type: str # Pickley version used to perform install
     timestamp = None                # type: int # Epoch when version was determined (useful to cache "expensive" calls to pypi)
 
-    def __init__(self, name, suffix=None):
+    def __init__(self, name, suffix=None, base=None):
         """
         :param str name: Associated pypi package name
         :param str|None suffix: Optional suffix where to store this object
+        :param VersionMeta|None base: Base meta on which 'self' should be based
         """
         self._name = name
         self._suffix = suffix
+        self._base = base
         if suffix:
             self._path = system.SETTINGS.meta.full_path(name, ".%s.json" % suffix)
 
@@ -79,11 +82,10 @@ class VersionMeta(JsonSerializable):
 
     def _update_dynamic_fields(self):
         """Update dynamically determined fields"""
-        if self._suffix != system.LATEST_CHANNEL:
-            self.packager = PACKAGERS.resolved_name(self._name)
-            self.delivery = DELIVERERS.resolved_name(self._name)
-            python = system.target_python(package_name=self._name)
-            self.python = python.text  # Record which python was used, as specified
+        self.delivery = DELIVERERS.resolved_name(self._name, default=self._base and self._base.delivery)
+        self.packager = PACKAGERS.resolved_name(self._name, default=self._base and self._base.packager)
+        # Record which python was used, as specified
+        self.python = system.target_python(package_name=self._name).text
         self.pickley = __version__
         self.timestamp = int(time.time())
 
@@ -166,6 +168,8 @@ class VersionMeta(JsonSerializable):
         self.version = version
         self.channel = channel
         self.source = source
+        if version:
+            self._problem = None
         self._update_dynamic_fields()
 
     def set_from(self, other):
@@ -214,8 +218,13 @@ class Packager(object):
         self.name, self.version = system.despecced(name)
         self._entry_points = None
         self.current = VersionMeta(self.name, "current")
-        self.latest = VersionMeta(self.name, system.LATEST_CHANNEL)
-        self.desired = VersionMeta(self.name)
+        self.latest = VersionMeta(self.name, system.LATEST_CHANNEL, base=self.current)
+        self.desired = VersionMeta(self.name, base=self.current)
+
+        self.current.load()
+        if not self.current.valid:
+            self.current.invalidate("is not installed")
+
         self.dist_folder = system.SETTINGS.meta.full_path(self.name, ".tmp")
         self.build_folder = os.path.join(self.dist_folder, "build")
         self.relocatable = False
@@ -288,12 +297,6 @@ class Packager(object):
 
         return None
 
-    def refresh_current(self):
-        """Refresh self.current"""
-        self.current.load()
-        if not self.current.valid:
-            self.current.invalidate("is not installed")
-
     def refresh_latest(self, force=False):
         """Refresh self.latest"""
         self.latest.load()
@@ -311,18 +314,26 @@ class Packager(object):
 
     def refresh_desired(self, force=False):
         """Refresh self.desired"""
-        channel = system.SETTINGS.resolved_definition("channel", package_name=self.name)
-        v = system.SETTINGS.get_definition("channel.%s.%s" % (channel.value, self.name))
-        if v and v.value:
-            self.desired.set_version(v.value, channel.value, str(v))
+        channel = system.SETTINGS.resolved_value("channel", package_name=self.name)
+        vdef = system.SETTINGS.get_definition("channel.%s.%s" % (channel, self.name))
+        source = str(vdef)
+        version = vdef and vdef.value
+
+        if self.version and self.version != version:
+            channel = "adhoc"
+            source = "cli"
+            version = self.version
+
+        if version:
+            self.desired.set_version(version, channel, source)
             return
 
-        if channel.value == system.LATEST_CHANNEL:
+        if channel == system.LATEST_CHANNEL:
             self.refresh_latest(force=force)
             self.desired.set_from(self.latest)
             return
 
-        self.desired.invalidate("can't determine %s version" % channel.value)
+        self.desired.invalidate("can't determine %s version" % channel)
 
     def pip_wheel(self):
         """
@@ -387,14 +398,11 @@ class Packager(object):
         :param bool verbose: If True, show more extensive info
         """
         with SoftLock(self.dist_folder, timeout=system.SETTINGS.install_timeout):
-            if not self.version:
-                self.refresh_desired(force=force)
-                if not self.desired.valid:
-                    return runez.abort("Can't install %s: %s", self.name, self.desired.problem)
-                self.version = self.desired.version
+            self.refresh_desired(force=force)
+            self.version = self.desired.version
+            if not self.desired.valid:
+                return runez.abort("Can't install %s: %s", self.name, self.desired.problem)
 
-            self.refresh_current()
-            self.desired.delivery = DELIVERERS.resolved_name(self.name, default=self.current.delivery)
             if not force and self.current.equivalent(self.desired):
                 runez.info(self.desired.representation(verbose=verbose, note="is already installed"))
                 self.cleanup()
