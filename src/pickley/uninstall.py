@@ -16,7 +16,7 @@ def uninstall_existing(target, fatal=True):
     if handler:
         return handler(target, fatal=fatal)
 
-    return runez.abort("Can't automatically uninstall %s", short(target), fatal=fatal)
+    return runez.abort("Can't automatically uninstall %s", short(target), fatal=(fatal, -1))
 
 
 def find_uninstaller(target):
@@ -33,7 +33,7 @@ def find_uninstaller(target):
         # Empty file
         return runez.delete
 
-    content = runez.get_lines(target, fatal=False, quiet=True)
+    content = runez.get_lines(target, fatal=None)
     if content and any(line.startswith(system.WRAPPER_MARK) for line in content):
         # pickley's own wrapper also fine to simply delete
         return runez.delete
@@ -77,10 +77,10 @@ def brew_uninstall(target, fatal=False):
     if not brew or not name:
         return -1
 
-    output = runez.run_program(brew, "uninstall", "-f", name, fatal=False, dryrun=runez.DRYRUN, logger=runez.info)
-    if output is None:
+    output = runez.run_program(brew, "uninstall", "-f", name, fatal=False, logger=runez.info)
+    if output is False:
         # Failed brew uninstall
-        return runez.abort("'%s uninstall %s' failed, please check", brew, name, fatal=fatal)
+        return runez.abort("'%s uninstall %s' failed, please check", brew, name, fatal=(fatal, -1))
 
     # All good
     return 1

@@ -353,15 +353,15 @@ class Packager(object):
     def package(self):
         """Package pypi module with 'self.name'"""
         if not self.version and not self.source_folder:
-            return runez.abort("Need either source_folder or version in order to package", return_value=[])
+            return runez.abort("Need either source_folder or version in order to package", fatal=(True, []))
 
         if not self.version:
             setup_py = os.path.join(self.source_folder, "setup.py")
             if not os.path.isfile(setup_py):
-                return runez.abort("No setup.py in %s", short(self.source_folder), return_value=[])
+                return runez.abort("No setup.py in %s", short(self.source_folder), fatal=(True, []))
             self.version = system.run_python(setup_py, "--version", dryrun=False, fatal=False, package_name=self.name)
             if not self.version:
-                return runez.abort("Could not determine version from %s", short(setup_py), return_value=[])
+                return runez.abort("Could not determine version from %s", short(setup_py), fatal=(True, []))
 
         self.pip_wheel()
 
@@ -380,17 +380,16 @@ class Packager(object):
         :param bool fatal: Abort execution on failure if True
         :return int: 1 if effectively done, 0 if no-op, -1 on failure
         """
-        # Example: -s
         if not symlink:
             return 0
         base, _, target = symlink.partition(":")
         if not target:
-            return runez.abort("Invalid symlink specification '%s'", symlink, fatal=fatal)
+            return runez.abort("Invalid symlink specification '%s'", symlink, fatal=(fatal, -1))
         base = runez.resolved_path(base)
         target = runez.resolved_path(target)
         for path in self.executables:
             if not path.startswith(base) or len(path) <= len(base):
-                return runez.abort("Symlink base '%s' does not cover '%s'", base, path, fatal=fatal)
+                return runez.abort("Symlink base '%s' does not cover '%s'", base, path, fatal=(fatal, -1))
             source = path[len(base):]
             basename = os.path.basename(path)
             destination = os.path.join(target, basename)
@@ -608,8 +607,8 @@ class VenvPackager(Packager):
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
         folder = os.path.join(self.dist_folder, template.format(name=self.name, version=self.version))
-        runez.delete(folder, quiet=True)
-        runez.ensure_folder(folder, folder=True, quiet=True)
+        runez.delete(folder, logger=None)
+        runez.ensure_folder(folder, folder=True, logger=None)
         vrun(self.name, "virtualenv", folder)
 
         bin_folder = os.path.join(folder, "bin")

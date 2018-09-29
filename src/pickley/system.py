@@ -136,13 +136,13 @@ def to_unicode(s):
     return six.text_type(s)
 
 
-def relocate_venv(path, source, destination, fatal=True, quiet=False, _seen=None):
+def relocate_venv(path, source, destination, fatal=True, logger=runez.debug, _seen=None):
     """
     :param str path: Path of file or folder to relocate (change mentions of 'source' to 'destination')
     :param str source: Where venv used to be
     :param str destination: Where venv is moved to
     :param bool fatal: Abort execution on failure if True
-    :param bool quiet: Don't log if True
+    :param callable|None logger: Logger to use
     :return int: Number of relocated files (0 if no-op, -1 on failure)
     """
     original_call = False
@@ -160,15 +160,15 @@ def relocate_venv(path, source, destination, fatal=True, quiet=False, _seen=None
             for bin_folder in find_venvs(path):
                 for name in os.listdir(bin_folder):
                     fpath = os.path.join(bin_folder, name)
-                    r = relocate_venv(fpath, source, destination, fatal=fatal, quiet=quiet, _seen=_seen)
+                    r = relocate_venv(fpath, source, destination, fatal=fatal, logger=logger, _seen=_seen)
                     if r < 0:
                         return r
                     relocated += r
-            if not quiet and relocated:
-                runez.debug("Relocated %s files in %s: %s -> %s", relocated, short(path), short(source), short(destination))
+            if logger and relocated:
+                logger("Relocated %s files in %s: %s -> %s", relocated, short(path), short(source), short(destination))
         return relocated
 
-    content = runez.get_lines(path, fatal=fatal, quiet=quiet)
+    content = runez.get_lines(path, fatal=fatal)
     if not content:
         return 0
 
@@ -184,8 +184,8 @@ def relocate_venv(path, source, destination, fatal=True, quiet=False, _seen=None
         return 0
 
     r = runez.write_contents(path, "".join(lines), fatal=fatal)
-    if r > 0 and not quiet and original_call:
-        runez.debug("Relocated %s: %s -> %s", short(path), short(source), short(destination))
+    if r > 0 and logger and original_call:
+        logger("Relocated %s: %s -> %s", short(path), short(source), short(destination))
     return r
 
 
@@ -212,35 +212,35 @@ def find_venvs(folder, _seen=None):
                     yield path
 
 
-def copy(source, destination, fatal=True, quiet=False):
+def copy(source, destination, fatal=True, logger=runez.debug):
     """
     Copy source -> destination
 
     :param str source: Source file or folder
     :param str destination: Destination file or folder
     :param bool fatal: Abort execution on failure if True
-    :param bool quiet: Don't log if True
+    :param callable|None logger: Logger to use
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
-    return runez.copy(source, destination, adapter=_relocator, fatal=fatal, quiet=quiet)
+    return runez.copy(source, destination, adapter=_relocator, fatal=fatal, logger=logger)
 
 
-def move(source, destination, fatal=True, quiet=False):
+def move(source, destination, fatal=True, logger=runez.debug):
     """
     Move source -> destination
 
     :param str source: Source file or folder
     :param str destination: Destination file or folder
     :param bool fatal: Abort execution on failure if True
-    :param bool quiet: Don't log if True
+    :param callable|None logger: Logger to use
     :return int: 1 if effectively done, 0 if no-op, -1 on failure
     """
-    return runez.move(source, destination, adapter=_relocator, fatal=fatal, quiet=quiet)
+    return runez.move(source, destination, adapter=_relocator, fatal=fatal, logger=logger)
 
 
-def _relocator(source, destination, fatal=True, quiet=False):
+def _relocator(source, destination, fatal=True, logger=None):
     """Adapter for move/copy file"""
-    relocated = relocate_venv(source, source, destination, fatal=fatal, quiet=True)
+    relocated = relocate_venv(source, source, destination, fatal=fatal, logger=None)
     return " (relocated %s)" % relocated if relocated else ""
 
 
@@ -305,7 +305,7 @@ def target_python(desired=None, package_name=None, fatal=True):
         desired = DESIRED_PYTHON or SETTINGS.resolved_value("python", package_name=package_name) or INVOKER
     python = PythonInstallation(desired)
     if not python.is_valid:
-        return runez.abort(python.problem, fatal=fatal, quiet=not fatal, return_value=python)
+        return runez.abort(python.problem, fatal=(fatal, python))
 
     return python
 
@@ -338,7 +338,7 @@ class PythonInstallation:
         if runez.is_executable(path):
             self.executable = path
             if not self.major or not self.minor:
-                output = runez.run_program(self.executable, "--version", dryrun=False, fatal=False, include_error=True, quiet=True)
+                output = runez.run_program(self.executable, "--version", dryrun=False, fatal=None, include_error=True)
                 if output:
                     m = RE_PYTHON_LOOSE.match(output)
                     if m:

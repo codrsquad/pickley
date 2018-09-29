@@ -246,7 +246,7 @@ def settings(diagnostics):
     if diagnostics:
         prefix = getattr(sys, "prefix", None)
         real_prefix = getattr(sys, "real_prefix", None)
-        runez.info("python         : %s", short(system.target_python(desired=system.INVOKER, fatal=False), meta=False))
+        runez.info("python         : %s", short(system.target_python(desired=system.INVOKER, fatal=None), meta=False))
         runez.info("sys.executable : %s", short(sys.executable, meta=False))
         runez.info("sys.prefix     : %s", short(prefix, meta=False))
         if real_prefix:

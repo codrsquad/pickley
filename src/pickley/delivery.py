@@ -64,7 +64,7 @@ class DeliveryMethod:
         :param str target: Full path of executable to deliver (<base>/<entry_point>)
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
-        runez.delete(target, quiet=True)
+        runez.delete(target, logger=None)
         if runez.DRYRUN:
             runez.debug("Would %s %s (source: %s)", self.implementation_name, short(target), short(source))
             return

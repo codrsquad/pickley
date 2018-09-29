@@ -38,7 +38,7 @@ def brew_run_program(*args, **kwargs):
     """Simulate success for uninstall tox, failure otherwise"""
     if args[1] == "uninstall" and args[3] == "tox":
         return "OK"
-    return None
+    return False
 
 
 def test_cant_uninstall():

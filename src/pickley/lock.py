@@ -74,7 +74,7 @@ class SoftLock:
         runez.write_contents(self.lock, "%s\n" % os.getpid())
 
         if not self._should_keep():
-            runez.delete(self.folder, quiet=not self.keep)
+            runez.delete(self.folder, logger=runez.debug if self.keep else None)
 
         return self
 
@@ -83,8 +83,8 @@ class SoftLock:
         Release lock
         """
         if not self._should_keep():
-            runez.delete(self.folder, quiet=not self.keep)
-        runez.delete(self.lock, quiet=True)
+            runez.delete(self.folder, logger=runez.debug if self.keep else None)
+        runez.delete(self.lock, logger=None)
 
 
 def vrun(package_name, command, *args, **kwargs):
