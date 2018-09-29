@@ -338,7 +338,7 @@ class PythonInstallation:
         if runez.is_executable(path):
             self.executable = path
             if not self.major or not self.minor:
-                output = runez.run_program(self.executable, "--version", dryrun=False, fatal=None, include_error=True)
+                output = runez.run_program(self.executable, "--version", dryrun=False, fatal=None, include_error=True, logger=None)
                 if output:
                     m = RE_PYTHON_LOOSE.match(output)
                     if m:
