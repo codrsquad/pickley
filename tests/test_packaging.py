@@ -175,4 +175,4 @@ def test_channel(*_):
     with runez.CaptureOutput(dryrun=True) as logged:
         p.executables = ["foo/bar"]
         assert p.create_symlinks("foo:baz", fatal=False) == 1
-        assert "Would symlink /bar -> baz/bar" in logged.pop()
+        assert "Would symlink /bar <- baz/bar" in logged.pop()
