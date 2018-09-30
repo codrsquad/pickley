@@ -258,7 +258,7 @@ class Packager(object):
         :return dict: Determined entry points from produced wheel, if available
         """
         if self._entry_points is None:
-            self._entry_points = JsonSerializable.get_json(self.entry_points_path)
+            self._entry_points = runez.read_json(self.entry_points_path, fatal=None, default=None)
             if isinstance(self._entry_points, list):
                 # For backwards compatibility with pickley <= v1.4.2
                 self._entry_points = dict((k, "") for k in self._entry_points)
@@ -271,7 +271,7 @@ class Packager(object):
         if runez.DRYRUN:
             return
         self._entry_points = self.get_entry_points()
-        JsonSerializable.save_json(self._entry_points, self.entry_points_path)
+        runez.save_json(self._entry_points, self.entry_points_path, fatal=False)
 
     def get_entry_points(self):
         """
@@ -445,9 +445,9 @@ class Packager(object):
             new_entry_points = self.entry_points
             removed = set(prev_entry_points).difference(new_entry_points)
             if removed:
-                old_removed = JsonSerializable.get_json(self.removed_entry_points_path, default=[])
+                old_removed = runez.read_json(self.removed_entry_points_path, default=[])
                 removed = sorted(removed.union(old_removed))
-                JsonSerializable.save_json(removed, self.removed_entry_points_path)
+                runez.save_json(removed, self.removed_entry_points_path, fatal=False)
 
             # Delete wrapper/symlinks of removed entry points immediately
             for name in removed:
@@ -466,7 +466,7 @@ class Packager(object):
         cutoff = time.time() - system.SETTINGS.install_timeout * 60
         folder = system.SETTINGS.meta.full_path(self.name)
 
-        removed_entry_points = JsonSerializable.get_json(self.removed_entry_points_path, default=[])
+        removed_entry_points = runez.read_json(self.removed_entry_points_path, default=[])
 
         prefixes = {None: [], self.name: []}
         for name in self.entry_points:

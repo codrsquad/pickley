@@ -4,7 +4,6 @@ import time
 import runez
 
 from pickley import system
-from pickley.settings import JsonSerializable
 
 
 class SoftLockException(Exception):
@@ -132,7 +131,7 @@ class SharedVenv:
     @property
     def frozen(self):
         if self._frozen is None:
-            self._frozen = JsonSerializable.get_json(self.frozen_path)
+            self._frozen = runez.read_json(self.frozen_path, default={})
         return self._frozen or {}
 
     def _run_pip(self, *args, **kwargs):
@@ -147,7 +146,7 @@ class SharedVenv:
                 name, version = system.despecced(line)
                 versions[name] = version
         if versions:
-            JsonSerializable.save_json(versions, self.frozen_path)
+            runez.save_json(versions, self.frozen_path)
         return versions
 
     def _installed_module(self, package_name, version=None):

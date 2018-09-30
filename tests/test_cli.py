@@ -8,7 +8,6 @@ from pickley import __version__, system
 from pickley.cli import main
 from pickley.lock import SoftLockException
 from pickley.package import PACKAGERS
-from pickley.settings import JsonSerializable
 from pickley.system import short
 from pickley.uninstall import find_uninstaller
 
@@ -151,7 +150,8 @@ def test_install(temp_base):
     runez.touch(tep11)
     runez.touch(t00)
     runez.touch(tfoo)
-    runez.write_contents(system.SETTINGS.meta.full_path("tox", ".entry-points.json"), '["tox-old-entrypoint1", "tox-old-entrypoint2"]\n')
+    eppath = system.SETTINGS.meta.full_path("tox", ".entry-points.json")
+    runez.write_contents(eppath, '["tox-old-entrypoint1", "tox-old-entrypoint2"]\n')
     expect_success("--delivery wrap install tox", "Installed tox", base=temp_base)
 
     # Old entry point removed immediately
@@ -177,7 +177,7 @@ def test_install(temp_base):
     expect_success("move tox-copy tox-relocated", "Moved")
 
     # Verify that older versions and removed entry-points do get cleaned up
-    JsonSerializable.save_json({"install_timeout": 0}, "custom-timeout.json")
+    runez.save_json({"install_timeout": 0}, "custom-timeout.json")
     expect_success("-ccustom-timeout.json install tox", "already installed", base=temp_base)
 
     # All cleaned up when enough time went by
@@ -213,7 +213,7 @@ def test_install(temp_base):
 
     runez.delete(p.current._path)
     runez.touch(p.current._path)
-    expect_failure("check", "tox", "Invalid json file", "is not installed", base=temp_base)
+    expect_failure("check", "tox", "Couldn't read", "is not installed", base=temp_base)
 
     expect_success("uninstall tox", "Uninstalled tox", "entry points", base=temp_base)
 

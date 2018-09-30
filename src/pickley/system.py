@@ -9,7 +9,6 @@ import sys
 from logging.handlers import RotatingFileHandler
 
 import runez
-import six
 
 from pickley import pickley_program_path
 
@@ -127,13 +126,6 @@ def is_universal(wheels_folder):
     """
     if wheels_folder and os.path.isdir(wheels_folder):
         return not any(n.endswith(".whl") and not n.endswith("-py2.py3-none-any.whl") for n in os.listdir(wheels_folder))
-
-
-def to_unicode(s):
-    """Helps deal with py2/3 differences around unicode"""
-    if isinstance(s, six.text_type):
-        return s
-    return six.text_type(s)
 
 
 def relocate_venv(path, source, destination, fatal=True, logger=runez.debug, _seen=None):

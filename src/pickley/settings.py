@@ -18,8 +18,6 @@ tree <base>
 └── tox -> .pickley/tox/2.9.1/...   # Produced exe, can be a symlink or a small wrapper exe (to ensure up-to-date)
 """
 
-import io
-import json
 import os
 
 import runez
@@ -154,61 +152,14 @@ class JsonSerializable:
         if path:
             self._path = path
             self._source = short(path)
-        if not self._path:
-            return
-        data = JsonSerializable.get_json(self._path)
-        if not data:
-            return
-        self.set_from_dict(data)
+        if self._path:
+            self.set_from_dict(runez.read_json(self._path, default={}))
 
     def save(self, path=None):
         """
         :param str|None path: Save this serializable to file with 'path' (default: self._path)
         """
-        JsonSerializable.save_json(self.to_dict(), path or self._path)
-
-    @staticmethod
-    def save_json(data, path):
-        """
-        :param dict|list|None data: Data to serialize and save
-        :param str path: Path to file where to save
-        """
-        if data is None or not path:
-            return
-        try:
-            path = runez.resolved_path(path)
-            runez.ensure_folder(path, fatal=False)
-            if runez.DRYRUN:
-                runez.debug("Would save %s", short(path))
-            else:
-                s = "%s\n" % json.dumps(data, sort_keys=True, indent=2).strip()
-                with io.open(path, "wt") as fh:
-                    fh.write(system.to_unicode(s))
-
-        except Exception as e:
-            runez.warning("Couldn't save %s: %s" % (short(path), e))
-
-    @staticmethod
-    def get_json(path, default=None):
-        """
-        :param str path: Path to file to deserialize
-        :param dict|list default: Default if file is not present, or if it's not json
-        :return dict|list: Deserialized data from file
-        """
-        path = runez.resolved_path(path)
-        if not path or not os.path.exists(path):
-            return default
-
-        try:
-            with io.open(path, "rt") as fh:
-                data = json.load(fh)
-                if default is not None and type(data) != type(default):
-                    runez.debug("Wrong type %s for %s, expecting %s" % (type(data), short(path), type(default)))
-                return data
-
-        except Exception as e:
-            runez.warning("Invalid json file %s: %s" % (short(path), e))
-            return default
+        runez.save_json(self, path or self._path, fatal=False)
 
 
 class Definition(object):
@@ -301,7 +252,7 @@ class SettingsFile:
         :return dict: Deserialized contents of settings file
         """
         if self._contents is None:
-            self.set_contents(JsonSerializable.get_json(self.path, default={}))
+            self.set_contents(runez.read_json(self.path, default={}))
         return self._contents
 
     @property
