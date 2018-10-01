@@ -9,7 +9,6 @@ from pickley.context import ImplementationMap
 from pickley.delivery import DELIVERERS
 from pickley.lock import SoftLock, SoftLockException, vrun
 from pickley.pypi import latest_pypi_version
-from pickley.settings import JsonSerializable
 from pickley.system import short
 from pickley.uninstall import uninstall_existing
 
@@ -40,7 +39,7 @@ def find_prefix(prefixes, text):
     return candidate
 
 
-class VersionMeta(JsonSerializable):
+class VersionMeta(runez.JsonSerializable):
     """
     Version meta on a given package
     """
@@ -221,7 +220,7 @@ class Packager(object):
         self.latest = VersionMeta(self.name, system.LATEST_CHANNEL, base=self.current)
         self.desired = VersionMeta(self.name, base=self.current)
 
-        self.current.load()
+        self.current.load(fatal=False)
         if not self.current.valid:
             self.current.invalidate("is not installed")
 
@@ -298,7 +297,7 @@ class Packager(object):
 
     def refresh_latest(self, force=False):
         """Refresh self.latest"""
-        self.latest.load()
+        self.latest.load(fatal=False)
         if not force and self.latest.still_valid:
             return
 
@@ -306,7 +305,7 @@ class Packager(object):
         source = system.SETTINGS.index or "pypi"
         self.latest.set_version(version, system.LATEST_CHANNEL, source)
         if version and not version.startswith("can't"):
-            self.latest.save()
+            self.latest.save(fatal=False)
 
         else:
             self.latest.invalidate(version or "can't determine latest version from %s" % source)
@@ -445,7 +444,7 @@ class Packager(object):
             new_entry_points = self.entry_points
             removed = set(prev_entry_points).difference(new_entry_points)
             if removed:
-                old_removed = runez.read_json(self.removed_entry_points_path, default=[])
+                old_removed = runez.read_json(self.removed_entry_points_path, default=[], fatal=False)
                 removed = sorted(removed.union(old_removed))
                 runez.save_json(removed, self.removed_entry_points_path, fatal=False)
 
@@ -456,7 +455,7 @@ class Packager(object):
             self.cleanup()
 
             self.current.set_from(self.desired)
-            self.current.save()
+            self.current.save(fatal=False)
 
             msg = "Would install" if runez.DRYRUN else "Installed"
             runez.info("%s %s", msg, self.desired.representation(verbose=verbose))
@@ -466,7 +465,7 @@ class Packager(object):
         cutoff = time.time() - system.SETTINGS.install_timeout * 60
         folder = system.SETTINGS.meta.full_path(self.name)
 
-        removed_entry_points = runez.read_json(self.removed_entry_points_path, default=[])
+        removed_entry_points = runez.read_json(self.removed_entry_points_path, default=[], fatal=False)
 
         prefixes = {None: [], self.name: []}
         for name in self.entry_points:

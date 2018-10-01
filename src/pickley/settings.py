@@ -21,7 +21,6 @@ tree <base>
 import os
 
 import runez
-from six import string_types
 
 from pickley import system
 from pickley.system import short
@@ -31,15 +30,6 @@ DOT_PICKLEY = ".pickley"
 DEFAULT_INSTALL_TIMEOUT = 30
 DEFAULT_VERSION_CHECK_DELAY = 10
 REPRESENTATION_WIDTH = 90
-
-
-def same_type(t1, t2):
-    """
-    :return bool: True if 't1' and 't2' are of equivalent types
-    """
-    if isinstance(t1, string_types) and isinstance(t2, string_types):
-        return True
-    return type(t1) == type(t2)
 
 
 def meta_folder(path):
@@ -76,90 +66,6 @@ def add_representation(result, data, indent=""):
                 result.append("%s%s: %s" % (indent, short(key), short(value)))
         return
     result.append("%s- %s" % (indent, short(data)))
-
-
-class JsonSerializable:
-    """
-    Json serializable object
-    """
-
-    _path = None  # type: str # Path where this file should be stored, if any
-    _source = None  # type: str # Where data came from
-
-    def __repr__(self):
-        return self._source or "no source"
-
-    @classmethod
-    def from_json(cls, path):
-        """
-        :param str path: Path to json file
-        :return cls: Deserialized object
-        """
-        result = cls()
-        result.load(path)
-        return result
-
-    def set_from_dict(self, data, source=None):
-        """
-        :param dict data: Set this object from deserialized 'dict'
-        :param source: Source where 'data' came from
-        """
-        if source:
-            self._source = source
-        if not data:
-            return
-        for key, value in data.items():
-            key = key.replace("-", "_")
-            if not hasattr(self, key):
-                runez.debug("%s is not an attribute of %s", key, self.__class__.__name__)
-                continue
-            attr = getattr(self, key)
-            if attr is not None and not same_type(value, attr):
-                runez.debug(
-                    "Wrong type %s for %s.%s in %s, expecting %s", type(value), self.__class__.__name__, key, self._source, type(attr)
-                )
-                continue
-            setattr(self, key, value)
-
-    def reset(self):
-        """
-        Reset all fields of this object to class defaults
-        """
-        for name in self.__dict__:
-            if name.startswith("_"):
-                continue
-            attr = getattr(self, name)
-            setattr(self, name, attr and attr.__class__())
-
-    def to_dict(self):
-        """
-        :return dict: This object serialized to a dict
-        """
-        result = {}
-        for name in self.__dict__:
-            if name.startswith("_"):
-                continue
-            name = name.replace("_", "-")
-            attr = getattr(self, name)
-            result[name] = attr.to_dict() if isinstance(attr, JsonSerializable) else attr
-        return result
-
-    def load(self, path=None):
-        """
-        :param str|None path: Load this object from file with 'path' (default: self._path)
-        """
-        self.reset()
-        if path:
-            self._path = path
-            self._source = short(path)
-        if self._path:
-            self.set_from_dict(runez.read_json(self._path, default={}))
-
-    def save(self, path=None):
-        """
-        :param str|None path: Save this serializable to file with 'path' (default: self._path)
-        """
-        runez.save_json(self, path or self._path, fatal=False)
 
 
 class Definition(object):
@@ -252,7 +158,7 @@ class SettingsFile:
         :return dict: Deserialized contents of settings file
         """
         if self._contents is None:
-            self.set_contents(runez.read_json(self.path, default={}))
+            self.set_contents(runez.read_json(self.path, default={}, fatal=False))
         return self._contents
 
     @property

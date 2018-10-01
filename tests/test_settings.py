@@ -127,14 +127,6 @@ def test_settings_base():
     system.PICKLEY_PROGRAM_PATH = old_program
 
 
-def test_same_type():
-    assert pickley.settings.same_type(None, None)
-    assert not pickley.settings.same_type(None, "")
-    assert pickley.settings.same_type("foo", "bar")
-    assert pickley.settings.same_type("foo", u"bar")
-    assert pickley.settings.same_type(["foo"], [u"bar"])
-
-
 @patch("runez.get_lines", return_value=None)
 @patch("runez.run_program", side_effect=Exception)
 def test_pypi(*_):
@@ -179,28 +171,6 @@ def test_add_representation():
     assert not r
     pickley.settings.add_representation(r, "foo")
     assert r == ["- foo"]
-
-
-def test_serialization():
-    j = pickley.settings.JsonSerializable()
-    assert str(j) == "no source"
-    j.save()  # no-op
-    j.set_from_dict({}, source="test")
-    j.some_list = []
-    j.some_string = []
-    j.set_from_dict(dict(foo="bar", some_list="some_value", some_string="some_value"), source="test")
-    assert not j.some_list
-    assert not hasattr(j, "foo")
-    assert not j.some_string == "some_value"
-    j.reset()
-    assert not j.some_string
-
-    j = pickley.settings.JsonSerializable.from_json("")
-    assert str(j) == "no source"
-
-    j = pickley.settings.JsonSerializable.from_json("/dev/null/foo")
-    assert str(j) == "/dev/null/foo"
-    j.save()  # Warns: Couldn't save...
 
 
 def simulated_is_executable(path):
