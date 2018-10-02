@@ -194,7 +194,6 @@ class SettingsFile:
     def get_definition(self, key):
         """
         :param str key: Key to look up
-        :param str|None package_name: Optional associated package name
         :return Definition|None: Definition corresponding to 'key' in this settings file, if any
         """
         if not key:

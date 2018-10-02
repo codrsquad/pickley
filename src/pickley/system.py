@@ -290,7 +290,7 @@ def target_python(desired=None, package_name=None, fatal=True):
     """
     :param str|None desired: Desired python (overrides anything else configured)
     :param str|None package_name: Target pypi package
-    :param bool fatal: If True, abort execution if python invalid
+    :param bool|None fatal: If True, abort execution if python invalid
     :return PythonInstallation: Python installation to use
     """
     if not desired:

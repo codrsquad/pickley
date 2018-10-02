@@ -9,7 +9,7 @@ from pickley.system import short
 def uninstall_existing(target, fatal=True):
     """
     :param str target: Path to executable to auto-uninstall if needed
-    :param bool target: Abort if True
+    :param bool|None fatal: Abort execution on failure if True
     :return int: 1 if successfully uninstalled, 0 if nothing to do, -1 if failed
     """
     handler = find_uninstaller(target)
