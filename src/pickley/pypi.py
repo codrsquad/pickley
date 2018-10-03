@@ -8,7 +8,8 @@ from six.moves.urllib.request import Request, urlopen
 
 
 DEFAULT_PYPI = "https://pypi.org/pypi/{name}/json"
-RE_HTML_VERSION = re.compile(r'href=".+/([^/]+)\.tar\.gz#')
+RE_BASENAME = re.compile(r'href=".+/([^/#]+)\.(tar\.gz|whl)#', re.IGNORECASE)
+RE_VERSION = re.compile(r"[^-]+-([^-]+)-.*")
 
 
 def request_get(url):
@@ -78,24 +79,24 @@ def latest_pypi_version(url, name):
         return "can't determine latest version from '%s'" % url
 
     # Legacy mode: parse returned HTML
-    prefix = "%s-" % name
     latest = None
     latest_text = None
     for line in data.splitlines():
-        m = RE_HTML_VERSION.search(line)
+        m = RE_BASENAME.search(line)
         if m:
-            value = m.group(1)
-            if value.startswith(prefix):
-                try:
-                    version_text = value[len(prefix):]
-                    canonical_version = version_text
-                    if "+" in canonical_version:
-                        canonical_version, _, _ = canonical_version.partition("+")
-                    value = StrictVersion(canonical_version)
-                    if not value.prerelease and latest is None or latest < value:
-                        latest = value
-                        latest_text = version_text
-                except ValueError:
-                    pass
+            basename = m.group(1)
+            m = RE_VERSION.match(basename)
+        if m:
+            try:
+                version_text = m.group(1)
+                canonical_version = version_text
+                if "+" in canonical_version:
+                    canonical_version, _, _ = canonical_version.partition("+")
+                value = StrictVersion(canonical_version)
+                if not value.prerelease and latest is None or latest < value:
+                    latest = value
+                    latest_text = version_text
+            except ValueError:
+                pass
 
     return latest_text or "can't determine latest version from '%s'" % url
