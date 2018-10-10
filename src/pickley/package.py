@@ -304,11 +304,14 @@ class Packager(object):
         version = latest_pypi_version(system.SETTINGS.index, self.name)
         source = system.SETTINGS.index or "pypi"
         self.latest.set_version(version, system.LATEST_CHANNEL, source)
-        if version and not version.startswith("can't"):
+        if not version:
+            self.latest.invalidate("can't determine latest version from %s" % source)
+
+        elif not version.startswith("error: "):
             self.latest.save(fatal=False)
 
         else:
-            self.latest.invalidate(version or "can't determine latest version from %s" % source)
+            self.latest.invalidate(version[7:])
 
     def refresh_desired(self, force=False):
         """Refresh self.desired"""

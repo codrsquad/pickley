@@ -81,6 +81,7 @@ def latest_pypi_version(url, name):
     # Legacy mode: parse returned HTML
     latest = None
     latest_text = None
+    prereleases = []
     for line in data.splitlines():
         m = RE_BASENAME.search(line)
         if m:
@@ -93,10 +94,18 @@ def latest_pypi_version(url, name):
                 if "+" in canonical_version:
                     canonical_version, _, _ = canonical_version.partition("+")
                 value = StrictVersion(canonical_version)
-                if not value.prerelease and latest is None or latest < value:
+                if value.prerelease:
+                    prereleases.append(version_text)
+                elif latest is None or latest < value:
                     latest = value
                     latest_text = version_text
             except ValueError:
                 pass
 
-    return latest_text or "can't determine latest version from '%s'" % url
+    if not latest_text:
+        if prereleases:
+            latest_text = "error: all published versions are pre-releases"
+        else:
+            latest_text = "error: can't determine latest version from '%s'" % url
+
+    return latest_text

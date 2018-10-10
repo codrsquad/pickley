@@ -101,6 +101,10 @@ def test_versions(_, __, temp_base):
     p.refresh_desired()
     assert p.desired.representation(verbose=True) == "foo: can't determine latest version from pypi (channel: latest, source: pypi)"
 
+    with patch("pickley.package.latest_pypi_version", return_value="error: test failed"):
+        p.refresh_desired()
+        assert p.desired.representation() == "foo: test failed"
+
     system.SETTINGS.cli.contents["channel"] = "stable"
     p.refresh_desired()
     assert p.desired.representation() == "foo: can't determine stable version"

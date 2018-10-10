@@ -25,6 +25,14 @@ LEGACY_SAMPLE = """
 <a href="/pypi/packages/pypi-public/twine/twine-1.9.1.tar.gz#sha256=ca...">twine-1.9.1.tar.gz</a><br/>
 </body></html>
 """
+
+PRERELEASE_SAMPLE = """
+<html><head><title>Simple Index</title><meta name="api-version" value="2" /></head><body>
+<a href="/pypi/packages/pypi-public/black/black-18.3a0-py3-none-any.whl#sha256=..."</a><br/>
+<a href="/pypi/packages/pypi-public/black/black-18.3a0.tar.gz#sha256=...">black-18.3a0.tar.gz</a><br/>
+<a href="/pypi/packages/pypi-public/black/black-18.3a1-py3-none-any.whl#sha256=..." 
+"""
+
 EXPECTED_REPRESENTATION = """
 settings:
   base: {base}
@@ -142,6 +150,9 @@ def test_pypi(*_):
 
     with patch("pickley.pypi.request_get", return_value=LEGACY_SAMPLE):
         assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "twine") == "1.9.1"
+
+    with patch("pickley.pypi.request_get", return_value=PRERELEASE_SAMPLE):
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "black") == "error: all published versions are pre-releases"
 
     with patch("pickley.pypi.urlopen", side_effect=Exception):
         # GET fails, and fallback curl also fails
