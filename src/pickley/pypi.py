@@ -65,7 +65,7 @@ def latest_pypi_version(url, name):
 
     data = request_get(url)
     if not data:
-        return "can't determine latest version from '%s'" % url
+        return "error: can't determine latest version from '%s'" % url
 
     if data[0] == "{":
         # See https://warehouse.pypa.io/api-reference/json/
@@ -76,7 +76,7 @@ def latest_pypi_version(url, name):
         except Exception as e:
             runez.warning("Failed to parse pypi json from %s: %s\n%s", url, e, data)
 
-        return "can't determine latest version from '%s'" % url
+        return "error: can't determine latest version from '%s'" % url
 
     # Legacy mode: parse returned HTML
     latest = None
