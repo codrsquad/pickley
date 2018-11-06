@@ -279,6 +279,10 @@ class Packager(object):
         if not os.path.isdir(self.build_folder):
             return None
 
+        if self.name == "awscli":
+            # awscli doesn't declare console_scripts, temp workaround to allow installing it until a more generic solution found
+            return {"aws": "scripts.aws:main"}
+
         prefix = "%s-%s-" % (self.name, self.version)
         for fname in os.listdir(self.build_folder):
             if fname.startswith(prefix) and fname.endswith(".whl"):
