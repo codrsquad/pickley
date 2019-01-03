@@ -65,7 +65,7 @@ class DeliveryMethod:
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
         runez.delete(target, logger=None)
-        if runez.DRYRUN:
+        if runez.State.dryrun:
             runez.debug("Would %s %s (source: %s)", self.implementation_name, short(target), short(source))
             return
 
@@ -94,8 +94,8 @@ class DeliveryMethodSymlink(DeliveryMethod):
 
     def _install(self, target, source):
         if os.path.isabs(source) and os.path.isabs(target):
-            parent = runez.parent_folder(target)
-            if runez.parent_folder(source).startswith(parent):
+            parent = runez.parent(target)
+            if runez.parent(source).startswith(parent):
                 # Use relative path if source is under target
                 source = os.path.relpath(source, parent)
         os.symlink(source, target)
@@ -120,7 +120,7 @@ class DeliveryMethodWrap(DeliveryMethod):
             pickley=runez.quoted(system.SETTINGS.base.full_path(system.PICKLEY)),
             source=runez.quoted(source),
         )
-        runez.write_contents(target, contents)
+        runez.write(target, contents)
         runez.make_executable(target)
 
 

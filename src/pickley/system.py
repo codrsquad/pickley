@@ -35,7 +35,7 @@ class LogHandlers:
     debug_handler = None
 
 
-PICKLEY_PROGRAM_PATH = runez.resolved_path(pickley_program_path())
+PICKLEY_PROGRAM_PATH = runez.resolved(pickley_program_path())
 sys.argv[0] = PICKLEY_PROGRAM_PATH
 
 
@@ -48,10 +48,10 @@ def short(path, meta=True):
     if not path:
         return path
     if not meta:
-        runez.pop_anchors(SETTINGS.meta.path)
+        runez.Anchored.pop(SETTINGS.meta.path)
     result = runez.short(str(path))
     if not meta:
-        runez.add_anchors(SETTINGS.meta.path)
+        runez.Anchored.add(SETTINGS.meta.path)
     return result
 
 
@@ -82,7 +82,7 @@ def installed_names():
 
 def setup_audit_log():
     """Log to <meta>/audit.log"""
-    if runez.DRYRUN or LogHandlers.audit_handler:
+    if runez.State.dryrun or LogHandlers.audit_handler:
         return
     path = SETTINGS.meta.full_path("audit.log")
     runez.ensure_folder(path)
@@ -175,7 +175,7 @@ def relocate_venv(path, source, destination, fatal=True, logger=runez.debug, _se
     if not modified:
         return 0
 
-    r = runez.write_contents(path, "".join(lines), fatal=fatal)
+    r = runez.write(path, "".join(lines), fatal=fatal)
     if r > 0 and logger and original_call:
         logger("Relocated %s: %s -> %s", short(path), short(source), short(destination))
     return r
@@ -240,7 +240,7 @@ def run_python(*args, **kwargs):
     """Invoke targetted python interpreter with given args"""
     package_name = kwargs.pop("package_name", None)
     python = target_python(package_name=package_name)
-    return runez.run_program(python.executable, *args, **kwargs)
+    return runez.run(python.executable, *args, **kwargs)
 
 
 class FolderBase(object):
@@ -253,7 +253,7 @@ class FolderBase(object):
         :param str path: Path to folder
         :param str|None name: Name of this folder (defaults to basename of 'path')
         """
-        self.path = runez.resolved_path(path)
+        self.path = runez.resolved(path)
         self.name = name or os.path.basename(path)
 
     def relative_path(self, path):
@@ -326,11 +326,11 @@ class PythonInstallation:
             self.resolve_executable()
 
     def _set_executable(self, path):
-        path = runez.resolved_path(path)
+        path = runez.resolved(path)
         if runez.is_executable(path):
             self.executable = path
             if not self.major or not self.minor:
-                output = runez.run_program(self.executable, "--version", dryrun=False, fatal=None, include_error=True, logger=None)
+                output = runez.run(self.executable, "--version", dryrun=False, fatal=None, include_error=True, logger=None)
                 if output:
                     m = RE_PYTHON_LOOSE.match(output)
                     if m:
@@ -348,7 +348,7 @@ class PythonInstallation:
         Resolve python executable from a configured folder
         This aims to support pyenv like installations, as well as /usr/bin-like ones
         """
-        folder = runez.resolved_path(folder)
+        folder = runez.resolved(folder)
         if not folder or not self.major or not os.path.isdir(folder):
             return None
 

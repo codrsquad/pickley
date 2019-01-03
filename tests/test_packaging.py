@@ -150,7 +150,7 @@ def test_versions(_, __, temp_base):
     assert "Could not determine version" in verify_abort(p.package)
 
     # Provide a minimal setup.py
-    runez.write_contents(setup_py, "from setuptools import setup\nsetup(name='foo', version='0.0.0')\n")
+    runez.write(setup_py, "from setuptools import setup\nsetup(name='foo', version='0.0.0')\n")
 
     # Package project without entry points
     p.get_entry_points = lambda *_: None
@@ -169,7 +169,7 @@ def get_definition(key, package_name=None):
     return None
 
 
-@patch("runez.resolved_path", side_effect=lambda x, **_: x)
+@patch("runez.resolved", side_effect=lambda x, **_: x)
 @patch("pickley.settings.SettingsFile.get_definition", side_effect=get_definition)
 def test_channel(*_):
     p = PACKAGERS.get(system.VENV_PACKAGER)("foo")

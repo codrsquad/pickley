@@ -136,7 +136,7 @@ def test_settings_base():
 
 
 @patch("runez.get_lines", return_value=None)
-@patch("runez.run_program", side_effect=Exception)
+@patch("runez.run", side_effect=Exception)
 def test_pypi(*_):
     assert latest_pypi_version(None, "") is None
     assert latest_pypi_version(None, "tox")
@@ -161,7 +161,7 @@ def test_pypi(*_):
         # GET fails, and fallback curl also fails
         assert request_get("") is None
 
-        with patch("runez.run_program", return_value="foo"):
+        with patch("runez.run", return_value="foo"):
             # GET fails, but curl succeeds
             assert request_get("") == "foo"
 
@@ -171,10 +171,10 @@ def test_pypi(*_):
         # With explicit 404 we don't fallback to curl
         assert request_get("") is None
 
-    with patch("runez.get_lines", return_value=["foo"]):
+    with patch("runez.path.get_lines", return_value=["foo"]):
         assert pypi_url() == DEFAULT_PYPI
 
-    with patch("runez.get_lines", return_value="[global]\nindex-url = foo".splitlines()):
+    with patch("runez.path.get_lines", return_value="[global]\nindex-url = foo".splitlines()):
         assert pypi_url() == "foo"
 
 
@@ -219,7 +219,7 @@ def simulated_run(program, *args, **kwargs):
 
 @patch("runez.is_executable", side_effect=simulated_is_executable)
 @patch("runez.which", side_effect=simulated_which)
-@patch("runez.run_program", side_effect=simulated_run)
+@patch("runez.run", side_effect=simulated_run)
 def test_python_installation(_, __, ___, temp_base):
 
     system.DESIRED_PYTHON = "/dev/null/foo"

@@ -54,8 +54,8 @@ def find_brew_name(target):
         return None, None
 
     path = os.path.realpath(target)
-    folder = runez.parent_folder(target)
-    cellar = os.path.join(runez.parent_folder(folder), "Cellar")
+    folder = runez.parent(target)
+    cellar = os.path.join(runez.parent(folder), "Cellar")
     if not path.startswith(cellar):
         return None, None
 
@@ -77,7 +77,7 @@ def brew_uninstall(target, fatal=False):
     if not brew or not name:
         return -1
 
-    output = runez.run_program(brew, "uninstall", "-f", name, fatal=False, logger=runez.info)
+    output = runez.run(brew, "uninstall", "-f", name, fatal=False, logger=runez.info)
     if output is False:
         # Failed brew uninstall
         return runez.abort("'%s uninstall %s' failed, please check", brew, name, fatal=(fatal, -1))

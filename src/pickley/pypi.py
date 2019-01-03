@@ -30,7 +30,7 @@ def request_get(url):
 
         try:
             # Some old python installations have trouble with SSL (OSX for example), try curl
-            data = runez.run_program("curl", "-s", url, dryrun=False, fatal=False)
+            data = runez.run("curl", "-s", url, dryrun=False, fatal=False)
             return data and runez.decode(data).strip()
 
         except Exception as e:
@@ -40,7 +40,7 @@ def request_get(url):
 
 
 def pypi_url():
-    conf = runez.get_conf(runez.resolved_path("~/.config/pip/pip.conf"), fatal=None, default={})
+    conf = runez.get_conf(runez.resolved("~/.config/pip/pip.conf"), fatal=None, default={})
     return conf.get("global", {}).get("index-url", DEFAULT_PYPI)
 
 

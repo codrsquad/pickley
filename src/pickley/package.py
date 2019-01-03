@@ -39,7 +39,7 @@ def find_prefix(prefixes, text):
     return candidate
 
 
-class VersionMeta(runez.JsonSerializable):
+class VersionMeta(runez.Serializable):
     """
     Version meta on a given package
     """
@@ -262,12 +262,12 @@ class Packager(object):
                 # For backwards compatibility with pickley <= v1.4.2
                 self._entry_points = dict((k, "") for k in self._entry_points)
             if self._entry_points is None:
-                return {self.name: ""} if runez.DRYRUN else {}
+                return {self.name: ""} if runez.State.dryrun else {}
         return self._entry_points
 
     def refresh_entry_points(self):
         """Refresh entry point from saved json and/or build folder"""
-        if runez.DRYRUN:
+        if runez.State.dryrun:
             return
         self._entry_points = self.get_entry_points()
         runez.save_json(self._entry_points, self.entry_points_path, fatal=False)
@@ -391,8 +391,8 @@ class Packager(object):
         base, _, target = symlink.partition(":")
         if not target:
             return runez.abort("Invalid symlink specification '%s'", symlink, fatal=(fatal, -1))
-        base = runez.resolved_path(base)
-        target = runez.resolved_path(target)
+        base = runez.resolved(base)
+        target = runez.resolved(target)
         for path in self.executables:
             if not path.startswith(base) or len(path) <= len(base):
                 return runez.abort("Symlink base '%s' does not cover '%s'", base, path, fatal=(fatal, -1))
@@ -408,7 +408,7 @@ class Packager(object):
         """
         if args:
             for path in self.executables:
-                output = runez.run_program(path, args)
+                output = runez.run(path, args)
                 runez.info("Sanity check: %s %s -> %s", short(path), args, output)
 
     def effective_package(self, template):
@@ -464,7 +464,7 @@ class Packager(object):
             self.current.set_from(self.desired)
             self.current.save(fatal=False)
 
-            msg = "Would install" if runez.DRYRUN else "Installed"
+            msg = "Would install" if runez.State.dryrun else "Installed"
             runez.info("%s %s", msg, self.desired.representation(verbose=verbose))
 
     def cleanup(self):
@@ -620,7 +620,7 @@ class VenvPackager(Packager):
         bin_folder = os.path.join(folder, "bin")
         pip = os.path.join(bin_folder, "pip")
         spec = self.source_folder if self.source_folder else "%s==%s" % (self.name, self.version)
-        runez.run_program(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, spec)
+        runez.run(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, spec)
 
         if self.relocatable:
             python = system.target_python(package_name=self.name).executable

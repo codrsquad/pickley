@@ -28,7 +28,7 @@ def run_cli(args, **kwargs):
     result = runner.invoke(main, args=args)
     if "--dryrun" in args:
         # Restore default non-dryrun state after a --dryrun test
-        runez.DRYRUN = False
+        runez.State.dryrun = False
     return result
 
 
@@ -83,18 +83,19 @@ def test_settings():
 
 
 def run_program(program, *args):
-    return runez.run_program(program, *args, fatal=False)
+    return runez.run(program, *args, fatal=False)
 
 
 def test_package(temp_base):
     pickley = system.SETTINGS.base.full_path("dist", "pickley", "bin", "pickley")
+    expected_version = system.run_python(os.path.join(PROJECT, "setup.py"), "--version")
 
     # Package pickley as venv
     expect_success(["package", "-d", "dist", PROJECT], "Packaged %s successfully" % short(PROJECT))
 
     # Verify that it packaged OK, and is relocatable
     assert runez.is_executable(pickley)
-    assert run_program(pickley, "--version") == __version__
+    assert run_program(pickley, "--version") == expected_version
     assert runez.first_line(pickley).startswith("#!/usr/bin/env python")
 
 
@@ -151,7 +152,7 @@ def test_install(temp_base):
     runez.touch(t00)
     runez.touch(tfoo)
     eppath = system.SETTINGS.meta.full_path("tox", ".entry-points.json")
-    runez.write_contents(eppath, '["tox-old-entrypoint1", "tox-old-entrypoint2"]\n')
+    runez.write(eppath, '["tox-old-entrypoint1", "tox-old-entrypoint2"]\n')
     expect_success("--delivery wrap install tox", "Installed tox", base=temp_base)
 
     # Old entry point removed immediately

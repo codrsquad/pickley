@@ -62,7 +62,7 @@ def test_find_brew_edge_case(*_):
 @patch("os.path.islink", side_effect=is_brew_link)
 @patch("os.path.realpath", side_effect=brew_realpath)
 @patch("runez.is_executable", side_effect=is_brew_link)
-@patch("runez.run_program", side_effect=brew_run_program)
+@patch("runez.run", side_effect=brew_run_program)
 def test_uninstall_brew(*_):
     # Simulate successful uninstall
     assert uninstall_existing("%s/tox" % BREW_INSTALL, fatal=False) == 1

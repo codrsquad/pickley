@@ -9,8 +9,8 @@ from pickley import system
 from pickley.settings import DOT_PICKLEY  # noqa: imported to ensure that system.SETTINGS is set
 
 
-TESTS = runez.parent_folder(__file__)
-PROJECT = runez.parent_folder(TESTS)
+TESTS = runez.parent(__file__)
+PROJECT = runez.parent(TESTS)
 INEXISTING_FILE = "/dev/null/foo/bar"
 
 runez.State.testing = True

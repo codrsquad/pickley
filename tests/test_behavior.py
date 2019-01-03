@@ -27,8 +27,8 @@ def test_lock(temp_base):
             assert "Can't determine path to virtualenv.py" in verify_abort(SharedVenv, lock, None)
 
 
-@patch("runez.run_program", return_value="pex==1.0")
-@patch("runez.file_younger", return_value=True)
+@patch("runez.run", return_value="pex==1.0")
+@patch("runez.is_younger", return_value=True)
 def test_ensure_freeze(_, __, temp_base):
     # Test edge case for _installed_module()
     with SoftLock(temp_base) as lock:
@@ -59,9 +59,9 @@ def test_missing_implementation():
 def test_relocate_venv_successfully(temp_base):
     with runez.CaptureOutput() as logged:
         original = "line 1: source\nline 2\n"
-        runez.write_contents("foo/bar/bin/baz", original, logger=runez.debug)
-        runez.write_contents("foo/bar/bin/empty", "", logger=runez.debug)
-        runez.write_contents("foo/bar/bin/python", "", logger=runez.debug)
+        runez.write("foo/bar/bin/baz", original, logger=runez.debug)
+        runez.write("foo/bar/bin/empty", "", logger=runez.debug)
+        runez.write("foo/bar/bin/python", "", logger=runez.debug)
         runez.make_executable("foo/bar/bin/baz")
         runez.make_executable("foo/bar/bin/empty")
         runez.make_executable("foo/bar/bin/python")
@@ -74,7 +74,7 @@ def test_relocate_venv_successfully(temp_base):
         assert not logged
 
         # Simulate failure to write
-        with patch("runez.write_contents", return_value=-1):
+        with patch("runez.write", return_value=-1):
             assert system.relocate_venv("foo", "source", "dest", fatal=False) == -1
         assert runez.get_lines("foo/bar/bin/baz") == expected
         assert not logged
@@ -89,6 +89,6 @@ def test_relocate_venv_successfully(temp_base):
         assert system.relocate_venv("foo", "source", "dest", fatal=False) == 0
 
         # Test relocating a single file
-        runez.write_contents("foo/bar/bin/baz", original, logger=runez.debug)
+        runez.write("foo/bar/bin/baz", original, logger=runez.debug)
         assert system.relocate_venv("foo/bar/bin/baz", "source", "dest", fatal=False) == 1
         assert "Relocated " in logged

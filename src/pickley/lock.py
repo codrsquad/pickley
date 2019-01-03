@@ -47,7 +47,7 @@ class SoftLock:
         """
         :return bool: True if lock is held by another process
         """
-        if not runez.file_younger(self.lock, self.invalid):
+        if not runez.is_younger(self.lock, self.invalid):
             # Lock file does not exist or invalidation age reached
             return False
 
@@ -57,7 +57,7 @@ class SoftLock:
 
     def _should_keep(self):
         """Should we keep folder after lock release?"""
-        return runez.file_younger(self.folder, self.keep)
+        return runez.is_younger(self.folder, self.keep)
 
     def __enter__(self):
         """
@@ -70,7 +70,7 @@ class SoftLock:
             time.sleep(1)
 
         # We got the soft lock
-        runez.write_contents(self.lock, "%s\n" % os.getpid())
+        runez.write(self.lock, "%s\n" % os.getpid())
 
         if not self._should_keep():
             runez.delete(self.folder, logger=runez.debug if self.keep else None)
@@ -115,14 +115,14 @@ class SharedVenv:
         self.python = os.path.join(self.bin, "python")
         self.pip = os.path.join(self.bin, "pip")
         self._frozen = None
-        if runez.file_younger(self.python, self.lock.keep):
+        if runez.is_younger(self.python, self.lock.keep):
             return
         runez.delete(self.folder)
         venv = system.virtualenv_path()
         if not venv:
             runez.abort("Can't determine path to virtualenv.py")
 
-        runez.run_program(self.venv_python.executable, venv, self.folder)
+        runez.run(self.venv_python.executable, venv, self.folder)
 
     @property
     def frozen_path(self):
@@ -136,7 +136,7 @@ class SharedVenv:
 
     def _run_pip(self, *args, **kwargs):
         args = runez.flattened(args, unique=False)
-        return runez.run_program(self.pip, *args, **kwargs)
+        return runez.run(self.pip, *args, **kwargs)
 
     def _refresh_frozen(self):
         output = self._run_pip("freeze", fatal=False)
@@ -180,4 +180,4 @@ class SharedVenv:
         program = kwargs.pop("program", package_name)
         program, version = system.despecced(program)
         full_path = self._installed_module(program, version=version)
-        return runez.run_program(full_path, *args, **kwargs)
+        return runez.run(full_path, *args, **kwargs)

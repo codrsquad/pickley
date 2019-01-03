@@ -34,10 +34,10 @@ def main(debug, dryrun, base, index, config, python, delivery, packager):
     """
     if dryrun:
         debug = True
-    runez.DRYRUN = bool(dryrun)
+    runez.State.dryrun = bool(dryrun)
 
     if base:
-        base = runez.resolved_path(base)
+        base = runez.resolved(base)
         if not os.path.exists(base):
             runez.abort("Can't use %s as base: folder does not exist", short(base))
         system.SETTINGS.set_base(base)
@@ -159,7 +159,7 @@ def uninstall(force, packages):
             runez.info("Nothing to uninstall for %s" % name)
             continue
 
-        message = "Would uninstall" if runez.DRYRUN else "Uninstalled"
+        message = "Would uninstall" if runez.State.dryrun else "Uninstalled"
         message = "%s %s" % (message, name)
         if ep_uninstalled > 1:
             message += " (%s entry points)" % ep_uninstalled
@@ -204,9 +204,9 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     """
     Package a project from source checkout
     """
-    build = runez.resolved_path(build)
-    dist = runez.resolved_path(dist)
-    folder = runez.resolved_path(folder)
+    build = runez.resolved(build)
+    dist = runez.resolved(dist)
+    folder = runez.resolved(folder)
 
     system.SETTINGS.meta = meta_folder(build)
     system.setup_audit_log()
@@ -224,7 +224,7 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
         if not name:
             runez.abort("Could not determine package name from %s", short(setup_py))
 
-    runez.add_anchors(folder)
+    runez.Anchored.add(folder)
     p = PACKAGERS.resolved(name)
     p.build_folder = build
     p.dist_folder = dist
@@ -234,7 +234,7 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     p.create_symlinks(symlink)
     p.sanity_check(sanity_check)
     runez.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(p.executables))
-    runez.pop_anchors(folder)
+    runez.Anchored.pop(folder)
 
 
 @main.command()
@@ -271,7 +271,7 @@ def auto_upgrade(force, package):
         runez.abort("%s is not currently installed", package)
 
     ping = system.SETTINGS.meta.full_path(package, ".ping")
-    if not force and runez.file_younger(ping, system.SETTINGS.version_check_seconds):
+    if not force and runez.is_younger(ping, system.SETTINGS.version_check_seconds):
         # We checked for auto-upgrade recently, no need to check again yet
         runez.abort("Skipping auto-upgrade, checked recently", code=0)
     runez.touch(ping)
