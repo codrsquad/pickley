@@ -171,10 +171,10 @@ def test_pypi(*_):
         # With explicit 404 we don't fallback to curl
         assert request_get("") is None
 
-    with patch("runez.path.get_lines", return_value=["foo"]):
+    with patch("runez.file.get_lines", return_value=["foo"]):
         assert pypi_url() == DEFAULT_PYPI
 
-    with patch("runez.path.get_lines", return_value="[global]\nindex-url = foo".splitlines()):
+    with patch("runez.file.get_lines", return_value="[global]\nindex-url = foo".splitlines()):
         assert pypi_url() == "foo"
 
 

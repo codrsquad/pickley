@@ -40,7 +40,7 @@ def request_get(url):
 
 
 def pypi_url():
-    conf = runez.get_conf(runez.resolved("~/.config/pip/pip.conf"), fatal=None, default={})
+    conf = runez.get_conf(runez.resolved_path("~/.config/pip/pip.conf"), fatal=None, default={})
     return conf.get("global", {}).get("index-url", DEFAULT_PYPI)
 
 

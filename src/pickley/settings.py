@@ -102,7 +102,7 @@ class SettingsFile:
         """
         self.parent = parent
         self.path = path or name
-        self.folder = runez.parent(path)
+        self.folder = runez.parent_folder(path)
         self._contents = None
 
     def __repr__(self):
@@ -278,14 +278,14 @@ class Settings:
         if not base:
             base = os.environ.get("PICKLEY_ROOT")
         if not base:
-            base = runez.parent(system.PICKLEY_PROGRAM_PATH)
+            base = runez.parent_folder(system.PICKLEY_PROGRAM_PATH)
             if DOT_PICKLEY in base:
                 # Don't consider meta folder .pickley/... as installation base
                 i = base.index(DOT_PICKLEY)
                 base = base[:i].rstrip("/")
             elif ".venv" in base:
                 # Convenience for development
-                base = runez.parent(base)
+                base = runez.parent_folder(base)
                 base = os.path.join(base, "root")
 
         if isinstance(base, system.FolderBase):
@@ -317,7 +317,7 @@ class Settings:
         :param str path: Path to config file
         :param str|None base: Base path to use to resolve relative paths (default: current working dir)
         """
-        path = runez.resolved(path, base=base)
+        path = runez.resolved_path(path, base=base)
         if path not in self.config_paths:
             settings_file = SettingsFile(self, path)
             self.config_paths.append(path)

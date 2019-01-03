@@ -54,8 +54,8 @@ def find_brew_name(target):
         return None, None
 
     path = os.path.realpath(target)
-    folder = runez.parent(target)
-    cellar = os.path.join(runez.parent(folder), "Cellar")
+    folder = runez.parent_folder(target)
+    cellar = os.path.join(runez.parent_folder(folder), "Cellar")
     if not path.startswith(cellar):
         return None, None
 

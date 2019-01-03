@@ -37,7 +37,7 @@ def main(debug, dryrun, base, index, config, python, delivery, packager):
     runez.State.dryrun = bool(dryrun)
 
     if base:
-        base = runez.resolved(base)
+        base = runez.resolved_path(base)
         if not os.path.exists(base):
             runez.abort("Can't use %s as base: folder does not exist", short(base))
         system.SETTINGS.set_base(base)
@@ -204,9 +204,9 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     """
     Package a project from source checkout
     """
-    build = runez.resolved(build)
-    dist = runez.resolved(dist)
-    folder = runez.resolved(folder)
+    build = runez.resolved_path(build)
+    dist = runez.resolved_path(dist)
+    folder = runez.resolved_path(folder)
 
     system.SETTINGS.meta = meta_folder(build)
     system.setup_audit_log()

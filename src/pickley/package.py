@@ -391,8 +391,8 @@ class Packager(object):
         base, _, target = symlink.partition(":")
         if not target:
             return runez.abort("Invalid symlink specification '%s'", symlink, fatal=(fatal, -1))
-        base = runez.resolved(base)
-        target = runez.resolved(target)
+        base = runez.resolved_path(base)
+        target = runez.resolved_path(target)
         for path in self.executables:
             if not path.startswith(base) or len(path) <= len(base):
                 return runez.abort("Symlink base '%s' does not cover '%s'", base, path, fatal=(fatal, -1))

@@ -94,8 +94,8 @@ class DeliveryMethodSymlink(DeliveryMethod):
 
     def _install(self, target, source):
         if os.path.isabs(source) and os.path.isabs(target):
-            parent = runez.parent(target)
-            if runez.parent(source).startswith(parent):
+            parent = runez.parent_folder(target)
+            if runez.parent_folder(source).startswith(parent):
                 # Use relative path if source is under target
                 source = os.path.relpath(source, parent)
         os.symlink(source, target)

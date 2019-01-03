@@ -35,7 +35,7 @@ class LogHandlers:
     debug_handler = None
 
 
-PICKLEY_PROGRAM_PATH = runez.resolved(pickley_program_path())
+PICKLEY_PROGRAM_PATH = runez.resolved_path(pickley_program_path())
 sys.argv[0] = PICKLEY_PROGRAM_PATH
 
 
@@ -253,7 +253,7 @@ class FolderBase(object):
         :param str path: Path to folder
         :param str|None name: Name of this folder (defaults to basename of 'path')
         """
-        self.path = runez.resolved(path)
+        self.path = runez.resolved_path(path)
         self.name = name or os.path.basename(path)
 
     def relative_path(self, path):
@@ -326,7 +326,7 @@ class PythonInstallation:
             self.resolve_executable()
 
     def _set_executable(self, path):
-        path = runez.resolved(path)
+        path = runez.resolved_path(path)
         if runez.is_executable(path):
             self.executable = path
             if not self.major or not self.minor:
@@ -348,7 +348,7 @@ class PythonInstallation:
         Resolve python executable from a configured folder
         This aims to support pyenv like installations, as well as /usr/bin-like ones
         """
-        folder = runez.resolved(folder)
+        folder = runez.resolved_path(folder)
         if not folder or not self.major or not os.path.isdir(folder):
             return None
 

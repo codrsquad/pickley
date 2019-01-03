@@ -169,7 +169,7 @@ def get_definition(key, package_name=None):
     return None
 
 
-@patch("runez.resolved", side_effect=lambda x, **_: x)
+@patch("runez.resolved_path", side_effect=lambda x, **_: x)
 @patch("pickley.settings.SettingsFile.get_definition", side_effect=get_definition)
 def test_channel(*_):
     p = PACKAGERS.get(system.VENV_PACKAGER)("foo")
