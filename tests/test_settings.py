@@ -145,6 +145,9 @@ def test_pypi(*_):
         # 404
         assert latest_pypi_version(None, "foo").startswith("error: ")
 
+    with patch("pickley.pypi.request_get", return_value='{"info": {"version": "1.0"}}'):
+        assert latest_pypi_version(None, "foo") == "1.0"
+
     with patch("pickley.pypi.request_get", return_value=None):
         assert latest_pypi_version(None, "twine").startswith("error: ")
 
@@ -153,6 +156,7 @@ def test_pypi(*_):
 
     with patch("pickley.pypi.request_get", return_value=LEGACY_SAMPLE):
         assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "twine") == "1.9.1"
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi/{name}", "twine") == "1.9.1"
 
     with patch("pickley.pypi.request_get", return_value=PRERELEASE_SAMPLE):
         assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "black").startswith("error: ")

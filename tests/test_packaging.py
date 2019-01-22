@@ -89,6 +89,12 @@ def test_version_meta():
     assert not v3.still_valid
 
 
+@patch("os.path.isdir", return_value=True)
+def test_special_packages(*_):
+    p = PACKAGERS.get("venv")("awscli")
+    assert p.get_entry_points() == {"aws": "scripts.aws:main"}
+
+
 @patch("pickley.package.latest_pypi_version", return_value=None)
 @patch("pickley.package.DELIVERERS.resolved", return_value=None)
 def test_versions(_, __, temp_base):
