@@ -1,4 +1,5 @@
-click
-runez
-six
-virtualenv
+# pinned
+click==7.0
+runez==1.3.4
+six==1.12.0
+virtualenv==16.4.0
