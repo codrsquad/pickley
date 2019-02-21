@@ -1,5 +1,5 @@
 # pinned
 click==7.0
-runez==1.3.4
+runez
 six==1.12.0
 virtualenv==16.4.0

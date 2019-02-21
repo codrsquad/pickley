@@ -18,6 +18,9 @@ from pickley.system import short
 from pickley.uninstall import uninstall_existing
 
 
+LOG = logging.getLogger(__name__)
+
+
 @click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=140), epilog=__doc__)
 @click.version_option(version=__version__, message="%(version)s")
 @click.option("--debug", is_flag=True, help="Show debug logs")
@@ -32,23 +35,23 @@ def main(debug, dryrun, base, index, config, python, delivery, packager):
     """
     Package manager for python CLIs
     """
-    if dryrun:
-        debug = True
-    runez.State.dryrun = bool(dryrun)
-
     if base:
         base = runez.resolved_path(base)
         if not os.path.exists(base):
             runez.abort("Can't use %s as base: folder does not exist", short(base))
         system.SETTINGS.set_base(base)
 
+    runez.log.setup(
+        debug=debug,
+        dryrun=dryrun,
+        custom_location=system.SETTINGS.meta.full_path("audit.log"),
+        file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",
+        greeting=":: {argv}",
+    )
+    runez.log.silence("pip")
+
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None
-    logging.getLogger("pip").setLevel(logging.WARNING)
-    logging.root.setLevel(logging.DEBUG)
-    if debug:
-        # Log to console with --debug or --dryrun
-        system.setup_debug_log()
 
     system.SETTINGS.load_config(config=config, delivery=delivery, index=index, packager=packager)
     system.DESIRED_PYTHON = python
@@ -65,23 +68,23 @@ def check(force, verbose, packages):
     code = 0
     packages = system.SETTINGS.resolved_packages(packages) or system.installed_names()
     if not packages:
-        runez.info("No packages installed")
+        LOG.info("No packages installed")
 
     else:
         for name in packages:
             p = PACKAGERS.resolved(name)
             p.refresh_desired(force=force)
             if not p.desired.valid:
-                runez.error(p.desired.representation(verbose))
+                LOG.error(p.desired.representation(verbose))
                 code = 1
             elif not p.current.version or not p.current.valid:
-                runez.info(p.desired.representation(verbose, note="is not installed"))
+                LOG.info(p.desired.representation(verbose, note="is not installed"))
                 code = 1
             elif p.current.version != p.desired.version:
-                runez.info(p.current.representation(verbose, note="can be upgraded to %s" % p.desired.version))
+                LOG.info(p.current.representation(verbose, note="can be upgraded to %s" % p.desired.version))
                 code = 1
             else:
-                runez.info(p.current.representation(verbose, note="is installed"))
+                LOG.info(p.current.representation(verbose, note="is installed"))
 
     sys.exit(code)
 
@@ -94,12 +97,12 @@ def list(verbose):
     """
     packages = system.installed_names()
     if not packages:
-        runez.info("No packages installed")
+        LOG.info("No packages installed")
 
     else:
         for name in packages:
             p = PACKAGERS.resolved(name)
-            runez.info(p.current.representation(verbose))
+            LOG.info(p.current.representation(verbose))
 
 
 @main.command()
@@ -109,8 +112,6 @@ def install(force, packages):
     """
     Install a package from pypi
     """
-    system.setup_audit_log()
-
     packages = system.SETTINGS.resolved_packages(packages)
     for name in packages:
         p = PACKAGERS.resolved(name)
@@ -124,14 +125,13 @@ def uninstall(force, packages):
     """
     Uninstall packages
     """
-    system.setup_audit_log()
     packages = system.SETTINGS.resolved_packages(packages)
     errors = 0
     for name in packages:
         p = PACKAGERS.resolved(name)
         if not force and not p.current.file_exists:
             errors += 1
-            runez.error("%s was not installed with pickley", name)
+            LOG.error("%s was not installed with pickley", name)
             continue
 
         eps = p.entry_points
@@ -156,14 +156,14 @@ def uninstall(force, packages):
             continue
 
         if ep_uninstalled + meta_deleted == 0:
-            runez.info("Nothing to uninstall for %s" % name)
+            LOG.info("Nothing to uninstall for %s" % name)
             continue
 
-        message = "Would uninstall" if runez.State.dryrun else "Uninstalled"
+        message = "Would uninstall" if runez.DRYRUN else "Uninstalled"
         message = "%s %s" % (message, name)
         if ep_uninstalled > 1:
             message += " (%s entry points)" % ep_uninstalled
-        runez.info(message)
+        LOG.info(message)
 
     if errors:
         runez.abort()
@@ -176,9 +176,8 @@ def copy(source, destination):
     """
     Copy file or folder, relocate venvs accordingly (if any)
     """
-    system.setup_audit_log()
     system.copy(source, destination)
-    runez.info("Copied %s -> %s", short(source), short(destination))
+    LOG.info("Copied %s -> %s", short(source), short(destination))
 
 
 @main.command()
@@ -188,9 +187,8 @@ def move(source, destination):
     """
     Copy file or folder, relocate venvs accordingly (if any)
     """
-    system.setup_audit_log()
     system.move(source, destination)
-    runez.info("Moved %s -> %s", short(source), short(destination))
+    LOG.info("Moved %s -> %s", short(source), short(destination))
 
 
 @main.command()
@@ -209,7 +207,6 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     folder = runez.resolved_path(folder)
 
     system.SETTINGS.meta = meta_folder(build)
-    system.setup_audit_log()
 
     if not os.path.isdir(folder):
         runez.abort("Folder %s does not exist", short(folder))
@@ -233,7 +230,7 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     p.package()
     p.create_symlinks(symlink)
     p.sanity_check(sanity_check)
-    runez.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(p.executables))
+    LOG.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(p.executables))
     runez.Anchored.pop(folder)
 
 
@@ -246,17 +243,17 @@ def settings(diagnostics):
     if diagnostics:
         prefix = getattr(sys, "prefix", None)
         real_prefix = getattr(sys, "real_prefix", None)
-        runez.info("python         : %s", short(system.target_python(desired=system.INVOKER, fatal=None), meta=False))
-        runez.info("sys.executable : %s", short(sys.executable, meta=False))
-        runez.info("sys.prefix     : %s", short(prefix, meta=False))
+        LOG.info("python         : %s", short(system.target_python(desired=system.INVOKER, fatal=None), meta=False))
+        LOG.info("sys.executable : %s", short(sys.executable, meta=False))
+        LOG.info("sys.prefix     : %s", short(prefix, meta=False))
         if real_prefix:
-            runez.info("sys.real_prefix: %s", short(real_prefix, meta=False))
+            LOG.info("sys.real_prefix: %s", short(real_prefix, meta=False))
         if not system.SETTINGS.meta.path.startswith(system.PICKLEY_PROGRAM_PATH):
-            runez.info("pickley        : %s" % short(system.PICKLEY_PROGRAM_PATH, meta=False))
-        runez.info("meta           : %s" % short(system.SETTINGS.meta.path, meta=False))
-        runez.info("")
+            LOG.info("pickley        : %s" % short(system.PICKLEY_PROGRAM_PATH, meta=False))
+        LOG.info("meta           : %s" % short(system.SETTINGS.meta.path, meta=False))
+        LOG.info("")
 
-    runez.info(system.SETTINGS.represented())
+    LOG.info(system.SETTINGS.represented())
 
 
 @main.command(name="auto-upgrade")
