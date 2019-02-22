@@ -6,7 +6,6 @@ import logging
 import os
 import re
 import sys
-from logging.handlers import RotatingFileHandler
 
 import runez
 
@@ -28,12 +27,6 @@ INVOKER = "invoker"
 
 RE_PYTHON_LOOSE = re.compile(r"(py(thon ?)?)?([0-9])?\.?([0-9])?\.?[0-9]*", re.IGNORECASE)
 RE_PYTHON_STRICT = re.compile(r"(python([0-9]\.[0-9])|([0-9]\.[0-9])\.?[0-9]*)")
-
-
-class LogHandlers:
-    """Log handlers, allows to setup logging once"""
-    audit_handler = None
-    debug_handler = None
 
 
 PICKLEY_PROGRAM_PATH = runez.resolved_path(pickley.pickley_program_path())
@@ -79,17 +72,6 @@ def installed_names():
                 if os.path.exists(os.path.join(fpath, ".current.json")):
                     result.append(fname)
     return result
-
-
-def setup_audit_log():
-    """Log to <meta>/audit.log"""
-    if runez.DRYRUN or LogHandlers.audit_handler:
-        return
-    path = SETTINGS.meta.full_path("audit.log")
-    LogHandlers.audit_handler.setLevel(logging.DEBUG)
-    LogHandlers.audit_handler.setFormatter(logging.Formatter("%(asctime)s [%(process)s] %(levelname)s - %(message)s"))
-    logging.root.addHandler(LogHandlers.audit_handler)
-    LOG.info(":: %s", runez.represented_args(sys.argv), output=False)
 
 
 def virtualenv_path():
@@ -286,7 +268,7 @@ def target_python(desired=None, package_name=None, fatal=True):
     return python
 
 
-class PythonInstallation:
+class PythonInstallation(object):
 
     text = None  # type: str # Given description or path
     executable = None  # type: str # Full path to python executable

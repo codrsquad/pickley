@@ -89,7 +89,7 @@ class Definition(object):
         return "%s:%s" % (short(self.source), self.key)
 
 
-class SettingsFile:
+class SettingsFile(object):
     """
     Deserialized json settings file, configures:
     - installation "channel" to use (stable, latest, ...)
@@ -229,7 +229,7 @@ class SettingsFile:
         return "\n".join(result)
 
 
-class Settings:
+class Settings(object):
     """
     Collection of settings files
     """

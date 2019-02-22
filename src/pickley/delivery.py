@@ -51,7 +51,7 @@ fi
 """ % system.WRAPPER_MARK
 
 
-class DeliveryMethod:
+class DeliveryMethod(object):
     """
     Various implementation of delivering the actual executables
     """

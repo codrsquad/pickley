@@ -17,7 +17,7 @@ class SoftLockException(Exception):
         self.folder = folder
 
 
-class SoftLock:
+class SoftLock(object):
     """
     Simple soft file lock mechanism
 
@@ -107,7 +107,7 @@ def vrun(package_name, command, *args, **kwargs):
         return shared._run_from_venv(command, *args, **kwargs)
 
 
-class SharedVenv:
+class SharedVenv(object):
     def __init__(self, lock, venv_python):
         """
         :param SoftLock lock: Acquired lock

@@ -8,6 +8,7 @@ import runez
 
 
 __version__ = runez.get_version(__name__)
+runez.system.AbortException = SystemExit
 
 
 def pickley_program_path():

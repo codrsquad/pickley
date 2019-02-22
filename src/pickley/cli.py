@@ -10,7 +10,7 @@ import sys
 import click
 import runez
 
-from pickley import __version__, system
+from pickley import system
 from pickley.lock import SoftLockException
 from pickley.package import DELIVERERS, PACKAGERS
 from pickley.settings import meta_folder
@@ -22,9 +22,9 @@ LOG = logging.getLogger(__name__)
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=140), epilog=__doc__)
-@click.version_option(version=__version__, message="%(version)s")
-@click.option("--debug", is_flag=True, help="Show debug logs")
-@click.option("--dryrun", "-n", is_flag=True, help="Perform a dryrun")
+@runez.click.version(message="%(version)s")
+@runez.click.debug()
+@runez.click.dryrun("-n")
 @click.option("--base", "-b", metavar="PATH", help="Base installation folder to use (default: folder containing pickley)")
 @click.option("--index", "-i", metavar="PATH", help="Pypi index to use")
 @click.option("--config", "-c", metavar="PATH", help="Extra config to load")
@@ -35,20 +35,20 @@ def main(debug, dryrun, base, index, config, python, delivery, packager):
     """
     Package manager for python CLIs
     """
-    if base:
-        base = runez.resolved_path(base)
-        if not os.path.exists(base):
-            runez.abort("Can't use %s as base: folder does not exist", short(base))
-        system.SETTINGS.set_base(base)
-
     runez.log.setup(
         debug=debug,
         dryrun=dryrun,
         custom_location=system.SETTINGS.meta.full_path("audit.log"),
         file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",
-        greeting=":: {argv}",
+        greetings=":: {argv}",
     )
     runez.log.silence("pip")
+
+    if base:
+        base = runez.resolved_path(base)
+        if not os.path.exists(base):
+            runez.abort("Can't use %s as base: folder does not exist", short(base))
+        system.SETTINGS.set_base(base)
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None

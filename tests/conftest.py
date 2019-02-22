@@ -1,6 +1,4 @@
 import os
-import shutil
-from tempfile import mkdtemp
 
 import pytest
 import runez
@@ -31,20 +29,25 @@ def verify_abort(func, *args, **kwargs):
         return str(logged)
 
 
+class TemporaryBase(runez.TempFolder):
+
+    def __enter__(self):
+        super(TemporaryBase, self).__enter__()
+        self.old_base = system.SETTINGS.base
+        self.old_config = system.SETTINGS.config
+        system.SETTINGS.set_base(self.tmp_folder)
+        return self.tmp_folder
+
+    def __exit__(self, *_):
+        super(TemporaryBase, self).__exit__(*_)
+        system.SETTINGS.set_base(self.old_base)
+        system.SETTINGS.load_config(config=self.old_config)
+
+
+cli.context = TemporaryBase
+
+
 @pytest.fixture
 def temp_base():
-    old_base = system.SETTINGS.base
-    old_config = system.SETTINGS.config
-    old_cwd = os.getcwd()
-    path = os.path.realpath(mkdtemp())
-
-    try:
-        os.chdir(path)
-        system.SETTINGS.set_base(path)
-        yield path
-
-    finally:
-        os.chdir(old_cwd)
-        system.SETTINGS.set_base(old_base)
-        system.SETTINGS.load_config(config=old_config)
-        shutil.rmtree(path)
+    with TemporaryBase() as base:
+        yield base
