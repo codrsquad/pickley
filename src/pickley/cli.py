@@ -19,9 +19,11 @@ from pickley.uninstall import uninstall_existing
 
 
 LOG = logging.getLogger(__name__)
+AUDITED = ["install", "uninstall"]
 
 
-@click.group(context_settings=dict(help_option_names=["-h", "--help"], max_content_width=140), epilog=__doc__)
+@click.group(**runez.click.settings())
+@click.pass_context
 @runez.click.version(message="%(version)s")
 @runez.click.debug()
 @runez.click.dryrun("-n")
@@ -31,24 +33,38 @@ LOG = logging.getLogger(__name__)
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", type=click.Choice(DELIVERERS.names()), help="Delivery method to use")
 @click.option("--packager", "-p", help="Packager to use (one of: %s)" % ",".join(PACKAGERS.names()))
-def main(debug, dryrun, base, index, config, python, delivery, packager):
+def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
     """
     Package manager for python CLIs
     """
-    runez.log.setup(
-        debug=debug,
-        dryrun=dryrun,
-        custom_location=system.SETTINGS.meta.full_path("audit.log"),
-        file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",
-        greetings=":: {argv}",
-    )
-    runez.log.silence("pip")
+    if dryrun:
+        debug = True
 
     if base:
         base = runez.resolved_path(base)
         if not os.path.exists(base):
             runez.abort("Can't use %s as base: folder does not exist", short(base))
         system.SETTINGS.set_base(base)
+
+    if not dryrun and ctx.invoked_subcommand in AUDITED:
+        file_location = system.SETTINGS.meta.full_path("audit.log")
+
+    else:
+        file_location = None
+
+    runez.log.setup(
+        debug=debug,
+        dryrun=dryrun,
+        greetings=":: {argv}",
+        console_format="%(levelname)s %(message)s" if debug else "%(message)s",
+        console_level=logging.INFO,
+        console_stream=sys.stdout,
+        file_format="%(asctime)s %(timezone)s [%(process)d] %(context)s%(levelname)s - %(message)s",
+        file_level=logging.DEBUG,
+        file_location=file_location,
+        locations=None,
+    )
+    runez.log.silence("pip")
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None

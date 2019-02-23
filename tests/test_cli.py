@@ -56,7 +56,7 @@ def test_package(cli):
 
 
 def test_bogus_install(cli):
-    cli.expect_failure("-b foo/bar settings", "Can't use", "as base", "folder does not exist")
+    cli.expect_failure("-b foo/bar settings", "Can't use", "as base", "folder does not exist", log=True)
 
     cli.expect_failure("auto-upgrade foo", "not currently installed")
     cli.expect_failure("package foo/bar", "Folder", "does not exist")
