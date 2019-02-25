@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from distutils.version import StrictVersion
@@ -7,6 +8,7 @@ import runez
 from six.moves.urllib.request import Request, urlopen
 
 
+LOG = logging.getLogger(__name__)
 DEFAULT_PYPI = "https://pypi.org/pypi/{name}/json"
 RE_BASENAME = re.compile(r'href=".+/([^/#]+)\.(tar\.gz|whl)#', re.IGNORECASE)
 RE_VERSION = re.compile(r"[^-]+-([^-]+)-.*")
@@ -18,7 +20,7 @@ def request_get(url):
     :return str: Response body
     """
     try:
-        runez.debug("GET %s", url)
+        LOG.debug("GET %s", url)
         request = Request(url)  # nosec
         response = urlopen(request).read()  # nosec
         return response and runez.decode(response).strip()
@@ -34,7 +36,7 @@ def request_get(url):
             return data and runez.decode(data).strip()
 
         except Exception as e:
-            runez.debug("GET %s failed: %s", url, e, exc_info=e)
+            LOG.debug("GET %s failed: %s", url, e, exc_info=e)
 
     return None
 
@@ -74,7 +76,7 @@ def latest_pypi_version(url, name):
             return data.get("info", {}).get("version")
 
         except Exception as e:
-            runez.warning("Failed to parse pypi json from %s: %s\n%s", url, e, data)
+            LOG.warning("Failed to parse pypi json from %s: %s\n%s", url, e, data)
 
         return "error: can't determine latest version from '%s'" % url
 

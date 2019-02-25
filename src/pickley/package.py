@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import zipfile
@@ -13,6 +14,7 @@ from pickley.system import short
 from pickley.uninstall import uninstall_existing
 
 
+LOG = logging.getLogger(__name__)
 PACKAGERS = ImplementationMap("packager")
 
 # These standard locations usually help avoid silly C compilation errors
@@ -262,12 +264,12 @@ class Packager(object):
                 # For backwards compatibility with pickley <= v1.4.2
                 self._entry_points = dict((k, "") for k in self._entry_points)
             if self._entry_points is None:
-                return {self.name: ""} if runez.State.dryrun else {}
+                return {self.name: ""} if runez.DRYRUN else {}
         return self._entry_points
 
     def refresh_entry_points(self):
         """Refresh entry point from saved json and/or build folder"""
-        if runez.State.dryrun:
+        if runez.DRYRUN:
             return
         self._entry_points = self.get_entry_points()
         runez.save_json(self._entry_points, self.entry_points_path, fatal=False)
@@ -295,7 +297,7 @@ class Packager(object):
                                     return runez.get_conf(fh.readlines(), default={}).get("console_scripts")
 
                 except Exception as e:
-                    runez.error("Can't read wheel %s: %s", wheel_path, e, exc_info=e)
+                    LOG.error("Can't read wheel %s: %s", wheel_path, e, exc_info=e)
 
         return None
 
@@ -399,7 +401,7 @@ class Packager(object):
             source = path[len(base):]
             basename = os.path.basename(path)
             destination = os.path.join(target, basename)
-            runez.symlink(source, destination, must_exist=False, fatal=fatal, logger=runez.info)
+            runez.symlink(source, destination, must_exist=False, fatal=fatal, logger=LOG.info)
         return 1 if self.executables else 0
 
     def sanity_check(self, args):
@@ -409,7 +411,7 @@ class Packager(object):
         if args:
             for path in self.executables:
                 output = runez.run(path, args)
-                runez.info("Sanity check: %s %s -> %s", short(path), args, output)
+                LOG.info("Sanity check: %s %s -> %s", short(path), args, output)
 
     def effective_package(self, template):
         """
@@ -424,7 +426,7 @@ class Packager(object):
             self.internal_install(force=force)
 
         except SoftLockException as e:
-            runez.error("%s is currently being installed by another process" % self.name)
+            LOG.error("%s is currently being installed by another process" % self.name)
             runez.abort("If that is incorrect, please delete %s.lock", short(e.folder))
 
     def internal_install(self, force=False, verbose=True):
@@ -439,11 +441,9 @@ class Packager(object):
                 return runez.abort("Can't install %s: %s", self.name, self.desired.problem)
 
             if not force and self.current.equivalent(self.desired):
-                runez.info(self.desired.representation(verbose=verbose, note="is already installed"))
+                LOG.info(self.desired.representation(verbose=verbose, note="is already installed"))
                 self.cleanup()
                 return
-
-            system.setup_audit_log()
 
             prev_entry_points = self.entry_points
             self.effective_install()
@@ -464,8 +464,8 @@ class Packager(object):
             self.current.set_from(self.desired)
             self.current.save(fatal=False)
 
-            msg = "Would install" if runez.State.dryrun else "Installed"
-            runez.info("%s %s", msg, self.desired.representation(verbose=verbose))
+            msg = "Would install" if runez.DRYRUN else "Installed"
+            LOG.info("%s %s", msg, self.desired.representation(verbose=verbose))
 
     def cleanup(self):
         """Cleanup older installs"""

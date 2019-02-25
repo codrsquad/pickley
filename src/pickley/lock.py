@@ -1,9 +1,13 @@
+import logging
 import os
 import time
 
 import runez
 
 from pickley import system
+
+
+LOG = logging.getLogger(__name__)
 
 
 class SoftLockException(Exception):
@@ -13,7 +17,7 @@ class SoftLockException(Exception):
         self.folder = folder
 
 
-class SoftLock:
+class SoftLock(object):
     """
     Simple soft file lock mechanism
 
@@ -73,7 +77,7 @@ class SoftLock:
         runez.write(self.lock, "%s\n" % os.getpid())
 
         if not self._should_keep():
-            runez.delete(self.folder, logger=runez.debug if self.keep else None)
+            runez.delete(self.folder, logger=LOG.debug if self.keep else None)
 
         return self
 
@@ -82,7 +86,7 @@ class SoftLock:
         Release lock
         """
         if not self._should_keep():
-            runez.delete(self.folder, logger=runez.debug if self.keep else None)
+            runez.delete(self.folder, logger=LOG.debug if self.keep else None)
         runez.delete(self.lock, logger=None)
 
 
@@ -103,7 +107,7 @@ def vrun(package_name, command, *args, **kwargs):
         return shared._run_from_venv(command, *args, **kwargs)
 
 
-class SharedVenv:
+class SharedVenv(object):
     def __init__(self, lock, venv_python):
         """
         :param SoftLock lock: Acquired lock
@@ -135,7 +139,7 @@ class SharedVenv:
         return self._frozen or {}
 
     def _run_pip(self, *args, **kwargs):
-        args = runez.flattened(args, unique=False)
+        args = runez.flattened(args, split=runez.SHELL)
         return runez.run(self.pip, *args, **kwargs)
 
     def _refresh_frozen(self):
@@ -176,7 +180,7 @@ class SharedVenv:
         """
         if package_name == "pip":
             return self._run_pip(*args, **kwargs)
-        args = runez.flattened(args, unique=False)
+        args = runez.flattened(args, split=runez.SHELL)
         program = kwargs.pop("program", package_name)
         program, version = system.despecced(program)
         full_path = self._installed_module(program, version=version)

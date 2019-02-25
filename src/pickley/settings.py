@@ -18,6 +18,7 @@ tree <base>
 └── tox -> .pickley/tox/2.9.1/...   # Produced exe, can be a symlink or a small wrapper exe (to ensure up-to-date)
 """
 
+import logging
 import os
 
 import runez
@@ -26,6 +27,7 @@ from pickley import system
 from pickley.system import short
 
 
+LOG = logging.getLogger(__name__)
 DOT_PICKLEY = ".pickley"
 DEFAULT_INSTALL_TIMEOUT = 30
 DEFAULT_VERSION_CHECK_DELAY = 10
@@ -87,7 +89,7 @@ class Definition(object):
         return "%s:%s" % (short(self.source), self.key)
 
 
-class SettingsFile:
+class SettingsFile(object):
     """
     Deserialized json settings file, configures:
     - installation "channel" to use (stable, latest, ...)
@@ -133,10 +135,10 @@ class SettingsFile:
                 if name.startswith("bundle:"):
                     bundle = self.get_definition("bundle.%s" % name[7:])
                     if bundle and bundle.value:
-                        result.extend(runez.flattened(bundle.value, separator=" "))
+                        result.extend(runez.flattened(bundle.value, split=(" ", runez.UNIQUE)))
                         continue
                 result.append(name)
-        return runez.flattened(result, separator=" ")
+        return runez.flattened(result, split=(" ", runez.UNIQUE))
 
     def flatten(self, key, separator=None, direct=False):
         if not self._contents:
@@ -145,11 +147,11 @@ class SettingsFile:
         if not node:
             return
         if direct:
-            self._contents[key] = runez.flattened(node, separator=separator)
+            self._contents[key] = runez.flattened(node, split=(separator, runez.UNIQUE))
             return
         result = {}
         for name, value in node.items():
-            result[name] = runez.flattened(value, separator=separator)
+            result[name] = runez.flattened(value, split=(separator, runez.UNIQUE))
         self._contents[key] = result
 
     @property
@@ -209,7 +211,7 @@ class SettingsFile:
                     return Definition(value, self, key)
                 return None
             if definition.value is not None:
-                runez.debug("'%s' is of type %s (not a dict) in '%s'", prefix, type(definition.value), short(self.path))
+                LOG.debug("'%s' is of type %s (not a dict) in '%s'", prefix, type(definition.value), short(self.path))
             return None
         value = self.contents.get(key)
         if value is not None:
@@ -227,7 +229,7 @@ class SettingsFile:
         return "\n".join(result)
 
 
-class Settings:
+class Settings(object):
     """
     Collection of settings files
     """
@@ -405,7 +407,7 @@ class Settings:
                         result.extend(bundle)
                         continue
                 result.append(name)
-        return runez.flattened(result)
+        return runez.flattened(result, split=runez.UNIQUE)
 
     def represented(self, include_defaults=True):
         """

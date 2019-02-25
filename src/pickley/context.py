@@ -3,7 +3,7 @@ import runez
 from pickley import system
 
 
-class ImplementationMap:
+class ImplementationMap(object):
     """
     Keep track of implementations by name, configurable via settings
     """

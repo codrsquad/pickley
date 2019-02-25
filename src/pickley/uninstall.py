@@ -1,9 +1,13 @@
+import logging
 import os
 
 import runez
 
 from pickley import system
 from pickley.system import short
+
+
+LOG = logging.getLogger(__name__)
 
 
 def uninstall_existing(target, fatal=True):
@@ -77,7 +81,7 @@ def brew_uninstall(target, fatal=False):
     if not brew or not name:
         return -1
 
-    output = runez.run(brew, "uninstall", "-f", name, fatal=False, logger=runez.info)
+    output = runez.run(brew, "uninstall", "-f", name, fatal=False, logger=LOG.info)
     if output is False:
         # Failed brew uninstall
         return runez.abort("'%s uninstall %s' failed, please check", brew, name, fatal=(fatal, -1))

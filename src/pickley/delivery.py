@@ -1,3 +1,4 @@
+import logging
 import os
 
 import runez
@@ -6,6 +7,7 @@ from pickley import system
 from pickley.context import ImplementationMap
 from pickley.system import short
 
+LOG = logging.getLogger(__name__)
 DELIVERERS = ImplementationMap("delivery")
 
 GENERIC_WRAPPER = """
@@ -49,7 +51,7 @@ fi
 """ % system.WRAPPER_MARK
 
 
-class DeliveryMethod:
+class DeliveryMethod(object):
     """
     Various implementation of delivering the actual executables
     """
@@ -65,15 +67,15 @@ class DeliveryMethod:
         :param str source: Path to original executable being delivered (.pickley/<package>/...)
         """
         runez.delete(target, logger=None)
-        if runez.State.dryrun:
-            runez.debug("Would %s %s (source: %s)", self.implementation_name, short(target), short(source))
+        if runez.DRYRUN:
+            LOG.debug("Would %s %s (source: %s)", self.implementation_name, short(target), short(source))
             return
 
         if not os.path.exists(source):
             runez.abort("Can't %s, source %s does not exist", self.implementation_name, short(source))
 
         try:
-            runez.debug("Delivering %s %s -> %s", self.implementation_name, short(target), short(source))
+            LOG.debug("Delivering %s %s -> %s", self.implementation_name, short(target), short(source))
             self._install(target, source)
 
         except Exception as e:

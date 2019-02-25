@@ -1,3 +1,4 @@
+import logging
 import os
 
 import pytest
@@ -59,9 +60,9 @@ def test_missing_implementation():
 def test_relocate_venv_successfully(temp_base):
     with runez.CaptureOutput() as logged:
         original = "line 1: source\nline 2\n"
-        runez.write("foo/bar/bin/baz", original, logger=runez.debug)
-        runez.write("foo/bar/bin/empty", "", logger=runez.debug)
-        runez.write("foo/bar/bin/python", "", logger=runez.debug)
+        runez.write("foo/bar/bin/baz", original, logger=logging.debug)
+        runez.write("foo/bar/bin/empty", "", logger=logging.debug)
+        runez.write("foo/bar/bin/python", "", logger=logging.debug)
         runez.make_executable("foo/bar/bin/baz")
         runez.make_executable("foo/bar/bin/empty")
         runez.make_executable("foo/bar/bin/python")
@@ -89,6 +90,6 @@ def test_relocate_venv_successfully(temp_base):
         assert system.relocate_venv("foo", "source", "dest", fatal=False) == 0
 
         # Test relocating a single file
-        runez.write("foo/bar/bin/baz", original, logger=runez.debug)
+        runez.write("foo/bar/bin/baz", original, logger=logging.debug)
         assert system.relocate_venv("foo/bar/bin/baz", "source", "dest", fatal=False) == 1
         assert "Relocated " in logged
