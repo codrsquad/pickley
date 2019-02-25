@@ -22,7 +22,7 @@ LOG = logging.getLogger(__name__)
 AUDITED = ["install", "uninstall"]
 
 
-@click.group(**runez.click.settings())
+@runez.click.group()
 @click.pass_context
 @runez.click.version(message="%(version)s")
 @runez.click.debug()
@@ -63,6 +63,7 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
         file_level=logging.DEBUG,
         file_location=file_location,
         locations=None,
+        rotate="size:500k,1",
     )
     runez.log.silence("pip")
 
