@@ -33,6 +33,13 @@ PRERELEASE_SAMPLE = """
 <a href="/pypi/packages/pypi-public/black/black-18.3a1-py3-none-any.whl#sha256=..."
 """
 
+UNKNOWN_VERSIONING_SAMPLE = """
+<html><head><title>Simple Index</title><meta name="api-version" value="2" /></head><body>
+<a href="/pypi/packages/pypi-private/someproj/someproj-1.3.0_custom-py3-none-any.whl#sha256=..."</a><br/>
+<a href="/pypi/packages/pypi-private/someproj/someproj-1.3.0_custom.tar.gz#sha256=...">someproj-1.3.0_custom.tar.gz</a><br/>
+"""
+
+
 EXPECTED_REPRESENTATION = """
 settings:
   base: {base}
@@ -159,6 +166,10 @@ def test_pypi(*_):
         assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi/{name}", "twine") == "1.9.1"
 
     with patch("pickley.pypi.request_get", return_value=PRERELEASE_SAMPLE):
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "black").startswith("error: ")
+
+    with patch("pickley.pypi.request_get", return_value=UNKNOWN_VERSIONING_SAMPLE):
+        # Unknown version: someproj-1.3.0_custom
         assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "black").startswith("error: ")
 
     with patch("pickley.pypi.urlopen", side_effect=Exception):
