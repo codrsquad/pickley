@@ -2,6 +2,7 @@
 Functionality for the whole app, easily importable via one name
 """
 
+import inspect
 import logging
 import os
 import re
@@ -28,9 +29,17 @@ INVOKER = "invoker"
 RE_PYTHON_LOOSE = re.compile(r"(py(thon ?)?)?([0-9])?\.?([0-9])?\.?[0-9]*", re.IGNORECASE)
 RE_PYTHON_STRICT = re.compile(r"(python([0-9]\.[0-9])|([0-9]\.[0-9])\.?[0-9]*)")
 
+PICKLEY_PROGRAM_PATH = runez.resolved_path(sys.argv[0])
 
-PICKLEY_PROGRAM_PATH = runez.resolved_path(pickley.pickley_program_path())
-sys.argv[0] = PICKLEY_PROGRAM_PATH
+
+def inform(message):
+    """
+    Args:
+        message (str): Message to print and log at level INFO
+    """
+    print(message)
+    logger = logging.getLogger(inspect.currentframe().f_back.f_globals["__name__"])
+    logger.info(message)
 
 
 def short(path, meta=True):

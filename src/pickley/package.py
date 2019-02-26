@@ -411,7 +411,7 @@ class Packager(object):
         if args:
             for path in self.executables:
                 output = runez.run(path, args)
-                LOG.info("Sanity check: %s %s -> %s", short(path), args, output)
+                print("Sanity check: %s %s -> %s" % (short(path), args, output))
 
     def effective_package(self, template):
         """
@@ -441,7 +441,7 @@ class Packager(object):
                 return runez.abort("Can't install %s: %s", self.name, self.desired.problem)
 
             if not force and self.current.equivalent(self.desired):
-                LOG.info(self.desired.representation(verbose=verbose, note="is already installed"))
+                system.inform(self.desired.representation(verbose=verbose, note="is already installed"))
                 self.cleanup()
                 return
 
@@ -465,7 +465,7 @@ class Packager(object):
             self.current.save(fatal=False)
 
             msg = "Would install" if runez.DRYRUN else "Installed"
-            LOG.info("%s %s", msg, self.desired.representation(verbose=verbose))
+            system.inform("%s %s" % (msg, self.desired.representation(verbose=verbose)))
 
     def cleanup(self):
         """Cleanup older installs"""

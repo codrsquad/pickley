@@ -46,7 +46,7 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
     if base:
         base = runez.resolved_path(base)
         if not os.path.exists(base):
-            runez.abort("Can't use %s as base: folder does not exist", short(base))
+            sys.exit("Can't use %s as base: folder does not exist" % short(base))
         system.SETTINGS.set_base(base)
 
     if not dryrun and ctx.invoked_subcommand in AUDITED:
@@ -60,8 +60,8 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
         dryrun=dryrun,
         greetings=":: {argv}",
         console_format="%(levelname)s %(message)s" if debug else "%(message)s",
-        console_level=logging.INFO,
-        console_stream=sys.stdout,
+        console_level=logging.WARNING,
+        console_stream=sys.stderr,
         file_format="%(asctime)s %(timezone)s [%(process)d] %(context)s%(levelname)s - %(message)s",
         file_level=logging.DEBUG,
         file_location=file_location,
@@ -88,7 +88,7 @@ def check(force, verbose, packages):
     code = 0
     packages = system.SETTINGS.resolved_packages(packages) or system.installed_names()
     if not packages:
-        LOG.info("No packages installed")
+        print("No packages installed")
 
     else:
         for name in packages:
@@ -98,13 +98,13 @@ def check(force, verbose, packages):
                 LOG.error(p.desired.representation(verbose))
                 code = 1
             elif not p.current.version or not p.current.valid:
-                LOG.info(p.desired.representation(verbose, note="is not installed"))
+                print(p.desired.representation(verbose, note="is not installed"))
                 code = 1
             elif p.current.version != p.desired.version:
-                LOG.info(p.current.representation(verbose, note="can be upgraded to %s" % p.desired.version))
+                print(p.current.representation(verbose, note="can be upgraded to %s" % p.desired.version))
                 code = 1
             else:
-                LOG.info(p.current.representation(verbose, note="is installed"))
+                print(p.current.representation(verbose, note="is installed"))
 
     sys.exit(code)
 
@@ -117,12 +117,12 @@ def list(verbose):
     """
     packages = system.installed_names()
     if not packages:
-        LOG.info("No packages installed")
+        print("No packages installed")
 
     else:
         for name in packages:
             p = PACKAGERS.resolved(name)
-            LOG.info(p.current.representation(verbose))
+            print(p.current.representation(verbose))
 
 
 @main.command()
@@ -176,17 +176,17 @@ def uninstall(force, packages):
             continue
 
         if ep_uninstalled + meta_deleted == 0:
-            LOG.info("Nothing to uninstall for %s" % name)
+            system.inform("Nothing to uninstall for %s" % name)
             continue
 
         message = "Would uninstall" if runez.DRYRUN else "Uninstalled"
         message = "%s %s" % (message, name)
         if ep_uninstalled > 1:
             message += " (%s entry points)" % ep_uninstalled
-        LOG.info(message)
+        system.inform(message)
 
     if errors:
-        runez.abort()
+        sys.exit(1)
 
 
 @main.command()
@@ -197,7 +197,7 @@ def copy(source, destination):
     Copy file or folder, relocate venvs accordingly (if any)
     """
     system.copy(source, destination)
-    LOG.info("Copied %s -> %s", short(source), short(destination))
+    print("Copied %s -> %s" % (short(source), short(destination)))
 
 
 @main.command()
@@ -208,7 +208,7 @@ def move(source, destination):
     Copy file or folder, relocate venvs accordingly (if any)
     """
     system.move(source, destination)
-    LOG.info("Moved %s -> %s", short(source), short(destination))
+    print("Moved %s -> %s" % (short(source), short(destination)))
 
 
 @main.command()
@@ -229,17 +229,17 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     system.SETTINGS.meta = meta_folder(build)
 
     if not os.path.isdir(folder):
-        runez.abort("Folder %s does not exist", short(folder))
+        sys.exit("Folder %s does not exist" % short(folder))
 
     setup_py = os.path.join(folder, "setup.py")
     if not os.path.exists(setup_py):
-        runez.abort("No setup.py in %s", short(folder))
+        sys.exit("No setup.py in %s" % short(folder))
 
     with runez.CurrentFolder(folder):
         # Some setup.py's assume their working folder is the folder where they're in
         name = system.run_python(setup_py, "--name", fatal=False, dryrun=False)
         if not name:
-            runez.abort("Could not determine package name from %s", short(setup_py))
+            sys.exit("Could not determine package name from %s" % short(setup_py))
 
     runez.Anchored.add(folder)
     p = PACKAGERS.resolved(name)
@@ -250,7 +250,7 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     p.package()
     p.create_symlinks(symlink)
     p.sanity_check(sanity_check)
-    LOG.info("Packaged %s successfully, produced: %s", short(folder), runez.represented_args(p.executables))
+    print("Packaged %s successfully, produced: %s" % (short(folder), runez.represented_args(p.executables)))
     runez.Anchored.pop(folder)
 
 
@@ -263,17 +263,17 @@ def settings(diagnostics):
     if diagnostics:
         prefix = getattr(sys, "prefix", None)
         real_prefix = getattr(sys, "real_prefix", None)
-        LOG.info("python         : %s", short(system.target_python(desired=system.INVOKER, fatal=None), meta=False))
-        LOG.info("sys.executable : %s", short(sys.executable, meta=False))
-        LOG.info("sys.prefix     : %s", short(prefix, meta=False))
+        print("python         : %s" % short(system.target_python(desired=system.INVOKER, fatal=None), meta=False))
+        print("sys.executable : %s" % short(sys.executable, meta=False))
+        print("sys.prefix     : %s" % short(prefix, meta=False))
         if real_prefix:
-            LOG.info("sys.real_prefix: %s", short(real_prefix, meta=False))
+            print("sys.real_prefix: %s" % short(real_prefix, meta=False))
         if not system.SETTINGS.meta.path.startswith(system.PICKLEY_PROGRAM_PATH):
-            LOG.info("pickley        : %s" % short(system.PICKLEY_PROGRAM_PATH, meta=False))
-        LOG.info("meta           : %s" % short(system.SETTINGS.meta.path, meta=False))
-        LOG.info("")
+            print("pickley        : %s" % short(system.PICKLEY_PROGRAM_PATH, meta=False))
+        print("meta           : %s" % short(system.SETTINGS.meta.path, meta=False))
+        print("")
 
-    LOG.info(system.SETTINGS.represented())
+    print(system.SETTINGS.represented())
 
 
 @main.command(name="auto-upgrade")
@@ -285,16 +285,18 @@ def auto_upgrade(force, package):
     """
     p = PACKAGERS.resolved(package)
     if not p.current.valid:
-        runez.abort("%s is not currently installed", package)
+        sys.exit("%s is not currently installed" % package)
 
     ping = system.SETTINGS.meta.full_path(package, ".ping")
     if not force and runez.is_younger(ping, system.SETTINGS.version_check_seconds):
         # We checked for auto-upgrade recently, no need to check again yet
-        runez.abort("Skipping auto-upgrade, checked recently", code=0)
+        print("Skipping auto-upgrade, checked recently")
+        sys.exit(0)
     runez.touch(ping)
 
     try:
         p.internal_install()
 
     except SoftLockException:
-        runez.abort("Skipping auto-upgrade, %s is currently being installed by another process" % package, code=0)
+        print("Skipping auto-upgrade, %s is currently being installed by another process" % package)
+        sys.exit(0)
