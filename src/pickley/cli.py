@@ -63,7 +63,8 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
         file_level=logging.DEBUG,
         file_location=file_location,
         locations=None,
-        rotate="size:500k,1",
+        rotate="size:500k",
+        rotate_count=1,
     )
     runez.log.silence("pip")
 
