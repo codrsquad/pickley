@@ -37,6 +37,9 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
     """
     Package manager for python CLIs
     """
+    if any(opt in sys.argv for opt in ctx.help_option_names):  # pragma: no cover
+        return
+
     if dryrun:
         debug = True
 
