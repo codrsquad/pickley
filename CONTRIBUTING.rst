@@ -22,9 +22,6 @@ To get going locally, simply do this::
     deactivate
 
 
-You can also get into pickley's virtualenv via ``tox -e venv bash``, use ``exit`` (or ``CTRL+D``) to exit in that case (not ``deactivate``).
-
-
 Running the tests
 =================
 

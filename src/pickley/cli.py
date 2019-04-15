@@ -22,6 +22,16 @@ LOG = logging.getLogger(__name__)
 AUDITED = ["install", "uninstall"]
 
 
+def setup_logging(audit=True):
+    """
+    Args:
+        audit (bool): Setup logging, with optionally audit.log captured as well
+    """
+    runez.log.reset()
+    file_location = system.SETTINGS.meta.full_path("audit.log") if audit else None
+    runez.log.setup(dryrun=runez.DRYRUN, file_location=file_location)
+
+
 @runez.click.group()
 @click.pass_context
 @runez.click.version(message="%(version)s")
@@ -40,6 +50,7 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
     if any(opt in sys.argv for opt in ctx.help_option_names):  # pragma: no cover
         return
 
+    runez.system.set_dryrun(dryrun)
     if dryrun:
         debug = True
 
@@ -49,22 +60,14 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
             sys.exit("Can't use %s as base: folder does not exist" % short(base))
         system.SETTINGS.set_base(base)
 
-    if not dryrun and ctx.invoked_subcommand in AUDITED:
-        file_location = system.SETTINGS.meta.full_path("audit.log")
-
-    else:
-        file_location = None
-
-    runez.log.setup(
+    runez.log.override_spec(
         debug=debug,
-        dryrun=dryrun,
         greetings=":: {argv}",
         console_format="%(levelname)s %(message)s" if debug else "%(message)s",
         console_level=logging.WARNING,
         console_stream=sys.stderr,
         file_format="%(asctime)s %(timezone)s [%(process)d] %(context)s%(levelname)s - %(message)s",
         file_level=logging.DEBUG,
-        file_location=file_location,
         locations=None,
         rotate="size:500k",
         rotate_count=1,
@@ -73,6 +76,9 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
 
     # Disable logging.config, as pip tries to get smart and configure all logging...
     logging.config.dictConfig = lambda x: None
+
+    if dryrun or ctx.invoked_subcommand not in AUDITED:
+        setup_logging(audit=False)
 
     system.SETTINGS.load_config(config=config, delivery=delivery, index=index, packager=packager)
     system.DESIRED_PYTHON = python
@@ -133,6 +139,8 @@ def install(force, packages):
     """
     Install a package from pypi
     """
+    if not runez.DRYRUN:
+        setup_logging()
     packages = system.SETTINGS.resolved_packages(packages)
     for name in packages:
         p = PACKAGERS.resolved(name)
@@ -146,6 +154,8 @@ def uninstall(force, packages):
     """
     Uninstall packages
     """
+    if not runez.DRYRUN:
+        setup_logging()
     packages = system.SETTINGS.resolved_packages(packages)
     errors = 0
     for name in packages:
@@ -296,6 +306,8 @@ def auto_upgrade(force, package):
     runez.touch(ping)
 
     try:
+        if not runez.DRYRUN:
+            setup_logging()
         p.internal_install()
 
     except SoftLockException:
