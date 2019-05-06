@@ -7,6 +7,7 @@ from mock import patch
 
 from pickley import system
 from pickley.context import ImplementationMap
+from pickley.delivery import relocate_venv
 from pickley.lock import SharedVenv, SoftLock, SoftLockException
 from pickley.settings import Settings
 
@@ -24,7 +25,7 @@ def test_lock(temp_base):
         runez.delete(str(lock))
         assert not lock._locked()
 
-        with patch("pickley.system.virtualenv_path", return_value=None):
+        with patch("pickley.lock.virtualenv_path", return_value=None):
             assert "Can't determine path to virtualenv.py" in verify_abort(SharedVenv, lock, None)
 
 
@@ -70,26 +71,26 @@ def test_relocate_venv_successfully(temp_base):
 
         # Simulate already seen
         expected = ["line 1: source\n", "line 2\n"]
-        assert system.relocate_venv("foo", "source", "dest", fatal=False, _seen={"foo"}) == 0
+        assert relocate_venv("foo", "source", "dest", fatal=False, _seen={"foo"}) == 0
         assert runez.get_lines("foo/bar/bin/baz") == expected
         assert not logged
 
         # Simulate failure to write
         with patch("runez.write", return_value=-1):
-            assert system.relocate_venv("foo", "source", "dest", fatal=False) == -1
+            assert relocate_venv("foo", "source", "dest", fatal=False) == -1
         assert runez.get_lines("foo/bar/bin/baz") == expected
         assert not logged
 
         # Simulate effective relocation, by folder
         expected = ["line 1: dest\n", "line 2\n"]
-        assert system.relocate_venv("foo", "source", "dest", fatal=False) == 1
+        assert relocate_venv("foo", "source", "dest", fatal=False) == 1
         assert runez.get_lines("foo/bar/bin/baz") == expected
         assert "Relocated " in logged
 
         # Second relocation is a no-op
-        assert system.relocate_venv("foo", "source", "dest", fatal=False) == 0
+        assert relocate_venv("foo", "source", "dest", fatal=False) == 0
 
         # Test relocating a single file
         runez.write("foo/bar/bin/baz", original, logger=logging.debug)
-        assert system.relocate_venv("foo/bar/bin/baz", "source", "dest", fatal=False) == 1
+        assert relocate_venv("foo/bar/bin/baz", "source", "dest", fatal=False) == 1
         assert "Relocated " in logged

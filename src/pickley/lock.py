@@ -107,6 +107,17 @@ def vrun(package_name, command, *args, **kwargs):
         return shared._run_from_venv(command, *args, **kwargs)
 
 
+def virtualenv_path():
+    """
+    :return str: Path to our own virtualenv.py
+    """
+    import virtualenv
+    path = virtualenv.__file__
+    if path and path.endswith(".pyc"):
+        path = path[:-1]
+    return path
+
+
 class SharedVenv(object):
     def __init__(self, lock, venv_python):
         """
@@ -122,7 +133,7 @@ class SharedVenv(object):
         if runez.is_younger(self.python, self.lock.keep):
             return
         runez.delete(self.folder)
-        venv = system.virtualenv_path()
+        venv = virtualenv_path()
         if not venv:
             runez.abort("Can't determine path to virtualenv.py")
 

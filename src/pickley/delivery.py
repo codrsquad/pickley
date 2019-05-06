@@ -5,7 +5,7 @@ import runez
 
 from pickley import system
 from pickley.context import ImplementationMap
-from pickley.system import short
+from pickley.settings import short
 
 LOG = logging.getLogger(__name__)
 DELIVERERS = ImplementationMap("delivery")
@@ -133,4 +133,112 @@ class DeliveryMethodCopy(DeliveryMethod):
     """
 
     def _install(self, target, source):
-        system.copy(source, target)
+        copy_venv(source, target)
+
+
+def copy_venv(source, destination, fatal=True, logger=LOG.debug):
+    """
+    Copy source -> destination
+
+    :param str source: Source file or folder
+    :param str destination: Destination file or folder
+    :param bool fatal: Abort execution on failure if True
+    :param callable|None logger: Logger to use
+    :return int: 1 if effectively done, 0 if no-op, -1 on failure
+    """
+    return runez.copy(source, destination, adapter=_relocator, fatal=fatal, logger=logger)
+
+
+def move_venv(source, destination, fatal=True, logger=LOG.debug):
+    """
+    Move source -> destination
+
+    :param str source: Source file or folder
+    :param str destination: Destination file or folder
+    :param bool fatal: Abort execution on failure if True
+    :param callable|None logger: Logger to use
+    :return int: 1 if effectively done, 0 if no-op, -1 on failure
+    """
+    return runez.move(source, destination, adapter=_relocator, fatal=fatal, logger=logger)
+
+
+def _relocator(source, destination, fatal=True, logger=None):
+    """Adapter for move/copy file"""
+    relocated = relocate_venv(source, source, destination, fatal=fatal, logger=logger)
+    return " (relocated %s)" % relocated if relocated else ""
+
+
+def relocate_venv(path, source, destination, fatal=True, logger=LOG.debug, _seen=None):
+    """
+    :param str path: Path of file or folder to relocate (change mentions of 'source' to 'destination')
+    :param str source: Where venv used to be
+    :param str destination: Where venv is moved to
+    :param bool fatal: Abort execution on failure if True
+    :param callable|None logger: Logger to use
+    :return int: Number of relocated files (0 if no-op, -1 on failure)
+    """
+    original_call = False
+    if _seen is None:
+        original_call = True
+        _seen = set()
+
+    if not path or path in _seen:
+        return 0
+
+    _seen.add(path)
+    if os.path.isdir(path):
+        relocated = 0
+        if original_call:
+            for bin_folder in find_venvs(path):
+                for name in os.listdir(bin_folder):
+                    fpath = os.path.join(bin_folder, name)
+                    r = relocate_venv(fpath, source, destination, fatal=fatal, logger=logger, _seen=_seen)
+                    if r < 0:
+                        return r
+                    relocated += r
+            if logger and relocated:
+                logger("Relocated %s files in %s: %s -> %s", relocated, short(path), short(source), short(destination))
+        return relocated
+
+    content = runez.get_lines(path, fatal=fatal)
+    if not content:
+        return 0
+
+    modified = False
+    lines = []
+    for line in content:
+        if source in line:
+            line = line.replace(source, destination)
+            modified = True
+        lines.append(line)
+
+    if not modified:
+        return 0
+
+    r = runez.write(path, "".join(lines), fatal=fatal)
+    if r > 0 and logger and original_call:
+        logger("Relocated %s: %s -> %s", short(path), short(source), short(destination))
+    return r
+
+
+def find_venvs(folder, _seen=None):
+    """
+    :param str folder: Folder to scan for venvs
+    :param set|None _seen: Allows to not get stuck on circular symlinks
+    """
+    if folder and os.path.isdir(folder):
+        if _seen is None:
+            folder = os.path.realpath(folder)
+            _seen = set()
+        if folder not in _seen:
+            _seen.add(folder)
+            files = os.listdir(folder)
+            if "bin" in files:
+                bin_folder = os.path.join(folder, "bin")
+                if runez.is_executable(os.path.join(bin_folder, "python")):
+                    yield bin_folder
+                    return
+            for name in files:
+                fname = os.path.join(folder, name)
+                for path in find_venvs(fname, _seen=_seen):
+                    yield path

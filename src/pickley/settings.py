@@ -24,7 +24,6 @@ import os
 import runez
 
 from pickley import system
-from pickley.system import short
 
 
 LOG = logging.getLogger(__name__)
@@ -34,12 +33,63 @@ DEFAULT_VERSION_CHECK_DELAY = 10
 REPRESENTATION_WIDTH = 90
 
 
+def short(path, meta=True):
+    """
+    :param path: Path to represent in its short form
+    :param bool meta: If True, shorten paths relatively to SYSTEM.meta as well
+    :return str: Short form, using '~' if applicable
+    """
+    if not path:
+        return path
+    if not meta:
+        runez.Anchored.pop(system.SETTINGS.meta.path)
+    result = runez.short(str(path))
+    if not meta:
+        runez.Anchored.add(system.SETTINGS.meta.path)
+    return result
+
+
+class FolderBase(object):
+    """
+    This class allows to more easily deal with folders
+    """
+
+    def __init__(self, path, name=None):
+        """
+        :param str path: Path to folder
+        :param str|None name: Name of this folder (defaults to basename of 'path')
+        """
+        self.path = runez.resolved_path(path)
+        self.name = name or os.path.basename(path)
+
+    def relative_path(self, path):
+        """
+        :param str path: Path to relativize
+        :return str: 'path' relative to self.path
+        """
+        return os.path.relpath(path, self.path)
+
+    def relativize(self, component):
+        return component or "" if not component or not component.startswith("/") else component[1:]
+
+    def full_path(self, *relative):
+        """
+        :param list(str) *relative: Relative components
+        :return str: Full path based on self.path
+        """
+        relative = [self.relativize(c) for c in relative]
+        return os.path.join(self.path, *relative)
+
+    def __repr__(self):
+        return "%s: %s" % (self.name, short(self.path))
+
+
 def meta_folder(path):
     """
     :param str path: Path to folder to use
-    :return system.FolderBase: Associated object
+    :return FolderBase: Associated object
     """
-    return system.FolderBase(os.path.join(path, DOT_PICKLEY), name="meta")
+    return FolderBase(os.path.join(path, DOT_PICKLEY), name="meta")
 
 
 def add_representation(result, data, indent=""):
@@ -234,8 +284,8 @@ class Settings(object):
     Collection of settings files
     """
 
-    base = None  # type: system.FolderBase # Installation folder
-    meta = None  # type: system.FolderBase # .pickley folder
+    base = None  # type: FolderBase # Installation folder
+    meta = None  # type: FolderBase # .pickley meta subfolder
 
     def __init__(self, base=None):
         """
@@ -275,7 +325,7 @@ class Settings(object):
 
     def set_base(self, base):
         """
-        :param str|system.FolderBase|None base: Folder to use as base for installations
+        :param str|FolderBase|None base: Folder to use as base for installations
         """
         if not base:
             base = os.environ.get("PICKLEY_ROOT")
@@ -290,10 +340,10 @@ class Settings(object):
                 base = runez.parent_folder(base)
                 base = os.path.join(base, "root")
 
-        if isinstance(base, system.FolderBase):
+        if isinstance(base, FolderBase):
             self.base = base
         else:
-            self.base = system.FolderBase(base, name="base")
+            self.base = FolderBase(base, name="base")
 
         if self.meta:
             runez.Anchored.pop(self.meta.path)

@@ -7,7 +7,7 @@ from mock import patch
 import pickley.settings
 from pickley import system
 from pickley.pypi import DEFAULT_PYPI, latest_pypi_version, pypi_url, request_get
-from pickley.system import short
+from pickley.settings import short
 
 from .conftest import sample_path
 

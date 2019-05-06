@@ -11,25 +11,14 @@ import click
 import runez
 
 from pickley import system
+from pickley.delivery import copy_venv, move_venv
 from pickley.lock import SoftLockException
 from pickley.package import DELIVERERS, PACKAGERS
-from pickley.settings import meta_folder
-from pickley.system import short
+from pickley.settings import meta_folder, short
 from pickley.uninstall import uninstall_existing
 
 
 LOG = logging.getLogger(__name__)
-AUDITED = ["install", "uninstall"]
-
-
-def setup_logging(audit=True):
-    """
-    Args:
-        audit (bool): Setup logging, with optionally audit.log captured as well
-    """
-    runez.log.reset()
-    file_location = system.SETTINGS.meta.full_path("audit.log") if audit else None
-    runez.log.setup(dryrun=runez.DRYRUN, file_location=file_location)
 
 
 @runez.click.group()
@@ -50,35 +39,23 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
     if any(opt in sys.argv for opt in ctx.help_option_names):  # pragma: no cover
         return
 
-    runez.system.set_dryrun(dryrun)
-    if dryrun:
-        debug = True
+    runez.log.setup(
+        dryrun=dryrun,
+        debug=debug,
+        console_format="%(levelname)s %(message)s" if debug else "%(message)s",
+        console_level=logging.WARNING,
+        console_stream=sys.stderr,
+        locations=None,
+    )
+    # Disable logging.config, as pip tries to get smart and configure all logging...
+    runez.log.silence("pip")
+    logging.config.dictConfig = lambda x: None
 
     if base:
         base = runez.resolved_path(base)
         if not os.path.exists(base):
             sys.exit("Can't use %s as base: folder does not exist" % short(base))
         system.SETTINGS.set_base(base)
-
-    runez.log.override_spec(
-        debug=debug,
-        greetings=":: {argv}",
-        console_format="%(levelname)s %(message)s" if debug else "%(message)s",
-        console_level=logging.WARNING,
-        console_stream=sys.stderr,
-        file_format="%(asctime)s %(timezone)s [%(process)d] %(context)s%(levelname)s - %(message)s",
-        file_level=logging.DEBUG,
-        locations=None,
-        rotate="size:500k",
-        rotate_count=1,
-    )
-    runez.log.silence("pip")
-
-    # Disable logging.config, as pip tries to get smart and configure all logging...
-    logging.config.dictConfig = lambda x: None
-
-    if dryrun or ctx.invoked_subcommand not in AUDITED:
-        setup_logging(audit=False)
 
     system.SETTINGS.load_config(config=config, delivery=delivery, index=index, packager=packager)
     system.DESIRED_PYTHON = python
@@ -139,8 +116,7 @@ def install(force, packages):
     """
     Install a package from pypi
     """
-    if not runez.DRYRUN:
-        setup_logging()
+    system.setup_audit_log()
     packages = system.SETTINGS.resolved_packages(packages)
     for name in packages:
         p = PACKAGERS.resolved(name)
@@ -154,8 +130,7 @@ def uninstall(force, packages):
     """
     Uninstall packages
     """
-    if not runez.DRYRUN:
-        setup_logging()
+    system.setup_audit_log()
     packages = system.SETTINGS.resolved_packages(packages)
     errors = 0
     for name in packages:
@@ -207,7 +182,7 @@ def copy(source, destination):
     """
     Copy file or folder, relocate venvs accordingly (if any)
     """
-    system.copy(source, destination)
+    copy_venv(source, destination)
     print("Copied %s -> %s" % (short(source), short(destination)))
 
 
@@ -218,7 +193,7 @@ def move(source, destination):
     """
     Copy file or folder, relocate venvs accordingly (if any)
     """
-    system.move(source, destination)
+    move_venv(source, destination)
     print("Moved %s -> %s" % (short(source), short(destination)))
 
 
@@ -303,11 +278,10 @@ def auto_upgrade(force, package):
         # We checked for auto-upgrade recently, no need to check again yet
         print("Skipping auto-upgrade, checked recently")
         sys.exit(0)
+
     runez.touch(ping)
 
     try:
-        if not runez.DRYRUN:
-            setup_logging()
         p.internal_install()
 
     except SoftLockException:

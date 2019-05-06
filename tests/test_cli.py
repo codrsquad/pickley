@@ -3,10 +3,10 @@ import os
 import runez
 from mock import patch
 
-from pickley import __version__, system
+from pickley import system
 from pickley.lock import SoftLockException
 from pickley.package import PACKAGERS
-from pickley.system import short
+from pickley.settings import short
 from pickley.uninstall import find_uninstaller
 
 from .conftest import PROJECT
@@ -31,7 +31,7 @@ def test_help(cli):
 
 
 def test_version(cli):
-    cli.expect_success("--version", __version__)
+    cli.expect_success("--version")
 
 
 def test_settings(cli):

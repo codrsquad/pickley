@@ -4,7 +4,7 @@ import os
 import runez
 
 from pickley import system
-from pickley.system import short
+from pickley.settings import short
 
 
 LOG = logging.getLogger(__name__)
