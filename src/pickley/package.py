@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 import time
 import zipfile
 
@@ -18,7 +17,6 @@ from pickley.uninstall import uninstall_existing
 
 LOG = logging.getLogger(__name__)
 PACKAGERS = ImplementationMap("packager")
-RE_VERSION = re.compile(r"([0-9.]+)")
 
 # These standard locations usually help avoid silly C compilation errors
 C_COMPILATION_HELP = {
@@ -51,9 +49,9 @@ class VersionMeta(runez.Serializable):
 
     # Dields starting with '_' are not stored to json file
     _base = None                    # type: VersionMeta # Base meta
-    _problem = None                 # type: str # Detected problem, if any
+    _problem = None                 # type: str | None # Detected problem, if any
     _suffix = None                  # type: str # Suffix of json file where this object is persisted
-    _name = None                    # type: str # Associated pypi package name
+    _package_spec = None            # type: system.PackageSpec # Associated pypi package
 
     # Main info, should be passed from latest -> current etc
     version = ""                    # type: str # Effective version
@@ -69,27 +67,27 @@ class VersionMeta(runez.Serializable):
     pickley = ""                    # type: str # Pickley version used to perform install
     timestamp = None                # type: int # Epoch when version was determined (useful to cache "expensive" calls to pypi)
 
-    def __init__(self, name, suffix=None, base=None):
+    def __init__(self, package_spec, suffix=None, base=None):
         """
-        :param str name: Associated pypi package name
+        :param system.PackageSpec package_spec: Associated pypi package spec
         :param str|None suffix: Optional suffix where to store this object
         :param VersionMeta|None base: Base meta on which 'self' should be based
         """
-        self._name = name
+        self._package_spec = package_spec
         self._suffix = suffix
         self._base = base
         if suffix:
-            self._path = system.SETTINGS.meta.full_path(name, ".%s.json" % suffix)
+            self._path = system.SETTINGS.meta.full_path(package_spec.dashed, ".%s.json" % suffix)
 
     def __repr__(self):
         return self.representation()
 
     def _update_dynamic_fields(self):
         """Update dynamically determined fields"""
-        self.delivery = DELIVERERS.resolved_name(self._name, default=self._base and self._base.delivery)
-        self.packager = PACKAGERS.resolved_name(self._name, default=self._base and self._base.packager)
+        self.delivery = DELIVERERS.resolved_name(self._package_spec, default=self._base and self._base.delivery)
+        self.packager = PACKAGERS.resolved_name(self._package_spec, default=self._base and self._base.packager)
         # Record which python was used, as specified
-        self.python = system.target_python(package_name=self._name).text
+        self.python = system.target_python(package_spec=self._package_spec).text
         self.pickley = runez.get_version(pickley)
         self.timestamp = int(time.time())
 
@@ -100,11 +98,11 @@ class VersionMeta(runez.Serializable):
         :return str: Human readable representation
         """
         if self._problem:
-            lead = "%s: %s" % (self._name, self._problem)
+            lead = "%s: %s" % (self._package_spec, self._problem)
         elif self.version:
-            lead = "%s %s" % (self._name, self.version)
+            lead = "%s %s" % (self._package_spec, self.version)
         else:
-            lead = "%s: no version" % self._name
+            lead = "%s: no version" % self._package_spec
         notice = ""
         if verbose:
             notice = []
@@ -213,25 +211,23 @@ class Packager(object):
     """
 
     implementation_name = None  # type: str # Injected by ImplementationMap
-    implementation_version = None  # type: str # Optional, pypi version of underlying implementation to use (example: ==1.4.5)
+    implementation_version = None  # type: str # Optional, pypi version of underlying implementation to use (example: pex==1.4.5)
 
-    def __init__(self, name):
+    def __init__(self, package_spec):
         """
-        :param str name: Name of pypi package
+        :param system.PackageSpec package_spec: Pypi package spec
         """
-        self.dashed_name, self.version = system.despecced(name)
-        system.require_dashed_name(self.dashed_name)
-        self.py_name = self.dashed_name.replace("-", "_")
+        self.package_spec = package_spec
         self._entry_points = None
-        self.current = VersionMeta(self.dashed_name, "current")
-        self.latest = VersionMeta(self.dashed_name, system.LATEST_CHANNEL, base=self.current)
-        self.desired = VersionMeta(self.dashed_name, base=self.current)
+        self.current = VersionMeta(self.package_spec, "current")
+        self.latest = VersionMeta(self.package_spec, system.LATEST_CHANNEL, base=self.current)
+        self.desired = VersionMeta(self.package_spec, base=self.current)
 
         self.current.load(fatal=False)
         if not self.current.valid:
             self.current.invalidate("is not installed")
 
-        self.dist_folder = system.SETTINGS.meta.full_path(self.dashed_name, ".tmp")
+        self.dist_folder = system.SETTINGS.meta.full_path(self.package_spec.dashed, ".tmp")
         self.build_folder = os.path.join(self.dist_folder, "build")
         self.relocatable = False
         self.source_folder = None
@@ -239,8 +235,7 @@ class Packager(object):
         self.executables = []  # Paths to delivered exes (populated by perform_delivery())
 
     def __repr__(self):
-        specced = "%s==%s" % (self.dashed_name, self.version) if self.version else self.dashed_name
-        return "%s %s" % (self.implementation_name, specced)
+        return "%s %s" % (self.implementation_name, self.package_spec.specced)
 
     def specced_command(self):
         """
@@ -252,11 +247,11 @@ class Packager(object):
 
     @property
     def entry_points_path(self):
-        return system.SETTINGS.meta.full_path(self.dashed_name, ".entry-points.json")
+        return system.SETTINGS.meta.full_path(self.package_spec.dashed, ".entry-points.json")
 
     @property
     def removed_entry_points_path(self):
-        return system.SETTINGS.meta.full_path(self.dashed_name, ".removed-entry-points.json")
+        return system.SETTINGS.meta.full_path(self.package_spec.dashed, ".removed-entry-points.json")
 
     @property
     def entry_points(self):
@@ -269,7 +264,7 @@ class Packager(object):
                 # For backwards compatibility with pickley <= v1.4.2
                 self._entry_points = dict((k, "") for k in self._entry_points)
             if self._entry_points is None:
-                return {self.dashed_name: ""} if runez.DRYRUN else {}
+                return {self.package_spec.dashed: ""} if runez.DRYRUN else {}
         return self._entry_points
 
     def refresh_entry_points(self):
@@ -282,19 +277,14 @@ class Packager(object):
 
     def get_entry_points(self):
         """
-        :return dict|None: Determined entry points for pypi package with 'self.dashed_name'
+        :return dict|None: Determined entry points for associated pypi package
         """
         if not os.path.isdir(self.build_folder):
             return None
 
-        version = self.version
-        m = RE_VERSION.search(version)
-        if m:
-            version = m.group(1)
-        prefix = "%s-%s" % (self.py_name, version)
         scripts = {}
         for fname in os.listdir(self.build_folder):
-            if fname.startswith(prefix) and fname.endswith(".whl"):
+            if fname.endswith(".whl") and self.package_spec.version_part(fname):
                 wheel_path = os.path.join(self.build_folder, fname)
                 try:
                     with zipfile.ZipFile(wheel_path, "r") as wheel:
@@ -320,7 +310,7 @@ class Packager(object):
         if not force and self.latest.still_valid:
             return
 
-        version = latest_pypi_version(system.SETTINGS.index, self.dashed_name)
+        version = latest_pypi_version(system.SETTINGS.index, self.package_spec)
         source = system.SETTINGS.index or "pypi"
         self.latest.set_version(version, system.LATEST_CHANNEL, source)
         if not version:
@@ -334,15 +324,15 @@ class Packager(object):
 
     def refresh_desired(self, force=False):
         """Refresh self.desired"""
-        channel = system.SETTINGS.resolved_value("channel", package_name=self.dashed_name)
-        vdef = system.SETTINGS.get_definition("channel.%s.%s" % (channel, self.dashed_name))
+        channel = system.SETTINGS.resolved_value("channel", package_spec=self.package_spec)
+        vdef = system.SETTINGS.get_definition("channel.%s.%s" % (channel, self.package_spec.dashed))
         source = str(vdef)
         version = vdef and vdef.value
 
-        if self.version and self.version != version:
+        if self.package_spec.version and self.package_spec.version != version:
             channel = "adhoc"
             source = "cli"
-            version = self.version
+            version = self.package_spec.version
 
         if version:
             self.desired.set_version(version, channel, source)
@@ -363,25 +353,25 @@ class Packager(object):
         """
         runez.ensure_folder(self.build_folder, folder=True)
         return vrun(
-            self.dashed_name,
+            self.package_spec,
             "pip", "wheel",
             "-i", system.SETTINGS.index,
             "--cache-dir", self.build_folder,
             "--wheel-dir", self.build_folder,
-            self.source_folder if self.source_folder else "%s==%s" % (self.dashed_name, self.version)
+            self.source_folder if self.source_folder else "%s==%s" % (self.package_spec.dashed, self.desired.version)
         )
 
     def package(self):
-        """Package pypi module with 'self.dashed_name'"""
-        if not self.version and not self.source_folder:
+        """Package given python project"""
+        if not self.desired.version and not self.source_folder:
             return runez.abort("Need either source_folder or version in order to package", fatal=(True, []))
 
-        if not self.version:
+        if not self.desired.version:
             setup_py = os.path.join(self.source_folder, "setup.py")
             if not os.path.isfile(setup_py):
                 return runez.abort("No setup.py in %s", short(self.source_folder), fatal=(True, []))
-            self.version = system.run_python(setup_py, "--version", dryrun=False, fatal=False, package_name=self.dashed_name)
-            if not self.version:
+            self.desired.version = system.run_python(setup_py, "--version", dryrun=False, fatal=False, package_spec=self.package_spec)
+            if not self.desired.version:
                 return runez.abort("Could not determine version from %s", short(setup_py), fatal=(True, []))
 
         self.pip_wheel()
@@ -439,7 +429,7 @@ class Packager(object):
             self.internal_install(force=force)
 
         except SoftLockException as e:
-            LOG.error("%s is currently being installed by another process" % self.dashed_name)
+            LOG.error("%s is currently being installed by another process" % self.package_spec)
             runez.abort("If that is incorrect, please delete %s.lock", short(e.folder))
 
     def internal_install(self, force=False, verbose=True):
@@ -449,10 +439,9 @@ class Packager(object):
         """
         with SoftLock(self.dist_folder, timeout=system.SETTINGS.install_timeout):
             self.refresh_desired(force=force)
-            self.version = self.desired.version
             if not self.desired.valid:
                 system.setup_audit_log()
-                return runez.abort("Can't install %s: %s", self.dashed_name, self.desired.problem)
+                return runez.abort("Can't install %s: %s", self.package_spec, self.desired.problem)
 
             if not force and self.current.equivalent(self.desired):
                 system.inform(self.desired.representation(verbose=verbose, note="is already installed"))
@@ -475,8 +464,9 @@ class Packager(object):
                 runez.delete(system.SETTINGS.base.full_path(name))
 
             self.cleanup()
-            # Clean up old installations with underscore in name
-            runez.delete(system.SETTINGS.meta.full_path(self.py_name))
+            if self.package_spec.dashed != self.package_spec.pythonified:
+                # Clean up old installations with underscore in name
+                runez.delete(system.SETTINGS.meta.full_path(self.package_spec.pythonified))
 
             self.current.set_from(self.desired)
             self.current.save(fatal=False)
@@ -487,11 +477,11 @@ class Packager(object):
     def cleanup(self):
         """Cleanup older installs"""
         cutoff = time.time() - system.SETTINGS.install_timeout * 60
-        folder = system.SETTINGS.meta.full_path(self.dashed_name)
+        folder = system.SETTINGS.meta.full_path(self.package_spec.dashed)
 
         removed_entry_points = runez.read_json(self.removed_entry_points_path, default=[], fatal=False)
 
-        prefixes = {None: [], self.dashed_name: []}
+        prefixes = {None: [], self.package_spec.dashed: []}
         for name in self.entry_points:
             prefixes[name] = []
         for name in removed_entry_points:
@@ -547,8 +537,8 @@ class Packager(object):
         """
         ep = self.entry_points
         if not ep:
-            runez.delete(system.SETTINGS.meta.full_path(self.dashed_name))
-            runez.abort("'%s' is not a CLI, it has no console_scripts entry points", self.dashed_name)
+            runez.delete(system.SETTINGS.meta.full_path(self.package_spec.dashed))
+            runez.abort("'%s' is not a CLI, it has no console_scripts entry points", self.package_spec.dashed)
         return ep
 
     def perform_delivery(self, template):
@@ -556,15 +546,15 @@ class Packager(object):
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
         # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-        runez.touch(system.SETTINGS.meta.full_path(self.dashed_name, ".ping"))
+        runez.touch(system.SETTINGS.meta.full_path(self.package_spec.dashed, ".ping"))
 
         self.executables = []
-        deliverer = DELIVERERS.resolved(self.dashed_name, default=self.desired.delivery)
+        deliverer = DELIVERERS.resolved(self.package_spec, default=self.desired.delivery)
         for name in self.required_entry_points():
             target = system.SETTINGS.base.full_path(name)
-            if self.dashed_name != system.PICKLEY and not self.current.file_exists:
+            if self.package_spec.dashed != system.PICKLEY and not self.current.file_exists:
                 uninstall_existing(target)
-            path = template.format(meta=system.SETTINGS.meta.full_path(self.dashed_name), name=name, version=self.version)
+            path = template.format(meta=system.SETTINGS.meta.full_path(self.package_spec.dashed), name=name, version=self.desired.version)
             deliverer.install(target, path)
             self.executables.append(target)
 
@@ -587,15 +577,15 @@ class PexPackager(Packager):
         runez.delete(destination)
 
         args = ["--cache-dir", self.build_folder, "--repo", self.build_folder]
-        args.extend(["-c%s" % name, "-o%s" % destination, "%s==%s" % (self.dashed_name, self.version)])
+        args.extend(["-c%s" % name, "-o%s" % destination, self.package_spec.specced])
 
-        python = system.target_python(package_name=self.dashed_name)
+        python = system.target_python(package_spec=self.package_spec)
         shebang = python.shebang(universal=system.is_universal(self.build_folder))
         if shebang:
             args.append("--python-shebang")
             args.append(shebang)
 
-        vrun(self.dashed_name, self.specced_command(), *args, path_env=C_COMPILATION_HELP)
+        vrun(self.package_spec, self.specced_command(), *args, path_env=C_COMPILATION_HELP)
 
     def effective_package(self, template):
         """
@@ -603,7 +593,7 @@ class PexPackager(Packager):
         """
         self.executables = []
         for name in self.required_entry_points():
-            dest = template.format(name=name, version=self.version)
+            dest = template.format(name=name, version=self.desired.version)
             dest = os.path.join(self.dist_folder, dest)
             self.pex_build(name, dest)
             self.packaged.append(dest)
@@ -614,7 +604,7 @@ class PexPackager(Packager):
         self.package()
         for path in self.packaged:
             name = os.path.basename(path)
-            target = system.SETTINGS.meta.full_path(self.dashed_name, name)
+            target = system.SETTINGS.meta.full_path(self.package_spec.dashed, name)
             move_venv(path, target)
         self.perform_delivery("{meta}/{name}-{version}")
 
@@ -629,19 +619,19 @@ class VenvPackager(Packager):
         """
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
-        folder = os.path.join(self.dist_folder, template.format(name=self.dashed_name, version=self.version))
+        folder = os.path.join(self.dist_folder, template.format(name=self.package_spec.dashed, version=self.desired.version))
         runez.delete(folder, logger=None)
         runez.ensure_folder(folder, folder=True, logger=None)
-        vrun(self.dashed_name, "virtualenv", folder)
+        vrun(self.package_spec, "virtualenv", folder)
 
         bin_folder = os.path.join(folder, "bin")
         pip = os.path.join(bin_folder, "pip")
-        spec = self.source_folder if self.source_folder else "%s==%s" % (self.dashed_name, self.version)
+        spec = self.source_folder if self.source_folder else "%s==%s" % (self.package_spec.dashed, self.desired.version)
         runez.run(pip, "install", "-i", system.SETTINGS.index, "-f", self.build_folder, spec)
 
         if self.relocatable:
-            python = system.target_python(package_name=self.dashed_name).executable
-            vrun(self.dashed_name, "virtualenv", "--relocatable", "--python=%s" % python, folder)
+            python = system.target_python(package_spec=self.package_spec).executable
+            vrun(self.package_spec, "virtualenv", "--relocatable", "--python=%s" % python, folder)
 
         self.packaged.append(folder)
         self.executables = [os.path.join(bin_folder, name) for name in self.entry_points]
@@ -650,6 +640,6 @@ class VenvPackager(Packager):
         """Install this pypi cli to self.dist_folder"""
         self.package()
         path = self.packaged[0]
-        target = system.SETTINGS.meta.full_path(self.dashed_name, os.path.basename(path))
+        target = system.SETTINGS.meta.full_path(self.package_spec.dashed, os.path.basename(path))
         move_venv(path, target)
         self.perform_delivery(os.path.join(target, "bin", "{name}"))

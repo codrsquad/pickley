@@ -44,34 +44,33 @@ class ImplementationMap(object):
         """
         return sorted(self.map.keys())
 
-    def resolved_name(self, package_name, default=None):
+    def resolved_name(self, package_spec, default=None):
         """
-        :param str package_name: Name of pypi package
+        :param system.PackageSpec package_spec: Pypi package spec
         :param default: Optional default value (takes precedence over system.SETTINGS.defaults only)
         :return str: Corresponding implementation name to use
         """
-        definition = system.SETTINGS.resolved_definition(self.key, package_name=package_name, default=default)
+        definition = system.SETTINGS.resolved_definition(self.key, package_spec=package_spec, default=default)
         if not definition or not definition.value:
             return None
 
         return definition.value
 
-    def resolved(self, package_name, default=None):
+    def resolved(self, package_spec, default=None):
         """
-        :param str package_name: Name of pypi package
-        :param default: Optional default value (takes precendence over system.SETTINGS.defaults only)
+        :param system.PackageSpec package_spec: Pypi package spec
+        :param default: Optional default value (takes precedence over system.SETTINGS.defaults only)
         :return: Corresponding implementation to use
         """
-        pypi_name, _ = system.despecced(package_name)
-        name = self.resolved_name(pypi_name, default=default)
+        name = self.resolved_name(package_spec, default=default)
         name, version = system.despecced(name)
         if not name:
-            runez.abort("No %s type configured for %s", self.key, pypi_name)
+            runez.abort("No %s type configured for %s", self.key, package_spec)
 
         implementation = self.get(name)
         if not implementation:
             runez.abort("Unknown %s type '%s'", self.key, name)
 
-        imp = implementation(package_name)
+        imp = implementation(package_spec)
         imp.implementation_version = version
         return imp

@@ -8,7 +8,7 @@ from mock import patch
 import pickley.settings
 from pickley import system
 from pickley.pypi import DEFAULT_PYPI, latest_pypi_version, pypi_url, request_get
-from pickley.settings import short
+from pickley.settings import Settings, short
 
 from .conftest import sample_path
 
@@ -58,7 +58,7 @@ settings:
           twine: 1.9.0
       delivery:
         copy:
-          dict_sample: this is just for testing dict() lookup
+          dict-sample: this is just for testing dict() lookup
         venv: tox pipenv
       include: [custom.json]
       index: https://pypi.org/
@@ -80,15 +80,22 @@ settings:
 """
 
 
+def check_specs(text, expected):
+    packages = system.resolved_package_specs(text)
+    names = [p.dashed for p in packages]
+    assert names == expected
+
+
 def test_custom_settings(temp_base):
     system.SETTINGS.set_base(sample_path("custom"))
     stgs = system.SETTINGS
+    assert isinstance(stgs, Settings)
     system.SETTINGS.load_config()
 
-    assert system.resolved_package_names("bundle:dev") == ["tox", "twine"]
-    assert system.resolved_package_names("bundle:dev2") == ["tox", "twine", "pipenv"]
-    assert system.resolved_package_names("bundle:dev bundle:dev2") == ["tox", "twine", "pipenv"]
-    assert system.resolved_package_names("pipenv bundle:dev bundle:dev2") == ["pipenv", "tox", "twine"]
+    check_specs("bundle:dev", ["tox", "twine"])
+    check_specs("bundle:dev2", ["tox", "twine", "pipenv"])
+    check_specs("bundle:dev bundle:dev2", ["tox", "twine", "pipenv"])
+    check_specs("pipenv bundle:dev bundle:dev2", ["pipenv", "tox", "twine"])
 
     assert str(stgs) == "[4] base: %s" % short(stgs.base.path)
     assert str(stgs.defaults) == "defaults"
@@ -100,17 +107,14 @@ def test_custom_settings(temp_base):
     p = stgs.base.full_path("foo/bar")
     assert stgs.base.relative_path(p) == "foo/bar"
 
-    d = stgs.resolved_definition("delivery", package_name="dict_sample")
+    d = stgs.resolved_definition("delivery", package_spec=system.PackageSpec("dict_sample"))
     assert str(d) == "config.json:delivery.copy"
 
-    assert stgs.resolved_value("delivery", package_name="tox") == "venv"
-    assert stgs.resolved_value("delivery", package_name="virtualenv") == "wrap"
+    assert stgs.resolved_value("delivery", package_spec=system.PackageSpec("tox")) == "venv"
+    assert stgs.resolved_value("delivery", package_spec=system.PackageSpec("virtualenv")) == "wrap"
 
-    assert stgs.resolved_value("packager", package_name="tox") == system.VENV_PACKAGER
-    assert stgs.resolved_value("packager", package_name="virtualenv") == "pex"
-
-    assert stgs.get_value("bundle.dev") == ["tox", "twine"]
-    assert stgs.get_value("bundle.dev2") == ["tox", "twine", "pipenv"]
+    assert stgs.resolved_value("packager", package_spec=system.PackageSpec("tox")) == system.VENV_PACKAGER
+    assert stgs.resolved_value("packager", package_spec=system.PackageSpec("virtualenv")) == "pex"
 
     old_width = pickley.settings.REPRESENTATION_WIDTH
     pickley.settings.REPRESENTATION_WIDTH = 40
@@ -148,38 +152,51 @@ def test_settings_base():
     system.PICKLEY_PROGRAM_PATH = old_program
 
     with pytest.raises(Exception):
-        system.require_dashed_name("some.bogus name")
+        system.PackageSpec("some.bogus name")
 
 
 @patch("runez.get_lines", return_value=None)
 @patch("runez.run", side_effect=Exception)
 def test_pypi(*_):
-    assert latest_pypi_version(None, "") is None
-    assert latest_pypi_version(None, "tox")
+    pyyaml = system.PackageSpec("PyYAML.Yandex==1.0")
+    assert pyyaml.dashed == "pyyaml-yandex"
+    assert pyyaml.specced == "pyyaml-yandex==1.0"
+    assert pyyaml.pythonified == "PyYAML_Yandex"
+    assert pyyaml.original == "PyYAML.Yandex"
+    assert pyyaml.version_part("PyYAML.Yandex-3.11.1.tar.gz") == "3.11.1.tar.gz"
+    assert pyyaml.version_part("PyYAML.Yandex-3.11nikicat.tar.gz") == "3.11nikicat.tar.gz"
+
+    tox = system.PackageSpec("tox")
+    foo = system.PackageSpec("foo")
+    black = system.PackageSpec("black")
+    twine = system.PackageSpec("twine")
+    shell_functools = system.PackageSpec("shell-functools")
+
+    assert latest_pypi_version(None, tox)
 
     with patch("pickley.pypi.request_get", return_value="{foo"):
         # 404
-        assert latest_pypi_version(None, "foo").startswith("error: ")
+        assert latest_pypi_version(None, foo).startswith("error: ")
 
     with patch("pickley.pypi.request_get", return_value='{"info": {"version": "1.0"}}'):
-        assert latest_pypi_version(None, "foo") == "1.0"
+        assert latest_pypi_version(None, foo) == "1.0"
 
     with patch("pickley.pypi.request_get", return_value=None):
-        assert latest_pypi_version(None, "twine").startswith("error: ")
+        assert latest_pypi_version(None, twine).startswith("error: ")
 
     with patch("pickley.pypi.request_get", return_value="foo"):
-        assert latest_pypi_version(None, "twine").startswith("error: ")
+        assert latest_pypi_version(None, twine).startswith("error: ")
 
     with patch("pickley.pypi.request_get", return_value=LEGACY_SAMPLE):
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "shell-functools") == "1.9.1"
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi/{name}", "shell-functools") == "1.9.1"
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", shell_functools) == "1.9.1"
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi/{name}", shell_functools) == "1.9.1"
 
     with patch("pickley.pypi.request_get", return_value=PRERELEASE_SAMPLE):
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "black").startswith("error: ")
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", black).startswith("error: ")
 
     with patch("pickley.pypi.request_get", return_value=UNKNOWN_VERSIONING_SAMPLE):
         # Unknown version: someproj-1.3.0_custom
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "black").startswith("error: ")
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", black).startswith("error: ")
 
     with patch("pickley.pypi.urlopen", side_effect=Exception):
         # GET fails, and fallback curl also fails

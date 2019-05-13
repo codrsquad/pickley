@@ -97,7 +97,7 @@ def test_install(cli):
     tox = system.SETTINGS.base.full_path("tox")
     foldl = system.SETTINGS.base.full_path("foldl")
 
-    p = PACKAGERS.resolved("tox")
+    p = PACKAGERS.resolved(system.PackageSpec("tox"))
     p.refresh_desired()
     tox_version = p.desired.version
     assert not os.path.exists(tox)
@@ -117,6 +117,7 @@ def test_install(cli):
     tep11 = system.SETTINGS.meta.full_path("tox", "tox-old-entrypoint1-1.1")
     t00 = system.SETTINGS.meta.full_path("tox", "tox-0.0.0")
     tfoo = system.SETTINGS.meta.full_path("tox", "tox-foo")
+    sfoldl = system.SETTINGS.meta.full_path("shell_functools", "shell_functools-1.0.0", "bin", "foldl")
     runez.touch(wep1)
     runez.touch(tep10)
     runez.touch(tep11)
@@ -126,10 +127,13 @@ def test_install(cli):
     runez.write(eppath, '["tox-old-entrypoint1", "tox-old-entrypoint2"]\n')
     cli.expect_success("-b{base} --delivery wrap install tox", "Installed tox", base=cli.context)
     if IS_PYTHON3:
+        runez.touch(sfoldl)
+        assert os.path.exists(sfoldl)
         cli.expect_success("-b{base} --delivery wrap install shell-functools", "Installed shell-functools", base=cli.context)
         assert runez.is_executable(foldl)
         output = run_program(foldl, "--help")
         assert "foldl" in output
+        assert not os.path.exists(sfoldl)
 
     # Old entry point removed immediately
     assert not os.path.exists(wep1)
@@ -170,7 +174,7 @@ def test_install(cli):
         base=cli.context,
     )
 
-    p = PACKAGERS.get(system.VENV_PACKAGER)("tox")
+    p = PACKAGERS.get(system.VENV_PACKAGER)(system.PackageSpec("tox"))
     p.refresh_latest()
     p.latest.version = "10000.0"
     p.latest.save()

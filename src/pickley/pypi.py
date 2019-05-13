@@ -11,7 +11,7 @@ from six.moves.urllib.request import Request, urlopen
 LOG = logging.getLogger(__name__)
 DEFAULT_PYPI = "https://pypi.org/pypi/{name}/json"
 RE_BASENAME = re.compile(r'href=".+/([^/#]+)\.(tar\.gz|whl)#', re.IGNORECASE)
-RE_VERSION = re.compile(r"([^-]+).*")
+RE_VERSION = re.compile(r"([^-]+)")
 
 
 def request_get(url):
@@ -46,24 +46,21 @@ def pypi_url():
     return conf.get("global", {}).get("index-url", DEFAULT_PYPI)
 
 
-def latest_pypi_version(url, name):
+def latest_pypi_version(url, package_spec):
     """
     :param str|None url: Pypi index to use (default: pypi.org)
-    :param str name: Pypi package name
+    :param system.PackageSpec package_spec: Pypi package
     :return str: Determined latest version, if any
     """
-    if not name:
-        return None
-
     if not url:
         url = pypi_url()
 
     if "{name}" in url:
-        url = url.format(name=name)
+        url = url.format(name=package_spec.dashed)
 
     else:
         # Assume legacy only for now for custom pypi indices
-        url = os.path.join(url, name)
+        url = os.path.join(url, package_spec.dashed)
 
     data = request_get(url)
     if not data:
@@ -80,13 +77,13 @@ def latest_pypi_version(url, name):
 
         return "error: can't determine latest version from '%s'" % url
 
-    return _legacy_pypi_version(name, url, data)
+    return _legacy_pypi_version(package_spec, url, data)
 
 
-def _legacy_pypi_version(name, url, data):
+def _legacy_pypi_version(package_spec, url, data):
     """
     Args:
-        name (str): Pypi package name (dashed)
+        package_spec (system.PackageSpec): Pypi package
         url (str): Pypi url that delivered 'data'
         data (str): HTML from pypi/simple
 
@@ -96,19 +93,12 @@ def _legacy_pypi_version(name, url, data):
     latest = None
     latest_text = None
     prereleases = []
-    py_name = name.replace("-", "_")
     for line in data.splitlines():
         m = RE_BASENAME.search(line)
         if not m:
             continue
 
-        basename = m.group(1)
-        version_part = None
-        if basename.startswith(name):
-            version_part = basename[len(name) + 1:]
-        elif basename.startswith(py_name):
-            version_part = basename[len(py_name) + 1:]
-
+        version_part = package_spec.version_part(m.group(1))
         if not version_part:
             continue
 

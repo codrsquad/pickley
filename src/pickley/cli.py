@@ -70,7 +70,7 @@ def check(force, verbose, packages):
     Check whether specified packages need an upgrade
     """
     code = 0
-    packages = system.resolved_package_names(packages, auto_complete=True)
+    packages = system.resolved_package_specs(packages, auto_complete=True)
     if not packages:
         print("No packages installed")
 
@@ -99,7 +99,7 @@ def list(verbose):
     """
     List installed packages
     """
-    packages = system.resolved_package_names(None, auto_complete=True)
+    packages = system.resolved_package_specs(None, auto_complete=True)
     if not packages:
         print("No packages installed")
 
@@ -117,7 +117,7 @@ def install(force, packages):
     Install a package from pypi
     """
     system.setup_audit_log()
-    packages = system.resolved_package_names(packages)
+    packages = system.resolved_package_specs(packages)
     for name in packages:
         p = PACKAGERS.resolved(name)
         p.install(force=force)
@@ -131,21 +131,21 @@ def uninstall(force, packages):
     Uninstall packages
     """
     system.setup_audit_log()
-    packages = system.resolved_package_names(packages)
+    package_specs = system.resolved_package_specs(packages)
     errors = 0
-    for name in packages:
-        p = PACKAGERS.resolved(name)
+    for package_spec in package_specs:
+        p = PACKAGERS.resolved(package_spec)
         if not force and not p.current.file_exists:
             errors += 1
-            LOG.error("%s was not installed with pickley", name)
+            LOG.error("%s was not installed with pickley", package_spec)
             continue
 
         eps = p.entry_points
         ep_uninstalled = 0
         ep_missed = 0
-        meta_deleted = runez.delete(system.SETTINGS.meta.full_path(name), fatal=False)
+        meta_deleted = runez.delete(system.SETTINGS.meta.full_path(package_spec.dashed), fatal=False)
         if not eps and force:
-            eps = {name: ""}
+            eps = {package_spec.dashed: ""}
         if eps and meta_deleted >= 0:
             for entry_point in eps:
                 path = system.SETTINGS.base.full_path(entry_point)
@@ -162,11 +162,11 @@ def uninstall(force, packages):
             continue
 
         if ep_uninstalled + meta_deleted == 0:
-            system.inform("Nothing to uninstall for %s" % name)
+            system.inform("Nothing to uninstall for %s" % package_spec)
             continue
 
         message = "Would uninstall" if runez.DRYRUN else "Uninstalled"
-        message = "%s %s" % (message, name)
+        message = "%s %s" % (message, package_spec)
         if ep_uninstalled > 1:
             message += " (%s entry points)" % ep_uninstalled
         system.inform(message)
@@ -227,8 +227,9 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
         if not name:
             sys.exit("Could not determine package name from %s" % short(setup_py))
 
+    package_spec = system.PackageSpec(name)
     runez.Anchored.add(folder)
-    p = PACKAGERS.resolved(name)
+    p = PACKAGERS.resolved(package_spec)
     p.build_folder = build
     p.dist_folder = dist
     p.relocatable = relocatable
@@ -269,11 +270,12 @@ def auto_upgrade(force, package):
     """
     Auto-upgrade a package
     """
+    package = system.PackageSpec(package)
     p = PACKAGERS.resolved(package)
     if not p.current.valid:
         sys.exit("%s is not currently installed" % package)
 
-    ping = system.SETTINGS.meta.full_path(package, ".ping")
+    ping = system.SETTINGS.meta.full_path(package.dashed, ".ping")
     if not force and runez.is_younger(ping, system.SETTINGS.version_check_seconds):
         # We checked for auto-upgrade recently, no need to check again yet
         print("Skipping auto-upgrade, checked recently")

@@ -58,8 +58,12 @@ class DeliveryMethod(object):
 
     implementation_name = None  # type: str # Injected by ImplementationMap
 
-    def __init__(self, package_name):
-        self.package_name = package_name
+    def __init__(self, package_spec):
+        """
+        Args:
+            package_spec (system.PackageSpec): Associated pypi package spec
+        """
+        self.package_spec = package_spec
 
     def install(self, target, source):
         """
@@ -114,11 +118,11 @@ class DeliveryMethodWrap(DeliveryMethod):
     bg = " &> /dev/null &"
 
     def _install(self, target, source):
-        wrapper = PICKLEY_WRAPPER if self.package_name == system.PICKLEY else GENERIC_WRAPPER
+        wrapper = PICKLEY_WRAPPER if self.package_spec.dashed == system.PICKLEY else GENERIC_WRAPPER
         contents = wrapper.lstrip().format(
             hook=self.hook,
             bg=self.bg,
-            name=runez.quoted(self.package_name),
+            name=runez.quoted(self.package_spec.dashed),
             pickley=runez.quoted(system.SETTINGS.base.full_path(system.PICKLEY)),
             source=runez.quoted(source),
         )

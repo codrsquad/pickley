@@ -15,7 +15,7 @@ def test_wrapper(temp_base):
     runez.make_executable(repeater)
 
     # Actual wrapper
-    d = DeliveryMethodWrap(system.PICKLEY)
+    d = DeliveryMethodWrap(system.PackageSpec(system.PICKLEY))
     d.install(target, repeater)
     assert runez.run(target, "auto-upgrade", "foo") == ":: auto-upgrade foo"
     assert runez.run(target, "--debug", "auto-upgrade", "foo") == ":: --debug auto-upgrade foo"

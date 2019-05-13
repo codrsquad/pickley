@@ -69,44 +69,63 @@ def despecced(text):
     return text, version
 
 
-def is_pypi_dashed(name):
+class PackageSpec(object):
     """
-    :param str name: Name to examine
-    :return bool: True if 'name' is in standard pypi form
+    Deal with confusion around python package naming:
+    - accepted chars are: alpha numeric, or "-" and "."
+    - pypi assumes names are lowercased and dash-separated
+    - wheel transforms dashes to underscores
     """
-    return bool(RE_PYPI_DASHED_NAME.match(name))
+
+    def __init__(self, text):
+        """
+        Args:
+            text (str): Given package name, with optional version spec
+        """
+        self.original, self.version = despecced(text)
+        if not text or not RE_PYPI_ACCEPTABLE.match(self.original):
+            raise UsageError("'%s' is not a valid pypi package name" % self.original)
+        self.dashed = self.original.lower().replace("_", "-").replace(".", "-")
+        self.pythonified = self.original.replace("-", "_").replace(".", "_")
+
+    def __str__(self):
+        return self.specced
+
+    @property
+    def specced(self):
+        return "%s==%s" % (self.dashed, self.version) if self.version else self.dashed
+
+    @classmethod
+    def is_valid(cls, text):
+        name, _ = despecced(text)
+        return bool(name and RE_PYPI_ACCEPTABLE.match(name))
+
+    def version_part(self, filename):
+        """
+        Args:
+            filename (str): Filename to examine
+
+        Returns:
+            (str | None): Version extracted from `filename`, if applicable to current package spec
+        """
+        if filename:
+            filename = filename.lower()
+            n = len(self.pythonified) + 1
+            if filename.startswith("%s-" % self.pythonified):
+                return filename[n:]
+            n = len(self.dashed) + 1
+            if filename.startswith("%s-" % self.dashed):
+                return filename[n:]
+            n = len(self.original) + 1
+            if filename.startswith("%s-" % self.original.lower()):
+                return filename[n:]
 
 
-def require_dashed_name(name):
-    """
-    :param str name: Name to examine
-    :return bool: True if 'name' is in standard pypi form
-    """
-    if not is_pypi_dashed(name):
-        raise UsageError("Internal error: name '%s' should be dashed" % name)
-
-
-def is_pypi_acceptable(name):
-    """
-    :param str name: Name to examine
-    :return bool: True if 'name' is an acceptable pypi name
-    """
-    return bool(RE_PYPI_ACCEPTABLE.match(name))
-
-
-def standardized_name(name):
-    """
-    :param str name: Name to standardize
-    :return str: Lowercase name with dashes (as done by pypi)
-    """
-    return name and name.lower().replace("_", "-").replace(".", "-")
-
-
-def resolved_package_names(names, auto_complete=False):
+def resolved_package_specs(names, auto_complete=False):
     """
     :param list|tuple|str|None names: Names (possibly bundles) to resolve
-    :param bool auto_complete: If True, and no 'names' provided, return list of currently installed package names
-    :return list: Resolved names
+    :param bool auto_complete: If True, and no 'names' provided, return list of currently installed packages
+    :return list[PackageSpec]: Resolved specs
     """
     result = []
     if names:
@@ -119,20 +138,16 @@ def resolved_package_names(names, auto_complete=False):
                     result.extend(bundle)
                     continue
             result.append(name)
-        for name in result:
-            if not is_pypi_acceptable(name):
-                raise UsageError("'%s' is not a valid pypi package name" % name)
 
     elif auto_complete and os.path.isdir(SETTINGS.meta.path):
         for fname in os.listdir(SETTINGS.meta.path):
-            if is_pypi_dashed(fname):
+            if PackageSpec.is_valid(fname):
                 fpath = os.path.join(SETTINGS.meta.path, fname)
                 if os.path.isdir(fpath):
                     if os.path.exists(os.path.join(fpath, ".current.json")):
                         result.append(fname)
 
-    result = runez.flattened(result, split=runez.UNIQUE)
-    return [standardized_name(s) for s in result]
+    return [PackageSpec(name) for name in runez.flattened(result, split=runez.UNIQUE)]
 
 
 def is_universal(wheels_folder):
@@ -146,8 +161,8 @@ def is_universal(wheels_folder):
 
 def run_python(*args, **kwargs):
     """Invoke targetted python interpreter with given args"""
-    package_name = kwargs.pop("package_name", None)
-    python = target_python(package_name=package_name)
+    package_spec = kwargs.pop("package_spec", None)
+    python = target_python(package_spec=package_spec)
     return runez.run(python.executable, *args, **kwargs)
 
 
@@ -159,15 +174,15 @@ def parent_python():
             return path
 
 
-def target_python(desired=None, package_name=None, fatal=True):
+def target_python(desired=None, package_spec=None, fatal=True):
     """
     :param str|None desired: Desired python (overrides anything else configured)
-    :param str|None package_name: Target pypi package
+    :param PackageSpec|None package_spec: Target pypi package
     :param bool|None fatal: If True, abort execution if python invalid
     :return PythonInstallation: Python installation to use
     """
     if not desired:
-        desired = DESIRED_PYTHON or SETTINGS.resolved_value("python", package_name=package_name) or INVOKER
+        desired = DESIRED_PYTHON or SETTINGS.resolved_value("python", package_spec=package_spec) or INVOKER
     python = PythonInstallation(desired)
     if not python.is_valid:
         return runez.abort(python.problem, fatal=(fatal, python))

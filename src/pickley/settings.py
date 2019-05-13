@@ -220,26 +220,26 @@ class SettingsFile(object):
         """
         return self.contents.get("include")
 
-    def resolved_definition(self, key, package_name=None):
+    def resolved_definition(self, key, package_spec=None):
         """
         :param str key: Key to look up
-        :param str|None package_name: Optional associated package name
+        :param system.PackageSpec|None package_spec: Optional associated pypi package spec
         :return Definition|None: Definition corresponding to 'key' in this settings file, if any
         """
         if not key:
             return None
-        if package_name:
-            definition = self.get_definition("select.%s.%s" % (package_name, key))
+        if package_spec:
+            definition = self.get_definition("select.%s.%s" % (package_spec.dashed, key))
             if definition:
                 return definition
             main = self.contents.get(key)
             if isinstance(main, dict):
                 for name, values in main.items():
                     if isinstance(values, dict):
-                        if package_name in values:
+                        if package_spec.dashed in values:
                             return Definition(name, self, "%s.%s" % (key, name))
                     elif hasattr(values, "split"):
-                        if package_name in values.split():
+                        if package_spec.dashed in values.split():
                             return Definition(name, self, "%s.%s" % (key, name))
         return self.get_definition("default.%s" % key)
 
@@ -379,10 +379,10 @@ class Settings(object):
                 for ipath in include:
                     self._add_config(ipath, base=settings_file.folder)
 
-    def resolved_definition(self, key, package_name=None, default=None):
+    def resolved_definition(self, key, package_spec=None, default=None):
         """
         :param str key: Key to look up
-        :param str|None package_name: Optional associated package name
+        :param system.PackageSpec|None package_spec: Optional associated pypi package spec
         :param default: Optional default value (takes precendence over system.SETTINGS.defaults only)
         :return Definition|None: Definition corresponding to 'key', if any
         """
@@ -390,21 +390,21 @@ class Settings(object):
         if definition:
             return definition
         for child in self.children:
-            definition = child.resolved_definition(key, package_name=package_name)
+            definition = child.resolved_definition(key, package_spec=package_spec)
             if definition is not None:
                 return definition
         if default:
             return Definition(default, "default", key)
         return self.defaults.get_definition("default.%s" % key)
 
-    def resolved_value(self, key, package_name=None, default=None):
+    def resolved_value(self, key, package_spec=None, default=None):
         """
         :param str key: Key to look up
-        :param str|None package_name: Optional associated package name
+        :param system.PackageSpec|None package_spec: Optional associated pypi package spec
         :param default: Default value to return if 'key' is not defined
         :return: Value corresponding to 'key' in this settings file, if any
         """
-        definition = self.resolved_definition(key, package_name=package_name)
+        definition = self.resolved_definition(key, package_spec=package_spec)
         if definition is not None:
             return definition.value
         return default
