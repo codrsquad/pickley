@@ -11,7 +11,7 @@ from six.moves.urllib.request import Request, urlopen
 LOG = logging.getLogger(__name__)
 DEFAULT_PYPI = "https://pypi.org/pypi/{name}/json"
 RE_BASENAME = re.compile(r'href=".+/([^/#]+)\.(tar\.gz|whl)#', re.IGNORECASE)
-RE_VERSION = re.compile(r"[^-]+-([^-]+)-.*")
+RE_VERSION = re.compile(r"([^-]+).*")
 
 
 def request_get(url):
@@ -80,15 +80,39 @@ def latest_pypi_version(url, name):
 
         return "error: can't determine latest version from '%s'" % url
 
-    # Legacy mode: parse returned HTML
+    return _legacy_pypi_version(name, url, data)
+
+
+def _legacy_pypi_version(name, url, data):
+    """
+    Args:
+        name (str): Pypi package name (dashed)
+        url (str): Pypi url that delivered 'data'
+        data (str): HTML from pypi/simple
+
+    Returns:
+        (str): Latest usable version, or problem (string starting with 'error:')
+    """
     latest = None
     latest_text = None
     prereleases = []
+    py_name = name.replace("-", "_")
     for line in data.splitlines():
         m = RE_BASENAME.search(line)
-        if m:
-            basename = m.group(1)
-            m = RE_VERSION.match(basename)
+        if not m:
+            continue
+
+        basename = m.group(1)
+        version_part = None
+        if basename.startswith(name):
+            version_part = basename[len(name) + 1:]
+        elif basename.startswith(py_name):
+            version_part = basename[len(py_name) + 1:]
+
+        if not version_part:
+            continue
+
+        m = RE_VERSION.match(version_part)
         if m:
             try:
                 version_text = m.group(1)
@@ -101,6 +125,7 @@ def latest_pypi_version(url, name):
                 elif latest is None or latest < value:
                     latest = value
                     latest_text = version_text
+
             except ValueError:
                 pass
 

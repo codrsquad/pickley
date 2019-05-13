@@ -1,4 +1,5 @@
 import os
+import sys
 
 import runez
 from mock import patch
@@ -10,6 +11,9 @@ from pickley.settings import short
 from pickley.uninstall import find_uninstaller
 
 from .conftest import PROJECT
+
+
+IS_PYTHON3 = sys.version >= "3"
 
 
 def test_help(cli):
@@ -56,45 +60,56 @@ def test_package(cli):
 
 
 def test_bogus_install(cli):
+    cli.expect_success("settings -d", "base: %s" % short(cli.context))
+    cli.expect_success("check", "No packages installed")
+    cli.expect_success("list", "No packages installed")
+
     cli.expect_failure("-b foo/bar settings", "Can't use foo/bar as base: folder does not exist")
 
-    cli.expect_failure("auto-upgrade foo", "not currently installed")
-    cli.expect_failure("package foo/bar", "Folder", "does not exist")
-    cli.expect_failure(["package", cli.context], "No setup.py")
-    runez.touch(os.path.join(cli.context, "setup.py"))
-    cli.expect_failure(["package", cli.context], "Could not determine package name")
+    cli.expect_failure("--dryrun check -- -this-package-does-not-exist ", "can't determine latest version")
 
-    cli.expect_success("-b{base} check", "No packages installed", base=cli.context)
-    cli.expect_success("-b{base} list", "No packages installed", base=cli.context)
+    cli.expect_failure("--dryrun --delivery foo install tox", "invalid choice: foo")
 
-    cli.expect_success("settings -d", "base: %s" % short(cli.context))
-
-
-def test_install(cli):
-    tox = system.SETTINGS.base.full_path("tox")
-    p = PACKAGERS.resolved("tox")
-    p.refresh_desired()
-    tox_version = p.desired.version
-    assert not os.path.exists(tox)
-    assert runez.first_line(tox) is None
-
-    cli.expect_success("--dryrun -b{base} --delivery wrap install tox", "Would wrap", "Would install tox", base=cli.context)
-    cli.expect_success("--dryrun -b{base} --delivery symlink install tox", "Would symlink", "Would install tox", base=cli.context)
-    cli.expect_failure("--dryrun -b{base} --delivery foo install tox", "invalid choice: foo", base=cli.context)
-
-    cli.expect_failure("--dryrun uninstall /dev/null --force", "is not a valid pypi package name")
+    cli.expect_failure("--dryrun uninstall --force /dev/null", "is not a valid pypi package name")
+    cli.expect_success("--dryrun uninstall --force -- -this-package-does-not-exist ", "Nothing to uninstall")
 
     runez.touch("foo")
     assert os.path.exists("foo")
     cli.expect_failure("uninstall foo", "foo was not installed with pickley")
     cli.expect_success("uninstall foo --force", "Uninstalled foo")
-
     assert not os.path.exists("foo")
     assert runez.ensure_folder("foo", folder=True) == 1
     cli.expect_failure("uninstall foo --force", "Can't automatically uninstall")
 
+    cli.expect_failure("auto-upgrade foo", "not currently installed")
+
+    cli.expect_failure("package foo/bar", "Folder", "does not exist")
+    cli.expect_failure(["package", cli.context], "No setup.py")
+    runez.touch(os.path.join(cli.context, "setup.py"))
+    cli.expect_failure(["package", cli.context], "Could not determine package name")
+
+    cli.expect_success("check", "No packages installed")
+    cli.expect_success("list", "No packages installed")
+    cli.expect_success("settings -d", "base: %s" % short(cli.context))
+
+
+def test_install(cli):
+    tox = system.SETTINGS.base.full_path("tox")
+    foldl = system.SETTINGS.base.full_path("foldl")
+
+    p = PACKAGERS.resolved("tox")
+    p.refresh_desired()
+    tox_version = p.desired.version
+    assert not os.path.exists(tox)
+    assert not os.path.exists(foldl)
+
+    cli.expect_success("--dryrun -b{base} --delivery wrap install tox", "Would wrap", "Would install tox", base=cli.context)
+    cli.expect_success("--dryrun -b{base} --delivery symlink install tox", "Would symlink", "Would install tox", base=cli.context)
+
     cli.expect_failure("-b{base} check tox", "is not installed", base=cli.context)
     cli.expect_failure("-b{base} install six", "'six' is not a CLI", base=cli.context)
+    if IS_PYTHON3:
+        cli.expect_failure("-b{base} check shell-functools", "is not installed", base=cli.context)
 
     # Install tox, but add a few files + a bogus previous entry point to test cleanup
     wep1 = system.SETTINGS.base.full_path("tox-old-entrypoint1")
@@ -110,6 +125,11 @@ def test_install(cli):
     eppath = system.SETTINGS.meta.full_path("tox", ".entry-points.json")
     runez.write(eppath, '["tox-old-entrypoint1", "tox-old-entrypoint2"]\n')
     cli.expect_success("-b{base} --delivery wrap install tox", "Installed tox", base=cli.context)
+    if IS_PYTHON3:
+        cli.expect_success("-b{base} --delivery wrap install shell-functools", "Installed shell-functools", base=cli.context)
+        assert runez.is_executable(foldl)
+        output = run_program(foldl, "--help")
+        assert "foldl" in output
 
     # Old entry point removed immediately
     assert not os.path.exists(wep1)
@@ -129,8 +149,7 @@ def test_install(cli):
     runez.delete(system.SETTINGS.meta.full_path("tox", ".ping"))
     cli.expect_success("-b{base} auto-upgrade tox", "already installed", base=cli.context)
 
-    version = output.partition(" ")[0]
-    cli.expect_success("copy .pickley/tox/tox-%s tox-copy" % version, "Copied")
+    cli.expect_success("copy .pickley/tox/tox-%s tox-copy" % tox_version, "Copied")
     cli.expect_success("move tox-copy tox-relocated", "Moved")
 
     # Verify that older versions and removed entry-points do get cleaned up
@@ -173,6 +192,10 @@ def test_install(cli):
     cli.expect_failure("-b{base} check", "tox", "Couldn't read", "is not installed", base=cli.context)
 
     cli.expect_success("-b{base} uninstall tox", "Uninstalled tox", "entry points", base=cli.context)
+    if IS_PYTHON3:
+        cli.expect_success("-b{base} uninstall shell-functools", "Uninstalled shell-functools", "entry points", base=cli.context)
+    assert not os.path.exists(tox)
+    assert not os.path.exists(foldl)
 
 
 def test_auto_upgrade_locked(cli):

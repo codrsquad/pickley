@@ -89,12 +89,6 @@ def test_version_meta():
     assert not v3.still_valid
 
 
-@patch("os.path.isdir", return_value=True)
-def test_special_packages(*_):
-    p = PACKAGERS.get("venv")("awscli")
-    assert p.get_entry_points() == {"aws": "scripts.aws:main"}
-
-
 @patch("pickley.package.latest_pypi_version", return_value=None)
 @patch("pickley.package.DELIVERERS.resolved", return_value=None)
 def test_versions(_, __, temp_base):
@@ -123,14 +117,14 @@ def test_versions(_, __, temp_base):
 
     # With an empty build fodler
     runez.ensure_folder(p.build_folder, folder=True)
-    assert p.get_entry_points() is None
+    assert not p.get_entry_points()
 
     # With a bogus wheel
     with runez.CaptureOutput() as logged:
         p.version = "0.0.0"
         whl = os.path.join(p.build_folder, "foo-0.0.0-py2.py3-none-any.whl")
         runez.touch(whl)
-        assert p.get_entry_points() is None
+        assert not p.get_entry_points()
         assert "Can't read wheel" in logged
         runez.delete(whl)
 

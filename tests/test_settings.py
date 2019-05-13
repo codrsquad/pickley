@@ -1,6 +1,7 @@
 import os
 import sys
 
+import pytest
 import runez
 from mock import patch
 
@@ -16,13 +17,13 @@ LEGACY_SAMPLE = """
 <html><head><title>Simple Index</title><meta name="api-version" value="2" /></head><body>
 
 # 1.8.1 intentionally malformed
-<a href="/pypi/packages/pypi-public/twine/twine-1.8.1!1-py2.py3-none-any.whl9#">twine-1.8.1-py2.py3-none-any.whl</a><br/>
-<a href="/pypi/packages/pypi-public/twine/twine-1.8.1!1.tar.gz#">twine-1.8.1.tar.gz</a><br/>
+<a href="/pypi/shell-functools/shell_functools-1.8.1!1-py2.py3-none-any.whl9#">shell_functools-1.8.1-py2.py3-none-any.whl</a><br/>
+<a href="/pypi/shell-functools/shell-functools-1.8.1!1.tar.gz#">shell-functools-1.8.1.tar.gz</a><br/>
 
-<a href="/pypi/packages/pypi-public/twine/twine-1.9.0+local-py2.py3-none-any.whl#sha256=ac...">twine-1.9.0-py2.py3-none-any.whl</a><br/>
-<a href="/pypi/packages/pypi-public/twine/twine-1.9.0+local.tar.gz#sha256=ff...">twine-1.9.0.tar.gz</a><br/>
-<a href="/pypi/packages/pypi-public/twine/twine-1.9.1-py2.py3-none-any.whl#sha256=d3...">twine-1.9.1-py2.py3-none-any.whl</a><br/>
-<a href="/pypi/packages/pypi-public/twine/twine-1.9.1.tar.gz#sha256=ca...">twine-1.9.1.tar.gz</a><br/>
+<a href="/pypi/shell-functools/shell_functools-1.9.0+local-py2.py3-none-any.whl#sha...">shell_functools-1.9.0-py2.py3-none-any.whl</a><br/>
+<a href="/pypi/shell-functools/shell-functools-1.9.0+local.tar.gz#sha256=ff...">shell-functools-1.9.0.tar.gz</a><br/>
+<a href="/pypi/shell-functools/shell_functools-1.9.1-py2.py3-none-any.whl#sha256=d3...">shell_functools-1.9.1-py2.py3-none-any.whl</a><br/>
+<a href="/pypi/shell-functools/shell-functools-1.9.1.tar.gz#sha256=ca...">shell-functools-1.9.1.tar.gz</a><br/>
 </body></html>
 """
 
@@ -79,48 +80,54 @@ settings:
 """
 
 
-def test_custom_settings():
-    s = pickley.settings.Settings(sample_path("custom"))
-    s.load_config()
+def test_custom_settings(temp_base):
+    system.SETTINGS.set_base(sample_path("custom"))
+    stgs = system.SETTINGS
+    system.SETTINGS.load_config()
 
-    assert str(s) == "[4] base: %s" % short(s.base.path)
-    assert str(s.defaults) == "defaults"
-    assert str(s.base) == "base: %s" % short(s.base.path)
-    assert s.get_definition("") is None
-    assert s.resolved_definition("") is None
-    assert s.resolved_value("foo") is None
+    assert system.resolved_package_names("bundle:dev") == ["tox", "twine"]
+    assert system.resolved_package_names("bundle:dev2") == ["tox", "twine", "pipenv"]
+    assert system.resolved_package_names("bundle:dev bundle:dev2") == ["tox", "twine", "pipenv"]
+    assert system.resolved_package_names("pipenv bundle:dev bundle:dev2") == ["pipenv", "tox", "twine"]
 
-    p = s.base.full_path("foo/bar")
-    assert s.base.relative_path(p) == "foo/bar"
+    assert str(stgs) == "[4] base: %s" % short(stgs.base.path)
+    assert str(stgs.defaults) == "defaults"
+    assert str(stgs.base) == "base: %s" % short(stgs.base.path)
+    assert stgs.get_definition("") is None
+    assert stgs.resolved_definition("") is None
+    assert stgs.resolved_value("foo") is None
 
-    d = s.resolved_definition("delivery", package_name="dict_sample")
+    p = stgs.base.full_path("foo/bar")
+    assert stgs.base.relative_path(p) == "foo/bar"
+
+    d = stgs.resolved_definition("delivery", package_name="dict_sample")
     assert str(d) == "config.json:delivery.copy"
 
-    assert s.resolved_value("delivery", package_name="tox") == "venv"
-    assert s.resolved_value("delivery", package_name="virtualenv") == "wrap"
+    assert stgs.resolved_value("delivery", package_name="tox") == "venv"
+    assert stgs.resolved_value("delivery", package_name="virtualenv") == "wrap"
 
-    assert s.resolved_value("packager", package_name="tox") == system.VENV_PACKAGER
-    assert s.resolved_value("packager", package_name="virtualenv") == "pex"
+    assert stgs.resolved_value("packager", package_name="tox") == system.VENV_PACKAGER
+    assert stgs.resolved_value("packager", package_name="virtualenv") == "pex"
 
-    assert s.get_value("bundle.dev") == ["tox", "twine"]
-    assert s.get_value("bundle.dev2") == ["tox", "twine", "pipenv"]
+    assert stgs.get_value("bundle.dev") == ["tox", "twine"]
+    assert stgs.get_value("bundle.dev2") == ["tox", "twine", "pipenv"]
 
     old_width = pickley.settings.REPRESENTATION_WIDTH
     pickley.settings.REPRESENTATION_WIDTH = 40
-    actual = s.represented(include_defaults=False).replace(short(s.base.path), "{base}")
+    actual = stgs.represented(include_defaults=False).replace(short(stgs.base.path), "{base}")
     assert actual == EXPECTED_REPRESENTATION.strip()
     pickley.settings.REPRESENTATION_WIDTH = old_width
 
-    s.cli.contents["packager"] = "copy"
-    d = s.resolved_definition("packager")
+    stgs.cli.contents["packager"] = "copy"
+    d = stgs.resolved_definition("packager")
     assert d.value == "copy"
-    assert d.source is s.cli
-    d = s.get_definition("packager")
+    assert d.source is stgs.cli
+    d = stgs.get_definition("packager")
     assert d.value == "copy"
-    assert d.source is s.cli
+    assert d.source is stgs.cli
 
-    assert s.install_timeout == 2
-    assert s.version_check_seconds == 60
+    assert stgs.install_timeout == 2
+    assert stgs.version_check_seconds == 60
 
 
 def test_settings_base():
@@ -139,6 +146,9 @@ def test_settings_base():
     assert s.base.path == sample_path(".venv", "root")
 
     system.PICKLEY_PROGRAM_PATH = old_program
+
+    with pytest.raises(Exception):
+        system.require_dashed_name("some.bogus name")
 
 
 @patch("runez.get_lines", return_value=None)
@@ -161,8 +171,8 @@ def test_pypi(*_):
         assert latest_pypi_version(None, "twine").startswith("error: ")
 
     with patch("pickley.pypi.request_get", return_value=LEGACY_SAMPLE):
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "twine") == "1.9.1"
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi/{name}", "twine") == "1.9.1"
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "shell-functools") == "1.9.1"
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi/{name}", "shell-functools") == "1.9.1"
 
     with patch("pickley.pypi.request_get", return_value=PRERELEASE_SAMPLE):
         assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "black").startswith("error: ")
