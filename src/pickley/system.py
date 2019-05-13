@@ -9,7 +9,7 @@ import re
 import sys
 
 import runez
-
+from click import UsageError
 
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
@@ -26,6 +26,9 @@ INVOKER = "invoker"
 
 RE_PYTHON_LOOSE = re.compile(r"(py(thon ?)?)?([0-9])?\.?([0-9])?\.?[0-9]*", re.IGNORECASE)
 RE_PYTHON_STRICT = re.compile(r"(python([0-9]\.[0-9])|([0-9]\.[0-9])\.?[0-9]*)")
+
+RE_PYPI_ACCEPTABLE = re.compile(r"^[a-z0-9_.-]+$", re.IGNORECASE)
+RE_PYPI_DASHED_NAME = re.compile(r"^[a-z0-9-]+$")
 
 PICKLEY_PROGRAM_PATH = runez.resolved_path(sys.argv[0])
 
@@ -66,16 +69,70 @@ def despecced(text):
     return text, version
 
 
-def installed_names():
-    """Yield names of currently installed packages"""
+def is_pypi_dashed(name):
+    """
+    :param str name: Name to examine
+    :return bool: True if 'name' is in standard pypi form
+    """
+    return bool(RE_PYPI_DASHED_NAME.match(name))
+
+
+def require_dashed_name(name):
+    """
+    :param str name: Name to examine
+    :return bool: True if 'name' is in standard pypi form
+    """
+    if not is_pypi_dashed(name):
+        raise UsageError("Internal error: name '%s' should be dashed" % name)
+
+
+def is_pypi_acceptable(name):
+    """
+    :param str name: Name to examine
+    :return bool: True if 'name' is an acceptable pypi name
+    """
+    return bool(RE_PYPI_ACCEPTABLE.match(name))
+
+
+def standardized_name(name):
+    """
+    :param str name: Name to standardize
+    :return str: Lowercase name with dashes (as done by pypi)
+    """
+    return name and name.lower().replace("_", "-").replace(".", "-")
+
+
+def resolved_package_names(names, auto_complete=False):
+    """
+    :param list|tuple|str|None names: Names (possibly bundles) to resolve
+    :param bool auto_complete: If True, and no 'names' provided, return list of currently installed package names
+    :return list: Resolved names
+    """
     result = []
-    if os.path.isdir(SETTINGS.meta.path):
+    if names:
+        if hasattr(names, "split"):
+            names = names.split()
+        for name in names:
+            if name.startswith("bundle:"):
+                bundle = SETTINGS.get_value("bundle.%s" % name[7:])
+                if bundle:
+                    result.extend(bundle)
+                    continue
+            result.append(name)
+        for name in result:
+            if not is_pypi_acceptable(name):
+                raise UsageError("'%s' is not a valid pypi package name" % name)
+
+    elif auto_complete and os.path.isdir(SETTINGS.meta.path):
         for fname in os.listdir(SETTINGS.meta.path):
-            fpath = os.path.join(SETTINGS.meta.path, fname)
-            if os.path.isdir(fpath):
-                if os.path.exists(os.path.join(fpath, ".current.json")):
-                    result.append(fname)
-    return result
+            if is_pypi_dashed(fname):
+                fpath = os.path.join(SETTINGS.meta.path, fname)
+                if os.path.isdir(fpath):
+                    if os.path.exists(os.path.join(fpath, ".current.json")):
+                        result.append(fname)
+
+    result = runez.flattened(result, split=runez.UNIQUE)
+    return [standardized_name(s) for s in result]
 
 
 def is_universal(wheels_folder):

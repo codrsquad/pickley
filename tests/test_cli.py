@@ -82,7 +82,7 @@ def test_install(cli):
     cli.expect_success("--dryrun -b{base} --delivery symlink install tox", "Would symlink", "Would install tox", base=cli.context)
     cli.expect_failure("--dryrun -b{base} --delivery foo install tox", "invalid choice: foo", base=cli.context)
 
-    cli.expect_success("--dryrun uninstall /dev/null --force", "Nothing to uninstall")
+    cli.expect_failure("--dryrun uninstall /dev/null --force", "is not a valid pypi package name")
 
     runez.touch("foo")
     assert os.path.exists("foo")
@@ -93,7 +93,7 @@ def test_install(cli):
     assert runez.ensure_folder("foo", folder=True) == 1
     cli.expect_failure("uninstall foo --force", "Can't automatically uninstall")
 
-    cli.expect_failure("-b{base} check tox foo/bar", "is not installed", "can't determine latest version", base=cli.context)
+    cli.expect_failure("-b{base} check tox", "is not installed", base=cli.context)
     cli.expect_failure("-b{base} install six", "'six' is not a CLI", base=cli.context)
 
     # Install tox, but add a few files + a bogus previous entry point to test cleanup

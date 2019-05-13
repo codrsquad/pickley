@@ -441,24 +441,6 @@ class Settings(object):
         """
         return self.get_value("index")
 
-    def resolved_packages(self, names):
-        """
-        :param list|tuple|str names: Names to resolve
-        :return set: Resolved names
-        """
-        result = []
-        if names:
-            if hasattr(names, "split"):
-                names = names.split()
-            for name in names:
-                if name.startswith("bundle:"):
-                    bundle = self.get_value("bundle.%s" % name[7:])
-                    if bundle:
-                        result.extend(bundle)
-                        continue
-                result.append(name)
-        return runez.flattened(result, split=runez.UNIQUE)
-
     def represented(self, include_defaults=True):
         """
         :param bool include_defaults: When True, include representation of defaults as well

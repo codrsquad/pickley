@@ -102,7 +102,6 @@ def test_custom_settings():
     assert s.resolved_value("packager", package_name="tox") == system.VENV_PACKAGER
     assert s.resolved_value("packager", package_name="virtualenv") == "pex"
 
-    assert s.resolved_packages("bundle:dev") == ["tox", "twine"]
     assert s.get_value("bundle.dev") == ["tox", "twine"]
     assert s.get_value("bundle.dev2") == ["tox", "twine", "pipenv"]
 

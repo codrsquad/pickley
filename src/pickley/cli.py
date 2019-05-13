@@ -70,7 +70,7 @@ def check(force, verbose, packages):
     Check whether specified packages need an upgrade
     """
     code = 0
-    packages = system.SETTINGS.resolved_packages(packages) or system.installed_names()
+    packages = system.resolved_package_names(packages, auto_complete=True)
     if not packages:
         print("No packages installed")
 
@@ -99,7 +99,7 @@ def list(verbose):
     """
     List installed packages
     """
-    packages = system.installed_names()
+    packages = system.resolved_package_names(None, auto_complete=True)
     if not packages:
         print("No packages installed")
 
@@ -117,7 +117,7 @@ def install(force, packages):
     Install a package from pypi
     """
     system.setup_audit_log()
-    packages = system.SETTINGS.resolved_packages(packages)
+    packages = system.resolved_package_names(packages)
     for name in packages:
         p = PACKAGERS.resolved(name)
         p.install(force=force)
@@ -131,7 +131,7 @@ def uninstall(force, packages):
     Uninstall packages
     """
     system.setup_audit_log()
-    packages = system.SETTINGS.resolved_packages(packages)
+    packages = system.resolved_package_names(packages)
     errors = 0
     for name in packages:
         p = PACKAGERS.resolved(name)

@@ -219,9 +219,8 @@ class Packager(object):
         """
         :param str name: Name of pypi package
         """
-        self.given_name, self.version = system.despecced(name)
-        self.py_name = self.given_name.replace("-", "_")
-        self.dashed_name = self.given_name.replace("_", "-")
+        self.py_name, self.version = system.despecced(name)
+        system.require_dashed_name(self.py_name)
         self._entry_points = None
         self.current = VersionMeta(self.py_name, "current")
         self.latest = VersionMeta(self.py_name, system.LATEST_CHANNEL, base=self.current)
