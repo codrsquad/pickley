@@ -164,7 +164,13 @@ def test_pypi(*_):
     assert pyyaml.pythonified == "PyYAML_Yandex"
     assert pyyaml.original == "PyYAML.Yandex"
     assert pyyaml.version_part("PyYAML.Yandex-3.11.1.tar.gz") == "3.11.1.tar.gz"
+    assert pyyaml.version_part("PyYAML_Yandex-1.2.whl") == "1.2.whl"
+    assert pyyaml.version_part("pyyaml_Yandex-1.2.whl") == "1.2.whl"
     assert pyyaml.version_part("PyYAML.Yandex-3.11nikicat.tar.gz") == "3.11nikicat.tar.gz"
+    assert pyyaml.version_part("PyYAML.Yandex-3") == "3"
+    assert pyyaml.version_part("pyyaml-yandex-3") == "3"
+    assert pyyaml.version_part("PyYAML.Yandex-") is None
+    assert pyyaml.version_part("PyYAML.Yandex-foo-3.11") is None
 
     tox = system.PackageSpec("tox")
     foo = system.PackageSpec("foo")

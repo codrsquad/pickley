@@ -100,6 +100,21 @@ class PackageSpec(object):
         name, _ = despecced(text)
         return bool(name and RE_PYPI_ACCEPTABLE.match(name))
 
+    def _version_part(self, filename):
+        if filename:
+            filename = filename.lower()
+            n = len(self.pythonified) + 1
+            if filename.startswith("%s-" % self.pythonified):
+                return filename[n:]
+            if filename.startswith("%s-" % self.pythonified.lower()):
+                return filename[n:]
+            n = len(self.dashed) + 1
+            if filename.startswith("%s-" % self.dashed):
+                return filename[n:]
+            n = len(self.original) + 1
+            if filename.startswith("%s-" % self.original.lower()):
+                return filename[n:]
+
     def version_part(self, filename):
         """
         Args:
@@ -108,17 +123,9 @@ class PackageSpec(object):
         Returns:
             (str | None): Version extracted from `filename`, if applicable to current package spec
         """
-        if filename:
-            filename = filename.lower()
-            n = len(self.pythonified) + 1
-            if filename.startswith("%s-" % self.pythonified):
-                return filename[n:]
-            n = len(self.dashed) + 1
-            if filename.startswith("%s-" % self.dashed):
-                return filename[n:]
-            n = len(self.original) + 1
-            if filename.startswith("%s-" % self.original.lower()):
-                return filename[n:]
+        vp = self._version_part(filename)
+        if vp and vp[0].isdigit():
+            return vp
 
 
 def resolved_package_specs(names, auto_complete=False):
