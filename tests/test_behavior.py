@@ -38,7 +38,7 @@ def test_ensure_freeze(_, __, temp_base):
         runez.touch(fake_pex)
         runez.make_executable(fake_pex)
         v = SharedVenv(lock, None)
-        assert v._installed_module(system.PackageSpec("pex"), "pex")
+        assert v._installed_module(system.PackageSpec("pex"))
 
 
 def test_config():

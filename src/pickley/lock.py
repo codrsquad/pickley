@@ -163,19 +163,19 @@ class SharedVenv(object):
         if self._frozen:
             runez.save_json(self._frozen, self.frozen_path)
 
-    def _installed_module(self, package_spec, command):
+    def _installed_module(self, command_spec):
         """
-        :param system.PackageSpec package_spec: Associated package spec
+        :param system.PackageSpec command_spec: Associated package spec
         :param str command: Program to install in venv, if not already installed
         """
-        program = os.path.join(self.bin, command)
-        current = self.frozen.get(package_spec.dashed)
+        program = os.path.join(self.bin, command_spec.dashed)
+        current = self.frozen.get(command_spec.dashed)
         if not current and runez.is_executable(program):
             # Edge case for older versions that weren't based on freeze
             self._refresh_frozen()
-            current = self.frozen.get(package_spec.dashed)
-        if not current or (package_spec.version and current != package_spec.version):
-            self._run_pip("install", "-i", system.SETTINGS.index, package_spec.specced)
+            current = self.frozen.get(command_spec.dashed)
+        if not current or (command_spec.version and current != command_spec.version):
+            self._run_pip("install", "-i", system.SETTINGS.index, command_spec.specced)
             self._refresh_frozen()
         return program
 
@@ -183,13 +183,13 @@ class SharedVenv(object):
         """
         Should be called while holding the soft file lock in context only
 
-        :param str command: Command to run from that package
+        :param str command: Command to run from that package (optionally specced with version)
         :param args: Args to invoke program with
-        :param kwargs: Additional args, use program= if entry point differs from 'package_spec'
+        :param kwargs: Additional args
         """
         cmd = system.PackageSpec(command)
         if cmd.dashed == "pip":
             return self._run_pip(*args, **kwargs)
         args = runez.flattened(args, split=runez.SHELL)
-        full_path = self._installed_module(cmd, command)
+        full_path = self._installed_module(cmd)
         return runez.run(full_path, *args, **kwargs)
