@@ -146,8 +146,11 @@ def test_settings_base():
     # Convenience dev case
     base = sample_path(".venv", "bin", "pickley")
     system.PICKLEY_PROGRAM_PATH = base
-    s = pickley.settings.Settings()
-    assert s.base.path == sample_path(".venv", "root")
+
+    with patch("pickley.settings.get_user_index", return_value="https://example.net/pypi"):
+        s = pickley.settings.Settings()
+        assert s.base.path == sample_path(".venv", "root")
+        assert s.index == "https://example.net/pypi"
 
     system.PICKLEY_PROGRAM_PATH = old_program
 

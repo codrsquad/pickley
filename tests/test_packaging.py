@@ -102,7 +102,7 @@ def test_versions(_, __, temp_base):
     p.implementation_version = "1.4.5"
     assert p.specced_command() == "pex==1.4.5"
     p.refresh_desired()
-    assert p.desired.representation(verbose=True) == "foo: can't determine latest version from pypi (channel: latest, source: pypi)"
+    assert "can't determine latest version" in p.desired.representation(verbose=True)
 
     with patch("pickley.package.latest_pypi_version", return_value="error: test failed"):
         p.refresh_desired()

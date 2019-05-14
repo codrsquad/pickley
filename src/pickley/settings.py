@@ -314,7 +314,7 @@ class Settings(object):
         )
         user_index = get_user_index()
         if user_index:
-            self.defaults.contents["default"]["index"] = user_index
+            self.defaults.contents["index"] = user_index
         self.config = None
         self.config_paths = []
         self.children = []
