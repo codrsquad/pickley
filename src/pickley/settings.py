@@ -279,6 +279,15 @@ class SettingsFile(object):
         return "\n".join(result)
 
 
+def get_user_index():
+    """
+    Returns:
+        (str | None): User configured pypi index, if any
+    """
+    conf = runez.get_conf(runez.resolved_path("~/.config/pip/pip.conf"), fatal=None, default={})
+    return conf.get("global", {}).get("index-url")
+
+
 class Settings(object):
     """
     Collection of settings files
@@ -303,6 +312,9 @@ class Settings(object):
                 version_check_delay=DEFAULT_VERSION_CHECK_DELAY,
             ),
         )
+        user_index = get_user_index()
+        if user_index:
+            self.defaults.contents["default"]["index"] = user_index
         self.config = None
         self.config_paths = []
         self.children = []
