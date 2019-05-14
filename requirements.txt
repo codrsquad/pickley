@@ -1,5 +1,6 @@
 # pinned
 click==7.0
 runez==1.8.5
+setuptools==41.0.1
 six==1.12.0
-virtualenv==16.4.3
+virtualenv==16.5.0

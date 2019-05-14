@@ -41,11 +41,6 @@ def request_get(url):
     return None
 
 
-def pypi_url():
-    conf = runez.get_conf(runez.resolved_path("~/.config/pip/pip.conf"), fatal=None, default={})
-    return conf.get("global", {}).get("index-url", DEFAULT_PYPI)
-
-
 def latest_pypi_version(url, package_spec):
     """
     :param str|None url: Pypi index to use (default: pypi.org)
@@ -53,7 +48,7 @@ def latest_pypi_version(url, package_spec):
     :return str: Determined latest version, if any
     """
     if not url:
-        url = pypi_url()
+        url = DEFAULT_PYPI
 
     if "{name}" in url:
         url = url.format(name=package_spec.dashed)

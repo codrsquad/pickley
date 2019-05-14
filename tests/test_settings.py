@@ -7,7 +7,7 @@ from mock import patch
 
 import pickley.settings
 from pickley import system
-from pickley.pypi import DEFAULT_PYPI, latest_pypi_version, pypi_url, request_get
+from pickley.pypi import latest_pypi_version, request_get
 from pickley.settings import Settings, short
 
 from .conftest import sample_path
@@ -220,12 +220,6 @@ def test_pypi(*_):
     with patch("pickley.pypi.urlopen", side_effect=e):
         # With explicit 404 we don't fallback to curl
         assert request_get("") is None
-
-    with patch("runez.file.get_lines", return_value=["foo"]):
-        assert pypi_url() == DEFAULT_PYPI
-
-    with patch("runez.file.get_lines", return_value="[global]\nindex-url = foo".splitlines()):
-        assert pypi_url() == "foo"
 
 
 def test_add_representation():
