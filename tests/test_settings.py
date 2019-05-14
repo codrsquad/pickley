@@ -1,13 +1,14 @@
 import os
 import sys
 
+import pytest
 import runez
 from mock import patch
 
 import pickley.settings
 from pickley import system
 from pickley.pypi import DEFAULT_PYPI, latest_pypi_version, pypi_url, request_get
-from pickley.settings import short
+from pickley.settings import Settings, short
 
 from .conftest import sample_path
 
@@ -16,13 +17,13 @@ LEGACY_SAMPLE = """
 <html><head><title>Simple Index</title><meta name="api-version" value="2" /></head><body>
 
 # 1.8.1 intentionally malformed
-<a href="/pypi/packages/pypi-public/twine/twine-1.8.1!1-py2.py3-none-any.whl9#">twine-1.8.1-py2.py3-none-any.whl</a><br/>
-<a href="/pypi/packages/pypi-public/twine/twine-1.8.1!1.tar.gz#">twine-1.8.1.tar.gz</a><br/>
+<a href="/pypi/shell-functools/shell_functools-1.8.1!1-py2.py3-none-any.whl9#">shell_functools-1.8.1-py2.py3-none-any.whl</a><br/>
+<a href="/pypi/shell-functools/shell-functools-1.8.1!1.tar.gz#">shell-functools-1.8.1.tar.gz</a><br/>
 
-<a href="/pypi/packages/pypi-public/twine/twine-1.9.0+local-py2.py3-none-any.whl#sha256=ac...">twine-1.9.0-py2.py3-none-any.whl</a><br/>
-<a href="/pypi/packages/pypi-public/twine/twine-1.9.0+local.tar.gz#sha256=ff...">twine-1.9.0.tar.gz</a><br/>
-<a href="/pypi/packages/pypi-public/twine/twine-1.9.1-py2.py3-none-any.whl#sha256=d3...">twine-1.9.1-py2.py3-none-any.whl</a><br/>
-<a href="/pypi/packages/pypi-public/twine/twine-1.9.1.tar.gz#sha256=ca...">twine-1.9.1.tar.gz</a><br/>
+<a href="/pypi/shell-functools/shell_functools-1.9.0+local-py2.py3-none-any.whl#sha...">shell_functools-1.9.0-py2.py3-none-any.whl</a><br/>
+<a href="/pypi/shell-functools/shell-functools-1.9.0+local.tar.gz#sha256=ff...">shell-functools-1.9.0.tar.gz</a><br/>
+<a href="/pypi/shell-functools/shell_functools-1.9.1-py2.py3-none-any.whl#sha256=d3...">shell_functools-1.9.1-py2.py3-none-any.whl</a><br/>
+<a href="/pypi/shell-functools/shell-functools-1.9.1.tar.gz#sha256=ca...">shell-functools-1.9.1.tar.gz</a><br/>
 </body></html>
 """
 
@@ -57,7 +58,7 @@ settings:
           twine: 1.9.0
       delivery:
         copy:
-          dict_sample: this is just for testing dict() lookup
+          dict-sample: this is just for testing dict() lookup
         venv: tox pipenv
       include: [custom.json]
       index: https://pypi.org/
@@ -79,49 +80,58 @@ settings:
 """
 
 
-def test_custom_settings():
-    s = pickley.settings.Settings(sample_path("custom"))
-    s.load_config()
+def check_specs(text, expected):
+    packages = system.resolved_package_specs(text)
+    names = [p.dashed for p in packages]
+    assert names == expected
 
-    assert str(s) == "[4] base: %s" % short(s.base.path)
-    assert str(s.defaults) == "defaults"
-    assert str(s.base) == "base: %s" % short(s.base.path)
-    assert s.get_definition("") is None
-    assert s.resolved_definition("") is None
-    assert s.resolved_value("foo") is None
 
-    p = s.base.full_path("foo/bar")
-    assert s.base.relative_path(p) == "foo/bar"
+def test_custom_settings(temp_base):
+    system.SETTINGS.set_base(sample_path("custom"))
+    stgs = system.SETTINGS
+    assert isinstance(stgs, Settings)
+    system.SETTINGS.load_config()
 
-    d = s.resolved_definition("delivery", package_name="dict_sample")
+    check_specs("bundle:dev", ["tox", "twine"])
+    check_specs("bundle:dev2", ["tox", "twine", "pipenv"])
+    check_specs("bundle:dev bundle:dev2", ["tox", "twine", "pipenv"])
+    check_specs("pipenv bundle:dev bundle:dev2", ["pipenv", "tox", "twine"])
+
+    assert str(stgs) == "[4] base: %s" % short(stgs.base.path)
+    assert str(stgs.defaults) == "defaults"
+    assert str(stgs.base) == "base: %s" % short(stgs.base.path)
+    assert stgs.get_definition("") is None
+    assert stgs.resolved_definition("") is None
+    assert stgs.resolved_value("foo") is None
+
+    p = stgs.base.full_path("foo/bar")
+    assert stgs.base.relative_path(p) == "foo/bar"
+
+    d = stgs.resolved_definition("delivery", package_spec=system.PackageSpec("dict_sample"))
     assert str(d) == "config.json:delivery.copy"
 
-    assert s.resolved_value("delivery", package_name="tox") == "venv"
-    assert s.resolved_value("delivery", package_name="virtualenv") == "wrap"
+    assert stgs.resolved_value("delivery", package_spec=system.PackageSpec("tox")) == "venv"
+    assert stgs.resolved_value("delivery", package_spec=system.PackageSpec("virtualenv")) == "wrap"
 
-    assert s.resolved_value("packager", package_name="tox") == system.VENV_PACKAGER
-    assert s.resolved_value("packager", package_name="virtualenv") == "pex"
-
-    assert s.resolved_packages("bundle:dev") == ["tox", "twine"]
-    assert s.get_value("bundle.dev") == ["tox", "twine"]
-    assert s.get_value("bundle.dev2") == ["tox", "twine", "pipenv"]
+    assert stgs.resolved_value("packager", package_spec=system.PackageSpec("tox")) == system.VENV_PACKAGER
+    assert stgs.resolved_value("packager", package_spec=system.PackageSpec("virtualenv")) == "pex"
 
     old_width = pickley.settings.REPRESENTATION_WIDTH
     pickley.settings.REPRESENTATION_WIDTH = 40
-    actual = s.represented(include_defaults=False).replace(short(s.base.path), "{base}")
+    actual = stgs.represented(include_defaults=False).replace(short(stgs.base.path), "{base}")
     assert actual == EXPECTED_REPRESENTATION.strip()
     pickley.settings.REPRESENTATION_WIDTH = old_width
 
-    s.cli.contents["packager"] = "copy"
-    d = s.resolved_definition("packager")
+    stgs.cli.contents["packager"] = "copy"
+    d = stgs.resolved_definition("packager")
     assert d.value == "copy"
-    assert d.source is s.cli
-    d = s.get_definition("packager")
+    assert d.source is stgs.cli
+    d = stgs.get_definition("packager")
     assert d.value == "copy"
-    assert d.source is s.cli
+    assert d.source is stgs.cli
 
-    assert s.install_timeout == 2
-    assert s.version_check_seconds == 60
+    assert stgs.install_timeout == 2
+    assert stgs.version_check_seconds == 60
 
 
 def test_settings_base():
@@ -136,41 +146,66 @@ def test_settings_base():
     # Convenience dev case
     base = sample_path(".venv", "bin", "pickley")
     system.PICKLEY_PROGRAM_PATH = base
-    s = pickley.settings.Settings()
-    assert s.base.path == sample_path(".venv", "root")
+
+    with patch("pickley.settings.get_user_index", return_value="https://example.net/pypi"):
+        s = pickley.settings.Settings()
+        assert s.base.path == sample_path(".venv", "root")
+        assert s.index == "https://example.net/pypi"
 
     system.PICKLEY_PROGRAM_PATH = old_program
+
+    with pytest.raises(Exception):
+        system.PackageSpec("some.bogus name")
 
 
 @patch("runez.get_lines", return_value=None)
 @patch("runez.run", side_effect=Exception)
 def test_pypi(*_):
-    assert latest_pypi_version(None, "") is None
-    assert latest_pypi_version(None, "tox")
+    pyyaml = system.PackageSpec("PyYAML.Yandex==1.0")
+    assert pyyaml.dashed == "pyyaml-yandex"
+    assert pyyaml.specced == "pyyaml-yandex==1.0"
+    assert pyyaml.pythonified == "PyYAML_Yandex"
+    assert pyyaml.original == "PyYAML.Yandex"
+    assert pyyaml.version_part("PyYAML.Yandex-3.11.1.tar.gz") == "3.11.1.tar.gz"
+    assert pyyaml.version_part("PyYAML_Yandex-1.2.whl") == "1.2.whl"
+    assert pyyaml.version_part("pyyaml_Yandex-1.2.whl") == "1.2.whl"
+    assert pyyaml.version_part("PyYAML.Yandex-3.11nikicat.tar.gz") == "3.11nikicat.tar.gz"
+    assert pyyaml.version_part("PyYAML.Yandex-3") == "3"
+    assert pyyaml.version_part("pyyaml-yandex-3") == "3"
+    assert pyyaml.version_part("PyYAML.Yandex-") is None
+    assert pyyaml.version_part("PyYAML.Yandex-foo-3.11") is None
+
+    tox = system.PackageSpec("tox")
+    foo = system.PackageSpec("foo")
+    black = system.PackageSpec("black")
+    twine = system.PackageSpec("twine")
+    shell_functools = system.PackageSpec("shell-functools")
+
+    assert latest_pypi_version(None, tox)
 
     with patch("pickley.pypi.request_get", return_value="{foo"):
         # 404
-        assert latest_pypi_version(None, "foo").startswith("error: ")
+        assert latest_pypi_version(None, foo).startswith("error: ")
 
     with patch("pickley.pypi.request_get", return_value='{"info": {"version": "1.0"}}'):
-        assert latest_pypi_version(None, "foo") == "1.0"
+        assert latest_pypi_version(None, foo) == "1.0"
 
     with patch("pickley.pypi.request_get", return_value=None):
-        assert latest_pypi_version(None, "twine").startswith("error: ")
+        assert latest_pypi_version(None, twine).startswith("error: ")
 
     with patch("pickley.pypi.request_get", return_value="foo"):
-        assert latest_pypi_version(None, "twine").startswith("error: ")
+        assert latest_pypi_version(None, twine).startswith("error: ")
 
     with patch("pickley.pypi.request_get", return_value=LEGACY_SAMPLE):
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "twine") == "1.9.1"
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi/{name}", "twine") == "1.9.1"
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", shell_functools) == "1.9.1"
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi/{name}", shell_functools) == "1.9.1"
 
     with patch("pickley.pypi.request_get", return_value=PRERELEASE_SAMPLE):
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "black").startswith("error: ")
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", black).startswith("error: ")
 
     with patch("pickley.pypi.request_get", return_value=UNKNOWN_VERSIONING_SAMPLE):
         # Unknown version: someproj-1.3.0_custom
-        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", "black").startswith("error: ")
+        assert latest_pypi_version("https://pypi-mirror.mycompany.net/pypi", black).startswith("error: ")
 
     with patch("pickley.pypi.urlopen", side_effect=Exception):
         # GET fails, and fallback curl also fails

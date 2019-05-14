@@ -11,7 +11,7 @@ from six.moves.urllib.request import Request, urlopen
 LOG = logging.getLogger(__name__)
 DEFAULT_PYPI = "https://pypi.org/pypi/{name}/json"
 RE_BASENAME = re.compile(r'href=".+/([^/#]+)\.(tar\.gz|whl)#', re.IGNORECASE)
-RE_VERSION = re.compile(r"[^-]+-([^-]+)-.*")
+RE_VERSION = re.compile(r"([^-]+)")
 
 
 def request_get(url):
@@ -46,24 +46,21 @@ def pypi_url():
     return conf.get("global", {}).get("index-url", DEFAULT_PYPI)
 
 
-def latest_pypi_version(url, name):
+def latest_pypi_version(url, package_spec):
     """
     :param str|None url: Pypi index to use (default: pypi.org)
-    :param str name: Pypi package name
+    :param system.PackageSpec package_spec: Pypi package
     :return str: Determined latest version, if any
     """
-    if not name:
-        return None
-
     if not url:
         url = pypi_url()
 
     if "{name}" in url:
-        url = url.format(name=name)
+        url = url.format(name=package_spec.dashed)
 
     else:
         # Assume legacy only for now for custom pypi indices
-        url = os.path.join(url, name)
+        url = os.path.join(url, package_spec.dashed)
 
     data = request_get(url)
     if not data:
@@ -80,15 +77,32 @@ def latest_pypi_version(url, name):
 
         return "error: can't determine latest version from '%s'" % url
 
-    # Legacy mode: parse returned HTML
+    return _legacy_pypi_version(package_spec, url, data)
+
+
+def _legacy_pypi_version(package_spec, url, data):
+    """
+    Args:
+        package_spec (system.PackageSpec): Pypi package
+        url (str): Pypi url that delivered 'data'
+        data (str): HTML from pypi/simple
+
+    Returns:
+        (str): Latest usable version, or problem (string starting with 'error:')
+    """
     latest = None
     latest_text = None
     prereleases = []
     for line in data.splitlines():
         m = RE_BASENAME.search(line)
-        if m:
-            basename = m.group(1)
-            m = RE_VERSION.match(basename)
+        if not m:
+            continue
+
+        version_part = package_spec.version_part(m.group(1))
+        if not version_part:
+            continue
+
+        m = RE_VERSION.match(version_part)
         if m:
             try:
                 version_text = m.group(1)
@@ -101,6 +115,7 @@ def latest_pypi_version(url, name):
                 elif latest is None or latest < value:
                     latest = value
                     latest_text = version_text
+
             except ValueError:
                 pass
 

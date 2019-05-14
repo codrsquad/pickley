@@ -90,17 +90,17 @@ class SoftLock(object):
         runez.delete(self.lock, logger=None)
 
 
-def vrun(package_name, command, *args, **kwargs):
+def vrun(package_spec, command, *args, **kwargs):
     """
-    Run command + args from an on-the-fly create virtualenv, for associated pypi 'package_name'.
+    Run command + args from an on-the-fly create virtualenv, for associated pypi 'package_spec'.
     This allows us to run commands like 'pex ...' with pex installed when/if needed
 
-    :param str package_name: Associated pypi package the run is for
+    :param system.PackageSpec package_spec: Associated pypi package the run is for
     :param str command: Command to run (pip, pex, etc...)
     :param args: Command line args
     :param kwargs: Optional named args to pass-through to runez.run_program()
     """
-    python = system.target_python(package_name=package_name)
+    python = system.target_python(package_spec=package_spec)
     folder = system.SETTINGS.meta.full_path(".%s" % python.short_name)
     with SoftLock(folder, timeout=system.SETTINGS.install_timeout, invalid=system.SETTINGS.install_timeout, keep=10) as lock:
         shared = SharedVenv(lock, python)
@@ -154,45 +154,42 @@ class SharedVenv(object):
         return runez.run(self.pip, *args, **kwargs)
 
     def _refresh_frozen(self):
-        output = self._run_pip("freeze", fatal=False)
-        versions = {}
+        output = self._run_pip("freeze", "--all", fatal=False)
+        self._frozen = {}
         if output:
             for line in output.split("\n"):
                 name, version = system.despecced(line)
-                versions[name] = version
-        if versions:
-            runez.save_json(versions, self.frozen_path)
-        return versions
+                self._frozen[name] = version
+        if self._frozen:
+            runez.save_json(self._frozen, self.frozen_path)
 
-    def _installed_module(self, package_name, version=None):
+    def _installed_module(self, package_spec, command):
         """
-        :param str package_name: Pypi module to install in venv, if not already installed
-        :param str|None version: Version (default: latest)
+        :param system.PackageSpec package_spec: Associated package spec
+        :param str command: Program to install in venv, if not already installed
         """
-        program = os.path.join(self.bin, package_name)
-        current = self.frozen.get(package_name)
+        program = os.path.join(self.bin, command)
+        current = self.frozen.get(package_spec.dashed)
         if not current and runez.is_executable(program):
             # Edge case for older versions that weren't based on freeze
             self._refresh_frozen()
-            current = self.frozen.get(package_name)
-        if not current or (version and current != version):
-            spec = package_name if not version else "%s==%s" % (package_name, version)
-            self._run_pip("install", "-i", system.SETTINGS.index, spec)
+            current = self.frozen.get(package_spec.dashed)
+        if not current or (package_spec.version and current != package_spec.version):
+            self._run_pip("install", "-i", system.SETTINGS.index, package_spec.specced)
             self._refresh_frozen()
         return program
 
-    def _run_from_venv(self, package_name, *args, **kwargs):
+    def _run_from_venv(self, command, *args, **kwargs):
         """
         Should be called while holding the soft file lock in context only
 
-        :param str package_name: Pypi package to which command being ran belongs to
+        :param str command: Command to run from that package
         :param args: Args to invoke program with
-        :param kwargs: Additional args, use program= if entry point differs from 'package_name'
+        :param kwargs: Additional args, use program= if entry point differs from 'package_spec'
         """
-        if package_name == "pip":
+        cmd = system.PackageSpec(command)
+        if cmd.dashed == "pip":
             return self._run_pip(*args, **kwargs)
         args = runez.flattened(args, split=runez.SHELL)
-        program = kwargs.pop("program", package_name)
-        program, version = system.despecced(program)
-        full_path = self._installed_module(program, version=version)
+        full_path = self._installed_module(cmd, command)
         return runez.run(full_path, *args, **kwargs)

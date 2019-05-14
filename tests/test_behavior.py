@@ -38,7 +38,7 @@ def test_ensure_freeze(_, __, temp_base):
         runez.touch(fake_pex)
         runez.make_executable(fake_pex)
         v = SharedVenv(lock, None)
-        assert v._installed_module("pex")
+        assert v._installed_module(system.PackageSpec("pex"), "pex")
 
 
 def test_config():
@@ -52,10 +52,11 @@ def test_config():
 def test_missing_implementation():
     m = ImplementationMap("custom")
     m.register(ImplementationMap)
+    foo = system.PackageSpec("foo")
     assert len(m.names()) == 1
-    assert "No custom type configured" in verify_abort(m.resolved, "foo")
+    assert "No custom type configured" in verify_abort(m.resolved, foo)
     system.SETTINGS.cli.contents["custom"] = "bar"
-    assert "Unknown custom type" in verify_abort(m.resolved, "foo")
+    assert "Unknown custom type" in verify_abort(m.resolved, foo)
 
 
 def test_relocate_venv_successfully(temp_base):

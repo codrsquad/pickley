@@ -13,7 +13,7 @@
   "delivery": {
     "venv": "tox pipenv",
     "copy": {
-      "dict_sample": "this is just for testing dict() lookup"
+      "dict-sample": "this is just for testing dict() lookup"
     }
   },
   "index": "https://pypi.org/"
