@@ -95,6 +95,10 @@ class PackageSpec(object):
     def specced(self):
         return "%s==%s" % (self.dashed, self.version) if self.version else self.dashed
 
+    @property
+    def multi_named(self):
+        return self.dashed != self.pythonified
+
     @classmethod
     def is_valid(cls, text):
         name, _ = despecced(text)

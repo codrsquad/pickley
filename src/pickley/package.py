@@ -82,6 +82,19 @@ class VersionMeta(runez.Serializable):
     def __repr__(self):
         return self.representation()
 
+    def load(self, path=None, fatal=True, logger=None):  # pragma: no cover
+        old_path = None
+        if path is None and self._suffix == "current" and self._package_spec.multi_named and not os.path.exists(self._path):
+            # Temporary fix: pickley <v1.8 didn't standardize on dashed package name
+            p = system.SETTINGS.meta.full_path(self._package_spec.pythonified, ".%s.json" % self._suffix)
+            if os.path.exists(p):
+                path = p
+                old_path = self._path
+        super(VersionMeta, self).load(path=path, fatal=fatal, logger=logger)
+        if old_path:
+            self._path = old_path
+            self._source = runez.short(old_path)
+
     def _update_dynamic_fields(self):
         """Update dynamically determined fields"""
         self.delivery = DELIVERERS.resolved_name(self._package_spec, default=self._base and self._base.delivery)
@@ -464,7 +477,7 @@ class Packager(object):
                 runez.delete(system.SETTINGS.base.full_path(name))
 
             self.cleanup()
-            if self.package_spec.dashed != self.package_spec.pythonified:
+            if self.package_spec.multi_named:
                 # Clean up old installations with underscore in name
                 runez.delete(system.SETTINGS.meta.full_path(self.package_spec.pythonified))
 
