@@ -295,12 +295,10 @@ class Settings(object):
 
     base = None  # type: FolderBase # Installation folder
     meta = None  # type: FolderBase # .pickley meta subfolder
+    venvs = None  # type: FolderBase # .pickley/_venvs meta subfolder
 
-    def __init__(self, base=None):
-        """
-        :param str|None base: Base folder to use
-        """
-        self.set_base(base)
+    def __init__(self):
+        self.set_base(None)
         self.cli = SettingsFile(self, name="cli")
         self.defaults = SettingsFile(self, name="defaults")
         self.defaults.set_contents(
@@ -337,7 +335,7 @@ class Settings(object):
 
     def set_base(self, base):
         """
-        :param str|FolderBase|None base: Folder to use as base for installations
+        :param str | None base: Folder to use as base for installations
         """
         if not base:
             base = os.environ.get("PICKLEY_ROOT")
@@ -347,20 +345,24 @@ class Settings(object):
                 # Don't consider meta folder .pickley/... as installation base
                 i = base.index(DOT_PICKLEY)
                 base = base[:i].rstrip("/")
+
             elif ".venv" in base:
                 # Convenience for development
                 base = runez.parent_folder(base)
                 base = os.path.join(base, "root")
 
-        if isinstance(base, FolderBase):
-            self.base = base
-        else:
-            self.base = FolderBase(base, name="base")
+        if self.base:
+            runez.Anchored.pop(self.base.path)
+
+        self.base = FolderBase(base, name="base")
 
         if self.meta:
             runez.Anchored.pop(self.meta.path)
+
         self.meta = meta_folder(self.base.path)
-        runez.Anchored.add(self.meta.path)
+        self.venvs = FolderBase(os.path.join(self.meta.path, "_venvs"), name="venvs")
+
+        runez.Anchored.add(self.base.path)
 
     @property
     def install_timeout(self):

@@ -101,7 +101,7 @@ def vrun(package_spec, command, *args, **kwargs):
     :param kwargs: Optional named args to pass-through to runez.run_program()
     """
     python = system.target_python(package_spec=package_spec)
-    folder = system.SETTINGS.meta.full_path(".%s" % python.short_name)
+    folder = system.SETTINGS.venvs.full_path("_%s" % python.short_name)
     with SoftLock(folder, timeout=system.SETTINGS.install_timeout, invalid=system.SETTINGS.install_timeout, keep=10) as lock:
         shared = SharedVenv(lock, python)
         return shared._run_from_venv(command, *args, **kwargs)

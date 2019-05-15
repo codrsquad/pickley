@@ -240,7 +240,7 @@ class Packager(object):
         if not self.current.valid:
             self.current.invalidate("is not installed")
 
-        self.dist_folder = system.SETTINGS.meta.full_path(self.package_spec.dashed, ".tmp")
+        self.dist_folder = system.SETTINGS.venvs.full_path(self.package_spec.dashed)
         self.build_folder = os.path.join(self.dist_folder, "build")
         self.relocatable = False
         self.source_folder = None
@@ -550,7 +550,7 @@ class Packager(object):
         """
         ep = self.entry_points
         if not ep:
-            runez.delete(system.SETTINGS.meta.full_path(self.package_spec.dashed))
+            self.cleanup()
             runez.abort("'%s' is not a CLI, it has no console_scripts entry points", self.package_spec.dashed)
         return ep
 

@@ -86,7 +86,7 @@ def test_relocate_venv_successfully(temp_base):
         expected = ["line 1: dest\n", "line 2\n"]
         assert relocate_venv("foo", "source", "dest", fatal=False) == 1
         assert runez.get_lines("foo/bar/bin/baz") == expected
-        assert "Relocated " in logged
+        assert not logged
 
         # Second relocation is a no-op
         assert relocate_venv("foo", "source", "dest", fatal=False) == 0
@@ -94,4 +94,4 @@ def test_relocate_venv_successfully(temp_base):
         # Test relocating a single file
         runez.write("foo/bar/bin/baz", original, logger=logging.debug)
         assert relocate_venv("foo/bar/bin/baz", "source", "dest", fatal=False) == 1
-        assert "Relocated " in logged
+        assert runez.get_lines("foo/bar/bin/baz") == expected

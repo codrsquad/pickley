@@ -39,7 +39,7 @@ def test_version(cli):
 
 
 def test_settings(cli):
-    cli.expect_success("settings -d", "settings:", "base: %s" % short(system.SETTINGS.base.path))
+    cli.expect_success("settings -d", "settings:", "base: %s" % os.getcwd())
 
 
 def run_program(program, *args):
@@ -47,13 +47,13 @@ def run_program(program, *args):
 
 
 def test_package(cli):
-    pickley = system.SETTINGS.base.full_path("dist", "pickley", "bin", "pickley")
     expected_version = system.run_python(os.path.join(PROJECT, "setup.py"), "--version")
 
     # Package pickley as venv
     cli.expect_success(["package", "-d", "dist", PROJECT], "Packaged %s successfully" % short(PROJECT))
 
     # Verify that it packaged OK, and is relocatable
+    pickley = os.path.abspath("dist/pickley/bin/pickley")
     assert runez.is_executable(pickley)
     assert run_program(pickley, "--version") == expected_version
     assert runez.first_line(pickley).startswith("#!/usr/bin/env python")
@@ -66,12 +66,13 @@ def test_bogus_install(cli):
 
     cli.expect_failure("-b foo/bar settings", "Can't use foo/bar as base: folder does not exist")
 
-    cli.expect_failure("--dryrun check -- -this-package-does-not-exist ", "can't determine latest version")
+    cli.expect_failure("--dryrun check -- -bogus", "not a valid pypi package name")
+    cli.expect_failure("--dryrun check this-package-does-not-exist", "can't determine latest version")
 
     cli.expect_failure("--dryrun --delivery foo install tox", "invalid choice: foo")
 
     cli.expect_failure("--dryrun uninstall --force /dev/null", "is not a valid pypi package name")
-    cli.expect_success("--dryrun uninstall --force -- -this-package-does-not-exist ", "Nothing to uninstall")
+    cli.expect_success("--dryrun uninstall --force -- this-package-does-not-exist ", "Nothing to uninstall")
 
     runez.touch("foo")
     assert os.path.exists("foo")

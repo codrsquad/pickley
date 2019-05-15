@@ -27,7 +27,7 @@ INVOKER = "invoker"
 RE_PYTHON_LOOSE = re.compile(r"(py(thon ?)?)?([0-9])?\.?([0-9])?\.?[0-9]*", re.IGNORECASE)
 RE_PYTHON_STRICT = re.compile(r"(python([0-9]\.[0-9])|([0-9]\.[0-9])\.?[0-9]*)")
 
-RE_PYPI_ACCEPTABLE = re.compile(r"^[a-z0-9_.-]+$", re.IGNORECASE)
+RE_PYPI_ACCEPTABLE = re.compile(r"^[a-z0-9][a-z0-9_.-]*$", re.IGNORECASE)
 RE_PYPI_DASHED_NAME = re.compile(r"^[a-z0-9-]+$")
 
 PICKLEY_PROGRAM_PATH = runez.resolved_path(sys.argv[0])

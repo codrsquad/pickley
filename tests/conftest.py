@@ -33,15 +33,12 @@ class TemporaryBase(runez.TempFolder):
 
     def __enter__(self):
         super(TemporaryBase, self).__enter__()
-        self.old_base = system.SETTINGS.base
-        self.old_config = system.SETTINGS.config
-        system.SETTINGS.set_base(self.tmp_folder)
+        os.environ["PICKLEY_ROOT"] = self.tmp_folder
         return self.tmp_folder
 
     def __exit__(self, *_):
         super(TemporaryBase, self).__exit__(*_)
-        system.SETTINGS.set_base(self.old_base)
-        system.SETTINGS.load_config(config=self.old_config)
+        del os.environ["PICKLEY_ROOT"]
 
 
 cli.context = TemporaryBase
