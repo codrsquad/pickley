@@ -108,7 +108,7 @@ def test_custom_settings(temp_base):
     assert stgs.base.relative_path(p) == "foo/bar"
 
     d = stgs.resolved_definition("delivery", package_spec=system.PackageSpec("dict_sample"))
-    assert str(d) == "config.json:delivery.copy"
+    assert str(d) == ".pickley/config.json:delivery.copy"
 
     assert stgs.resolved_value("delivery", package_spec=system.PackageSpec("tox")) == "venv"
     assert stgs.resolved_value("delivery", package_spec=system.PackageSpec("virtualenv")) == "wrap"
@@ -116,11 +116,12 @@ def test_custom_settings(temp_base):
     assert stgs.resolved_value("packager", package_spec=system.PackageSpec("tox")) == system.VENV_PACKAGER
     assert stgs.resolved_value("packager", package_spec=system.PackageSpec("virtualenv")) == "pex"
 
-    old_width = pickley.settings.REPRESENTATION_WIDTH
-    pickley.settings.REPRESENTATION_WIDTH = 40
-    actual = stgs.represented(include_defaults=False).replace(short(stgs.base.path), "{base}")
-    assert actual == EXPECTED_REPRESENTATION.strip()
-    pickley.settings.REPRESENTATION_WIDTH = old_width
+    with runez.Anchored(system.SETTINGS.meta.path):
+        old_width = pickley.settings.REPRESENTATION_WIDTH
+        pickley.settings.REPRESENTATION_WIDTH = 40
+        actual = stgs.represented(include_defaults=False).replace(short(stgs.base.path), "{base}")
+        assert actual == EXPECTED_REPRESENTATION.strip()
+        pickley.settings.REPRESENTATION_WIDTH = old_width
 
     stgs.cli.contents["packager"] = "copy"
     d = stgs.resolved_definition("packager")

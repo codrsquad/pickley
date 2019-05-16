@@ -168,17 +168,18 @@ def move_venv(source, destination, fatal=True, logger=LOG.debug):
 
 def _relocator(source, destination, fatal=True, logger=None):
     """Adapter for move/copy file"""
-    relocated = relocate_venv(source, source, destination, fatal=fatal, logger=logger)
+    relocated = relocate_venv(source, source, destination, fatal=fatal)
+    if relocated < 0:
+        return " (relocation failed)"
     return " (relocated %s)" % relocated if relocated else ""
 
 
-def relocate_venv(path, source, destination, fatal=True, logger=LOG.debug, _seen=None):
+def relocate_venv(path, source, destination, fatal=True, _seen=None):
     """
     :param str path: Path of file or folder to relocate (change mentions of 'source' to 'destination')
     :param str source: Where venv used to be
     :param str destination: Where venv is moved to
     :param bool fatal: Abort execution on failure if True
-    :param callable|None logger: Logger to use
     :return int: Number of relocated files (0 if no-op, -1 on failure)
     """
     original_call = False
@@ -196,12 +197,10 @@ def relocate_venv(path, source, destination, fatal=True, logger=LOG.debug, _seen
             for bin_folder in find_venvs(path):
                 for name in os.listdir(bin_folder):
                     fpath = os.path.join(bin_folder, name)
-                    r = relocate_venv(fpath, source, destination, fatal=fatal, logger=logger, _seen=_seen)
+                    r = relocate_venv(fpath, source, destination, fatal=fatal, _seen=_seen)
                     if r < 0:
                         return r
                     relocated += r
-            if logger and relocated:
-                logger("Relocated %s files in %s: %s -> %s", relocated, short(path), short(source), short(destination))
         return relocated
 
     content = runez.get_lines(path, fatal=fatal)
@@ -219,10 +218,7 @@ def relocate_venv(path, source, destination, fatal=True, logger=LOG.debug, _seen
     if not modified:
         return 0
 
-    r = runez.write(path, "".join(lines), fatal=fatal)
-    if r > 0 and logger and original_call:
-        logger("Relocated %s: %s -> %s", short(path), short(source), short(destination))
-    return r
+    return runez.write(path, "".join(lines), fatal=fatal)
 
 
 def find_venvs(folder, _seen=None):

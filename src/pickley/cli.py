@@ -14,7 +14,7 @@ from pickley import system
 from pickley.delivery import copy_venv, move_venv
 from pickley.lock import SoftLockException
 from pickley.package import DELIVERERS, PACKAGERS
-from pickley.settings import meta_folder, short
+from pickley.settings import short
 from pickley.uninstall import uninstall_existing
 
 
@@ -55,7 +55,7 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
         base = runez.resolved_path(base)
         if not os.path.exists(base):
             sys.exit("Can't use %s as base: folder does not exist" % short(base))
-        system.SETTINGS.set_base(base)
+    system.SETTINGS.set_base(base)
 
     system.SETTINGS.load_config(config=config, delivery=delivery, index=index, packager=packager)
     system.DESIRED_PYTHON = python
@@ -124,14 +124,24 @@ def install(force, packages):
 
 
 @main.command()
+@click.option("--all", is_flag=True, help="Uninstall everything pickley-installed, including pickley itself")
 @click.option("--force", "-f", is_flag=True, help="Force installation, even if already installed")
-@click.argument("packages", nargs=-1, required=True)
-def uninstall(force, packages):
+@click.argument("packages", nargs=-1, required=False)
+def uninstall(all, force, packages):
     """
     Uninstall packages
     """
+    if packages and all:
+        sys.exit("Either specify packages to uninstall, or --all (but not both)")
+
+    if not packages and not all:
+        sys.exit("Specify packages to uninstall, or --all")
+
+    if packages and system.PICKLEY in packages:
+        sys.exit("Run 'uninstall --all' if you wish to uninstall pickley itself (and everything it installed)")
+
     system.setup_audit_log()
-    package_specs = system.resolved_package_specs(packages)
+    package_specs = system.resolved_package_specs(packages, auto_complete=all)
     errors = 0
     for package_spec in package_specs:
         p = PACKAGERS.resolved(package_spec)
@@ -170,6 +180,9 @@ def uninstall(force, packages):
         if ep_uninstalled > 1:
             message += " (%s entry points)" % ep_uninstalled
         system.inform(message)
+
+    if all and not errors:
+        runez.delete(system.SETTINGS.meta.path)
 
     if errors:
         sys.exit(1)
@@ -212,10 +225,10 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     dist = runez.resolved_path(dist)
     folder = runez.resolved_path(folder)
 
-    system.SETTINGS.meta = meta_folder(build)
-
     if not os.path.isdir(folder):
         sys.exit("Folder %s does not exist" % short(folder))
+
+    system.SETTINGS.set_base(build)
 
     setup_py = os.path.join(folder, "setup.py")
     if not os.path.exists(setup_py):
@@ -257,7 +270,6 @@ def settings(diagnostics):
             print("sys.real_prefix: %s" % short(real_prefix, meta=False))
         if not system.SETTINGS.meta.path.startswith(system.PICKLEY_PROGRAM_PATH):
             print("pickley        : %s" % short(system.PICKLEY_PROGRAM_PATH, meta=False))
-        print("meta           : %s" % short(system.SETTINGS.meta.path, meta=False))
         print("")
 
     print(system.SETTINGS.represented())
