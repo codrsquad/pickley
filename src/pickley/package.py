@@ -390,10 +390,11 @@ class Packager(object):
         self.pip_wheel()
 
         self.refresh_entry_points()
-        runez.ensure_folder(self.dist_folder, folder=True)
-        template = "{name}" if self.source_folder else "{name}-{version}"
         self.packaged = []
-        self.effective_package(template)
+        if self.entry_points:
+            runez.ensure_folder(self.dist_folder, folder=True)
+            template = "{name}" if self.source_folder else "{name}-{version}"
+            self.effective_package(template)
 
     def create_symlinks(self, symlink, fatal=True):
         """
@@ -481,6 +482,9 @@ class Packager(object):
                 # Clean up old installations with underscore in name
                 runez.delete(system.SETTINGS.meta.full_path(self.package_spec.pythonified))
 
+            if not self.entry_points:
+                runez.abort("'%s' is not a CLI, it has no console_scripts entry points", self.package_spec.dashed)
+
             self.current.set_from(self.desired)
             self.current.save(fatal=False)
 
@@ -544,16 +548,6 @@ class Packager(object):
     def effective_install(self):
         """Install this pypi cli to self.dist_folder"""
 
-    def required_entry_points(self):
-        """
-        :return list: Entry points, abort execution if there aren't any
-        """
-        ep = self.entry_points
-        if not ep:
-            self.cleanup()
-            runez.abort("'%s' is not a CLI, it has no console_scripts entry points", self.package_spec.dashed)
-        return ep
-
     def perform_delivery(self, template):
         """
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
@@ -563,7 +557,7 @@ class Packager(object):
 
         self.executables = []
         deliverer = DELIVERERS.resolved(self.package_spec, default=self.desired.delivery)
-        for name in self.required_entry_points():
+        for name in self.entry_points:
             target = system.SETTINGS.base.full_path(name)
             if self.package_spec.dashed != system.PICKLEY and not self.current.file_exists:
                 uninstall_existing(target)
@@ -605,7 +599,7 @@ class PexPackager(Packager):
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
         self.executables = []
-        for name in self.required_entry_points():
+        for name in self.entry_points:
             dest = template.format(name=name, version=self.desired.version)
             dest = os.path.join(self.dist_folder, dest)
             self.pex_build(name, dest)
@@ -615,11 +609,12 @@ class PexPackager(Packager):
     def effective_install(self):
         """Install this pypi cli to self.dist_folder"""
         self.package()
-        for path in self.packaged:
-            name = os.path.basename(path)
-            target = system.SETTINGS.meta.full_path(self.package_spec.dashed, name)
-            move_venv(path, target)
-        self.perform_delivery("{meta}/{name}-{version}")
+        if self.packaged:
+            for path in self.packaged:
+                name = os.path.basename(path)
+                target = system.SETTINGS.meta.full_path(self.package_spec.dashed, name)
+                move_venv(path, target)
+            self.perform_delivery("{meta}/{name}-{version}")
 
 
 @PACKAGERS.register
@@ -652,7 +647,8 @@ class VenvPackager(Packager):
     def effective_install(self):
         """Install this pypi cli to self.dist_folder"""
         self.package()
-        path = self.packaged[0]
-        target = system.SETTINGS.meta.full_path(self.package_spec.dashed, os.path.basename(path))
-        move_venv(path, target)
-        self.perform_delivery(os.path.join(target, "bin", "{name}"))
+        if self.packaged:
+            path = self.packaged[0]
+            target = system.SETTINGS.meta.full_path(self.package_spec.dashed, os.path.basename(path))
+            move_venv(path, target)
+            self.perform_delivery(os.path.join(target, "bin", "{name}"))

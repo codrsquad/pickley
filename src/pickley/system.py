@@ -35,7 +35,7 @@ PICKLEY_PROGRAM_PATH = runez.resolved_path(sys.argv[0])
 
 def setup_audit_log():
     """Setup audit.log, if not already setup"""
-    if not runez.log.file_handler:
+    if not runez.log.file_handler and not runez.DRYRUN:
         runez.log.setup(
             file_format="%(asctime)s %(timezone)s [%(process)d] %(context)s%(levelname)s - %(message)s",
             file_level=logging.DEBUG,

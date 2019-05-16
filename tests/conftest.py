@@ -4,7 +4,6 @@ import pytest
 import runez
 from runez.conftest import cli
 
-from pickley import system
 from pickley.cli import main
 from pickley.settings import DOT_PICKLEY  # noqa: imported to ensure that system.SETTINGS is set
 

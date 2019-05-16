@@ -84,14 +84,6 @@ class FolderBase(object):
         return "%s: %s" % (self.name, short(self.path))
 
 
-def meta_folder(path):
-    """
-    :param str path: Path to folder to use
-    :return FolderBase: Associated object
-    """
-    return FolderBase(os.path.join(path, DOT_PICKLEY), name="meta")
-
-
 def add_representation(result, data, indent=""):
     """
     :param list result: Where to add lines representing 'data'
@@ -359,7 +351,7 @@ class Settings(object):
         if self.meta:
             runez.Anchored.pop(self.meta.path)
 
-        self.meta = meta_folder(self.base.path)
+        self.meta = FolderBase(os.path.join(self.base.path, DOT_PICKLEY), name="meta")
         self.venvs = FolderBase(os.path.join(self.meta.path, "_venvs"), name="venvs")
 
         runez.Anchored.add(self.base.path)

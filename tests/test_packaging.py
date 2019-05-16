@@ -154,10 +154,6 @@ def test_versions(_, __, temp_base):
     # Provide a minimal setup.py
     runez.write(setup_py, "from setuptools import setup\nsetup(name='foo', version='0.0.0')\n")
 
-    # Package project without entry points
-    p.get_entry_points = lambda *_: None
-    assert "is not a CLI" in verify_abort(p.required_entry_points)
-
 
 def get_definition(key, package_spec=None):
     if key == "channel":
