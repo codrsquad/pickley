@@ -91,6 +91,9 @@ class PackageSpec(object):
     def __str__(self):
         return self.specced
 
+    def __lt__(self, other):
+        return str(self) < str(other)
+
     @property
     def specced(self):
         return "%s==%s" % (self.dashed, self.version) if self.version else self.dashed
@@ -151,7 +154,7 @@ def resolved_package_specs(names, auto_complete=False):
             result.append(name)
 
     elif auto_complete and os.path.isdir(SETTINGS.meta.path):
-        for fname in os.listdir(SETTINGS.meta.path):
+        for fname in sorted(os.listdir(SETTINGS.meta.path)):
             if PackageSpec.is_valid(fname):
                 fpath = os.path.join(SETTINGS.meta.path, fname)
                 if os.path.isdir(fpath):

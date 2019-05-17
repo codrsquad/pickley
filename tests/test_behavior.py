@@ -55,3 +55,8 @@ def test_missing_implementation():
     assert "No custom type configured" in verify_abort(m.resolved, foo)
     system.SETTINGS.cli.contents["custom"] = "bar"
     assert "Unknown custom type" in verify_abort(m.resolved, foo)
+
+
+def test_sorting():
+    some_list = sorted([system.PackageSpec("tox"), system.PackageSpec("awscli")])
+    assert [str(s) for s in some_list] == ["awscli", "tox"]
