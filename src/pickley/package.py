@@ -640,6 +640,7 @@ class VenvPackager(Packager):
         if self.relocatable:
             python = system.target_python(package_spec=self.package_spec).executable
             vrun(self.package_spec, "virtualenv", "--relocatable", "--python=%s" % python, folder)
+            runez.run(os.path.join(bin_folder, "python"), "-m", "compileall")
 
         self.packaged.append(folder)
         self.executables = [os.path.join(bin_folder, name) for name in self.entry_points]
