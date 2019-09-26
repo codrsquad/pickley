@@ -174,7 +174,7 @@ class VersionMeta(runez.Serializable):
             return False
         return True
 
-    def set_version(self, version, channel, source):
+    def set_version_channel_source(self, version, channel, source):
         """
         :param str version: Effective version
         :param str channel: Channel (stable, latest, ...) via which this version was determined
@@ -325,7 +325,7 @@ class Packager(object):
 
         version = latest_pypi_version(system.SETTINGS.index, self.package_spec)
         source = system.SETTINGS.index or "pypi"
-        self.latest.set_version(version, system.LATEST_CHANNEL, source)
+        self.latest.set_version_channel_source(version, system.LATEST_CHANNEL, source)
         if not version:
             self.latest.invalidate("can't determine latest version from %s" % source)
 
@@ -348,7 +348,7 @@ class Packager(object):
             version = self.package_spec.version
 
         if version:
-            self.desired.set_version(version, channel, source)
+            self.desired.set_version_channel_source(version, channel, source)
             return
 
         if channel == system.LATEST_CHANNEL:

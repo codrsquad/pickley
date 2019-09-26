@@ -159,7 +159,8 @@ def test_install(cli):
     runez.save_json(latest, ".pickley/tox/.latest.json")
     cli.expect_failure("check", "tox", "can be upgraded to 10000.0")
 
-    cli.expect_success("-ppex install twine", "Installed twine")
+    # Latest twine 2.0 requires py3
+    cli.expect_success("-ppex install twine==1.14.0", "Installed twine")
 
     cli.expect_success("list", "tox", "twine")
     cli.expect_success("list --verbose", "tox", "twine")
