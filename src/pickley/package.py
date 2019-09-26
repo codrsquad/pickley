@@ -49,7 +49,8 @@ class VersionMeta(runez.Serializable):
 
     # Dields starting with '_' are not stored to json file
     _base = None                    # type: VersionMeta # Base meta
-    _problem = None                 # type: str | None # Detected problem, if any
+    _path = None                    # type: str # Path where this file stored
+    _problem = None                 # type: str # Detected problem, if any
     _suffix = None                  # type: str # Suffix of json file where this object is persisted
     _package_spec = None            # type: system.PackageSpec # Associated pypi package
 
@@ -82,7 +83,10 @@ class VersionMeta(runez.Serializable):
     def __repr__(self):
         return self.representation()
 
-    def load(self, path=None, fatal=True, logger=None):  # pragma: no cover
+    def load(self, **kwargs):
+        path = kwargs.pop("path", self._path)
+        default = kwargs.pop("default", {})
+        fatal = kwargs.pop("fatal", False)
         old_path = None
         if path is None and self._suffix == "current" and self._package_spec.multi_named and not os.path.exists(self._path):
             # Temporary fix: pickley <v1.8 didn't standardize on dashed package name
@@ -90,10 +94,13 @@ class VersionMeta(runez.Serializable):
             if os.path.exists(p):
                 path = p
                 old_path = self._path
-        super(VersionMeta, self).load(path=path, fatal=fatal, logger=logger)
+        super(VersionMeta, self).load(path, default=default, fatal=fatal, **kwargs)
         if old_path:
             self._path = old_path
-            self._source = runez.short(old_path)
+
+    def save(self, **kwargs):
+        fatal = kwargs.pop("fatal", False)
+        super(VersionMeta, self).save(self._path, fatal=fatal, **kwargs)
 
     def _update_dynamic_fields(self):
         """Update dynamically determined fields"""
@@ -236,7 +243,7 @@ class Packager(object):
         self.latest = VersionMeta(self.package_spec, system.LATEST_CHANNEL, base=self.current)
         self.desired = VersionMeta(self.package_spec, base=self.current)
 
-        self.current.load(fatal=False)
+        self.current.load()
         if not self.current.valid:
             self.current.invalidate("is not installed")
 
@@ -319,7 +326,7 @@ class Packager(object):
 
     def refresh_latest(self, force=False):
         """Refresh self.latest"""
-        self.latest.load(fatal=False)
+        self.latest.load()
         if not force and self.latest.still_valid:
             return
 
@@ -330,7 +337,7 @@ class Packager(object):
             self.latest.invalidate("can't determine latest version from %s" % source)
 
         elif not version.startswith("error: "):
-            self.latest.save(fatal=False)
+            self.latest.save()
 
         else:
             self.latest.invalidate(version[7:])
@@ -486,7 +493,7 @@ class Packager(object):
                 runez.abort("'%s' is not a CLI, it has no console_scripts entry points", self.package_spec.dashed)
 
             self.current.set_from(self.desired)
-            self.current.save(fatal=False)
+            self.current.save()
 
             msg = "Would install" if runez.DRYRUN else "Installed"
             system.inform("%s %s" % (msg, self.desired.representation(verbose=verbose)))
