@@ -83,10 +83,8 @@ class VersionMeta(runez.Serializable):
     def __repr__(self):
         return self.representation()
 
-    def load(self, **kwargs):
-        path = kwargs.pop("path", self._path)
-        default = kwargs.pop("default", {})
-        fatal = kwargs.pop("fatal", False)
+    def load(self):
+        path = self._path
         old_path = None
         if path is None and self._suffix == "current" and self._package_spec.multi_named and not os.path.exists(self._path):
             # Temporary fix: pickley <v1.8 didn't standardize on dashed package name
@@ -94,13 +92,13 @@ class VersionMeta(runez.Serializable):
             if os.path.exists(p):
                 path = p
                 old_path = self._path
-        super(VersionMeta, self).load(path, default=default, fatal=fatal, **kwargs)
+        data = runez.read_json(path, default={}, fatal=False)
+        self.set_from_dict(data, source=runez.short(path))
         if old_path:
             self._path = old_path
 
-    def save(self, **kwargs):
-        fatal = kwargs.pop("fatal", False)
-        super(VersionMeta, self).save(self._path, fatal=fatal, **kwargs)
+    def save(self):
+        runez.save_json(self.to_dict(), self._path, fatal=False)
 
     def _update_dynamic_fields(self):
         """Update dynamically determined fields"""
