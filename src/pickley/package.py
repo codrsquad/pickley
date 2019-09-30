@@ -86,15 +86,16 @@ class VersionMeta(runez.Serializable):
     def load(self):
         path = self._path
         old_path = None
-        if path is None and self._suffix == "current" and self._package_spec.multi_named and not os.path.exists(self._path):
-            # Temporary fix: pickley <v1.8 didn't standardize on dashed package name
-            p = system.SETTINGS.meta.full_path(self._package_spec.pythonified, ".%s.json" % self._suffix)
-            if os.path.exists(p):
-                path = p
-                old_path = self._path
+        if path is None and self._suffix == "current":  # pragma: no cover
+            if self._package_spec.multi_named and not os.path.exists(self._path):
+                # Temporary fix: pickley <v1.8 didn't standardize on dashed package name
+                p = system.SETTINGS.meta.full_path(self._package_spec.pythonified, ".%s.json" % self._suffix)
+                if os.path.exists(p):
+                    path = p
+                    old_path = self._path
         data = runez.read_json(path, default={}, fatal=False)
         self.set_from_dict(data, source=runez.short(path))
-        if old_path:
+        if old_path:  # pragma: no cover
             self._path = old_path
 
     def save(self):
