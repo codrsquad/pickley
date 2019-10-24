@@ -250,7 +250,13 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     p.package()
     p.create_symlinks(symlink)
     p.sanity_check(sanity_check)
-    print("Packaged %s successfully, produced: %s" % (short(folder), runez.represented_args(p.executables)))
+    if p.executables:
+        overview = "produced: %s" % runez.represented_args(p.executables)
+
+    else:
+        overview = "package has no entry-points"
+
+    print("Packaged %s successfully, %s" % (short(folder), overview))
     runez.Anchored.pop(folder)
 
 

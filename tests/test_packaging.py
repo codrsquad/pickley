@@ -42,7 +42,7 @@ def test_delivery(temp_base):
     # Test wrapper
     p = PACKAGERS.get(system.VENV_PACKAGER)(tox)
     assert p.create_symlinks(None) == 0
-    assert p.create_symlinks("foo", fatal=False) == -1
+    assert p.create_symlinks("foo", fatal=False) == 0
     p.executables = ["foo"]
     assert p.create_symlinks("foo:bar", fatal=False) == -1
     assert str(p) == "venv tox"

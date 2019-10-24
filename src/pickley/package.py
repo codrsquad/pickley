@@ -397,10 +397,9 @@ class Packager(object):
 
         self.refresh_entry_points()
         self.packaged = []
-        if self.entry_points:
-            runez.ensure_folder(self.dist_folder, folder=True)
-            template = "{name}" if self.source_folder else "{name}-{version}"
-            self.effective_package(template)
+        runez.ensure_folder(self.dist_folder, folder=True)
+        template = "{name}" if self.source_folder else "{name}-{version}"
+        self.effective_package(template)
 
     def create_symlinks(self, symlink, fatal=True):
         """
@@ -411,7 +410,7 @@ class Packager(object):
         :param bool fatal: Abort execution on failure if True
         :return int: 1 if effectively done, 0 if no-op, -1 on failure
         """
-        if not symlink:
+        if not symlink or not self.executables:
             return 0
         base, _, target = symlink.partition(":")
         if not target:
