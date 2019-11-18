@@ -128,16 +128,18 @@ class SharedVenv(object):
         self.folder = lock.folder
         self.bin = os.path.join(self.folder, "bin")
         self.python = os.path.join(self.bin, "python")
-        self.pip = os.path.join(self.bin, "pip")
         self._frozen = None
         if runez.is_younger(self.python, self.lock.keep):
             return
         runez.delete(self.folder)
-        venv = virtualenv_path()
-        if not venv:
-            runez.abort("Can't determine path to virtualenv.py")
+        if runez.to_int(venv_python.major) < 3:
+            venv = virtualenv_path()
+            if not venv:
+                runez.abort("Can't determine path to virtualenv.py")
+            runez.run(self.venv_python.executable, venv, self.folder)
 
-        runez.run(self.venv_python.executable, venv, self.folder)
+        else:
+            runez.run(self.venv_python.executable, "-mvenv", self.folder)
 
     @property
     def frozen_path(self):
@@ -149,12 +151,12 @@ class SharedVenv(object):
             self._frozen = runez.read_json(self.frozen_path, default={})
         return self._frozen or {}
 
-    def _run_pip(self, *args, **kwargs):
+    def _run_builtin_module(self, mod, *args, **kwargs):
         args = runez.flattened(args, split=runez.SHELL)
-        return runez.run(self.pip, *args, **kwargs)
+        return runez.run(self.python, "-m%s" % mod, *args, **kwargs)
 
     def _refresh_frozen(self):
-        output = self._run_pip("freeze", "--all", fatal=False)
+        output = self._run_builtin_module("pip", "freeze", "--all", fatal=False)
         self._frozen = {}
         if output:
             for line in output.split("\n"):
@@ -175,7 +177,7 @@ class SharedVenv(object):
             self._refresh_frozen()
             current = self.frozen.get(command_spec.dashed)
         if not current or (command_spec.version and current != command_spec.version):
-            self._run_pip("install", "-i", system.SETTINGS.index, command_spec.specced)
+            self._run_builtin_module("pip", "install", "-i", system.SETTINGS.index, command_spec.specced)
             self._refresh_frozen()
         return program
 
@@ -188,8 +190,9 @@ class SharedVenv(object):
         :param kwargs: Additional args
         """
         cmd = system.PackageSpec(command)
-        if cmd.dashed == "pip":
-            return self._run_pip(*args, **kwargs)
+        if cmd.dashed in ("pip", "venv"):
+            return self._run_builtin_module(cmd.dashed, *args, **kwargs)
+
         args = runez.flattened(args, split=runez.SHELL)
         full_path = self._installed_module(cmd)
         return runez.run(full_path, *args, **kwargs)

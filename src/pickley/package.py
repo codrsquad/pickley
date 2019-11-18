@@ -635,7 +635,9 @@ class VenvPackager(Packager):
         folder = os.path.join(self.dist_folder, template.format(name=self.package_spec.dashed, version=self.desired.version))
         runez.delete(folder, logger=None)
         runez.ensure_folder(folder, folder=True, logger=None)
-        vrun(self.package_spec, "virtualenv", folder)
+
+        venv = "virtualenv" if runez.PY2 or self.relocatable else "venv"
+        vrun(self.package_spec, venv, folder)
 
         bin_folder = os.path.join(folder, "bin")
         pip = os.path.join(bin_folder, "pip")
