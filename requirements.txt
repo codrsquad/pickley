@@ -2,5 +2,4 @@
 click==7.0
 runez==1.10.17
 setuptools==41.4.0
-six==1.13.0
 virtualenv==16.7.7

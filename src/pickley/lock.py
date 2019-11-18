@@ -145,6 +145,7 @@ class SharedVenv(object):
 
         else:
             runez.run(self.venv_python.executable, "-mvenv", self.folder)
+            runez.run(self.python, "-mpip", "install", "wheel")
 
     @property
     def frozen_path(self):

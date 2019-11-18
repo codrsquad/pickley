@@ -23,8 +23,9 @@ def test_lock(temp_base):
         runez.delete(str(lock))
         assert not lock._locked()
 
-        with patch("pickley.lock.virtualenv_path", return_value=None):
-            assert "Can't determine path to virtualenv.py" in verify_abort(SharedVenv, lock, None)
+        if runez.PY2:
+            with patch("pickley.lock.virtualenv_path", return_value=None):
+                assert "Can't determine path to virtualenv.py" in verify_abort(SharedVenv, lock, None)
 
 
 @patch("runez.run", return_value="pex==1.0")
@@ -35,8 +36,9 @@ def test_ensure_freeze(_, __, temp_base):
         fake_pex = os.path.join(temp_base, "bin/pex")
         runez.touch(fake_pex)
         runez.make_executable(fake_pex)
-        v = SharedVenv(lock, None)
-        assert v._installed_module(system.PackageSpec("pex"))
+        if runez.PY2:
+            v = SharedVenv(lock, None)
+            assert v._installed_module(system.PackageSpec("pex"))
 
 
 def test_config():

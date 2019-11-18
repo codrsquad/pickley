@@ -173,19 +173,6 @@ def test_install(cli):
     runez.write(".pickley/tox/.current.json", "")
     cli.expect_failure("check", "tox", "Couldn't read", "is not installed")
 
-    if IS_PYTHON3:
-        cli.expect_failure("check shell-functools", "is not installed")
-        runez.touch(".pickley/shell_functools/foo")
-        cli.expect_success("--delivery wrap install shell-functools", "Installed shell-functools")
-        assert runez.is_executable("foldl")
-        output = run_program("foldl", "--help")
-        assert "foldl" in output
-        assert not os.path.exists(".pickley/shell_functools")
-
-        cli.expect_success("uninstall shell-functools", "Uninstalled shell-functools", "entry points")
-        assert not os.path.exists("foldl")
-        assert not os.path.exists(".pickley/shell-functools")
-
     cli.expect_success("uninstall --all", "Uninstalled tox", "entry points")
     assert not os.path.exists("tox")
     assert not os.path.exists(".pickley")

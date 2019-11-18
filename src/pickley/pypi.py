@@ -4,8 +4,13 @@ import os
 import re
 from distutils.version import StrictVersion
 
+try:  # python3
+    from urllib.request import Request, urlopen
+
+except ImportError:  # python2
+    from urllib2 import urlopen, Request
+
 import runez
-from six.moves.urllib.request import Request, urlopen
 
 
 LOG = logging.getLogger(__name__)
