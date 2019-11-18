@@ -132,7 +132,12 @@ class SharedVenv(object):
         if runez.is_younger(self.python, self.lock.keep):
             return
         runez.delete(self.folder)
-        if runez.to_int(venv_python.major) < 3:
+
+        is_py2 = runez.PY2
+        if venv_python:
+            is_py2 = runez.to_int(venv_python.major, default=2) < 3
+
+        if is_py2:
             venv = virtualenv_path()
             if not venv:
                 runez.abort("Can't determine path to virtualenv.py")
