@@ -222,7 +222,16 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     Package a project from source checkout
     """
     build = runez.resolved_path(build)
-    dist = runez.resolved_path(dist)
+
+    target = dist
+    if target.startswith("root/"):
+        # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
+        target = target[4:]
+        if not os.path.isdir(target):
+            target = dist
+
+    dist = runez.resolved_path(target)
+
     folder = runez.resolved_path(folder)
 
     if not os.path.isdir(folder):
