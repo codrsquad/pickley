@@ -397,7 +397,6 @@ class Packager(object):
 
         self.refresh_entry_points()
         self.packaged = []
-        runez.ensure_folder(self.dist_folder, folder=True)
         template = "{name}" if self.source_folder else "{name}-{version}"
         self.effective_package(template)
 
@@ -622,6 +621,16 @@ class PexPackager(Packager):
             self.perform_delivery("{meta}/{name}-{version}")
 
 
+def clean_folder(folder):
+    """Clean contents of 'folder', if any"""
+    if os.path.isdir(folder):
+        for fname in os.listdir(folder):
+            runez.delete(os.path.join(folder, fname))
+
+    else:
+        runez.ensure_folder(folder, folder=True, logger=None)
+
+
 @PACKAGERS.register
 class VenvPackager(Packager):
     """
@@ -633,8 +642,7 @@ class VenvPackager(Packager):
         :param str template: Template describing how to name delivered files, example: {meta}/{name}-{version}
         """
         folder = os.path.join(self.dist_folder, template.format(name=self.package_spec.dashed, version=self.desired.version))
-        runez.delete(folder, logger=None)
-        runez.ensure_folder(folder, folder=True, logger=None)
+        clean_folder(folder)
 
         venv = "virtualenv" if runez.PY2 or self.relocatable else "venv"
         vrun(self.package_spec, venv, folder)
