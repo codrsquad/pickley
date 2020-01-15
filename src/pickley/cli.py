@@ -223,14 +223,12 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     """
     build = runez.resolved_path(build)
 
-    target = dist
-    if target.startswith("root/"):
+    target_dist = dist
+    if target_dist.startswith("root/"):
         # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
-        target = target[4:]
+        target = target_dist[4:]
         if not os.path.isdir(target):
-            target = dist
-
-    dist = runez.resolved_path(target)
+            target_dist = dist
 
     folder = runez.resolved_path(folder)
 
@@ -253,11 +251,15 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     runez.Anchored.add(folder)
     p = PACKAGERS.resolved(package_spec)
     p.build_folder = build
-    p.dist_folder = dist
+    p.dist_folder = runez.resolved_path(target_dist)
     p.relocatable = relocatable
     p.source_folder = folder
     p.package()
-    p.create_symlinks(symlink)
+
+    # p.create_symlinks(symlink)
+    if symlink:
+        LOG.info("Symlink creation is currently disabled, ignoring --symling %s", symlink)
+
     p.sanity_check(sanity_check)
     if p.executables:
         overview = "produced: %s" % runez.represented_args(p.executables)
