@@ -256,11 +256,9 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     p.source_folder = folder
     p.package()
 
-    # p.create_symlinks(symlink)
-    if symlink:
-        LOG.info("Symlink creation is currently disabled, ignoring --symling %s", symlink)
-
+    p.create_symlinks(symlink)
     p.sanity_check(sanity_check)
+
     if p.executables:
         overview = "produced: %s" % runez.represented_args(p.executables)
 

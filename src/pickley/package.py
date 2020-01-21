@@ -411,18 +411,22 @@ class Packager(object):
         """
         if not symlink or not self.executables:
             return 0
+
         base, _, target = symlink.partition(":")
         if not target:
             return runez.abort("Invalid symlink specification '%s'", symlink, fatal=(fatal, -1))
+
         base = runez.resolved_path(base)
         target = runez.resolved_path(target)
         for path in self.executables:
             if not path.startswith(base) or len(path) <= len(base):
                 return runez.abort("Symlink base '%s' does not cover '%s'", base, path, fatal=(fatal, -1))
+
             source = path[len(base):]
             basename = os.path.basename(path)
             destination = os.path.join(target, basename)
             runez.symlink(source, destination, must_exist=False, fatal=fatal, logger=LOG.info)
+
         return 1 if self.executables else 0
 
     def sanity_check(self, args):
