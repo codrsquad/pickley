@@ -648,9 +648,15 @@ class VenvPackager(Packager):
         folder = os.path.join(self.dist_folder, template.format(name=self.package_spec.dashed, version=self.desired.version))
         clean_folder(folder)
 
-        venv = "virtualenv" if runez.PY2 or self.relocatable else "venv"
-        vrun(self.package_spec, venv, folder)
+        python = system.target_python(package_spec=self.package_spec)
+        if python.major == "2" or self.relocatable:
+            venv = "virtualenv==16.7.7"
 
+        else:
+            venv = "venv"
+
+        runez.ensure_folder(folder)
+        vrun(self.package_spec, venv, folder)
         bin_folder = os.path.join(folder, "bin")
         pip = os.path.join(bin_folder, "pip")
         spec = self.source_folder if self.source_folder else "%s==%s" % (self.package_spec.dashed, self.desired.version)
