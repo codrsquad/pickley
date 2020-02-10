@@ -64,7 +64,6 @@ def test_package(cli):
     pickley = os.path.abspath("dist/pickley/bin/pickley")
     assert runez.is_executable(pickley)
     assert run_program(pickley, "--version") == expected_version
-    assert runez.first_line(pickley).startswith("#!/usr/bin/env python")
 
 
 def test_bogus_install(cli):

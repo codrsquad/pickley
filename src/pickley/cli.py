@@ -214,7 +214,7 @@ def move(source, destination):
 @click.option("--build", "-b", default="./build", show_default=True, help="Folder to use as build cache")
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
 @click.option("--symlink", "-s", help="Create symlinks for debian-style packaging, example: root:root/usr/local/bin")
-@click.option("--relocatable/--absolute", is_flag=True, default=True, help="Create a relocatable venv or not  [default: relocatable]")
+@click.option("--relocatable/--absolute", is_flag=True, default=False, help="Create a relocatable venv or not")
 @click.option("--sanity-check", default="--version", show_default=True, help="Args to invoke produced package for sanity check")
 @click.argument("folder", required=True)
 def package(build, dist, symlink, relocatable, sanity_check, folder):
