@@ -227,10 +227,10 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     if target_dist.startswith("root/"):
         # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
         target = target_dist[4:]
-        if not os.path.isdir(target):
-            target_dist = dist
+        if os.path.isdir(target):
+            target_dist = target
 
-        LOG.debug("%s exists: %s, using %s", target, os.path.isdir(target), target_dist)
+        LOG.debug("%s exists: %s, using %s, full path: %s", target, os.path.isdir(target), target_dist, runez.resolved_path(target_dist))
 
     folder = runez.resolved_path(folder)
 
