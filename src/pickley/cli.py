@@ -230,6 +230,8 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
         if not os.path.isdir(target):
             target_dist = dist
 
+        LOG.debug("%s exists: %s, using %s", target, os.path.isdir(target), target_dist)
+
     folder = runez.resolved_path(folder)
 
     if not os.path.isdir(folder):
