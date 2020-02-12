@@ -253,7 +253,7 @@ def simulated_which(program, *args, **kwargs):
 
 
 def simulated_run(program, *args, **kwargs):
-    if program.startswith(sys.real_prefix) or program == sys.executable:
+    if program.startswith(sys.exec_prefix) or program == sys.executable:
         return "Python 2.7.10"
 
     if program == "/usr/bin/python":
@@ -265,8 +265,8 @@ def simulated_run(program, *args, **kwargs):
 @patch("runez.is_executable", side_effect=simulated_is_executable)
 @patch("runez.which", side_effect=simulated_which)
 @patch("runez.run", side_effect=simulated_run)
-def test_python_installation(_, __, ___, temp_base):
-
+@patch("pickley.system.parent_python", return_value=None)
+def test_python_installation(_, __, ___, ____, temp_base):
     system.DESIRED_PYTHON = "/dev/null/foo"
     p = system.target_python(fatal=False)
     assert not p.is_valid

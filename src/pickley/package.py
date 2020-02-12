@@ -655,7 +655,6 @@ class VenvPackager(Packager):
         else:
             venv = "venv"
 
-        runez.ensure_folder(folder)
         vrun(self.package_spec, venv, folder)
         bin_folder = os.path.join(folder, "bin")
         pip = os.path.join(bin_folder, "pip")

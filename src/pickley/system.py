@@ -181,7 +181,7 @@ def run_python(*args, **kwargs):
 
 
 def parent_python():
-    prefix = getattr(sys, "real_prefix", None)
+    prefix = getattr(sys, "base_prefix", None)
     if prefix:
         path = os.path.join(prefix, "bin", "python")
         if runez.is_executable(path):

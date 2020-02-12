@@ -279,12 +279,12 @@ def settings(diagnostics):
     """
     if diagnostics:
         prefix = getattr(sys, "prefix", None)
-        real_prefix = getattr(sys, "real_prefix", None)
+        base_prefix = getattr(sys, "base_prefix", None)
         print("python         : %s" % short(system.target_python(desired=system.INVOKER, fatal=None), meta=False))
         print("sys.executable : %s" % short(sys.executable, meta=False))
         print("sys.prefix     : %s" % short(prefix, meta=False))
-        if real_prefix:
-            print("sys.real_prefix: %s" % short(real_prefix, meta=False))
+        if base_prefix:
+            print("sys.base_prefix: %s" % short(base_prefix, meta=False))
         if not system.SETTINGS.meta.path.startswith(system.PICKLEY_PROGRAM_PATH):
             print("pickley        : %s" % short(system.PICKLEY_PROGRAM_PATH, meta=False))
         print("")
