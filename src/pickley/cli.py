@@ -223,14 +223,15 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     """
     build = runez.resolved_path(build)
 
+    root = None
     target_dist = dist
     if target_dist.startswith("root/"):
         # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
         target = target_dist[4:]
         if os.path.isdir(target):
             target_dist = target
-
-        LOG.debug("%s exists: %s, using %s, full path: %s", target, os.path.isdir(target), target_dist, runez.resolved_path(target_dist))
+            root = target_dist[:4]
+            LOG.debug("debian mode: %s -> %s", target_dist, target)
 
     folder = runez.resolved_path(folder)
 
@@ -258,7 +259,7 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     p.source_folder = folder
     p.package()
 
-    p.create_symlinks(symlink)
+    p.create_symlinks(symlink, root=root)
     p.sanity_check(sanity_check)
 
     if p.executables:

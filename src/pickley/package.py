@@ -400,12 +400,13 @@ class Packager(object):
         template = "{name}" if self.source_folder else "{name}-{version}"
         self.effective_package(template)
 
-    def create_symlinks(self, symlink, fatal=True):
+    def create_symlinks(self, symlink, root=None, fatal=True):
         """
         Use case: preparing a .tox/package/root folder to be packaged as a debian
         With a spec of "root:root/usr/local/bin", all executables produced under ./root will be symlinked to /usr/local/bin
 
         :param str symlink: A specification of the form "root:root/usr/local/bin"
+        :param str root: Optionally, 'root' prefix if used
         :param bool fatal: Abort execution on failure if True
         :return int: 1 if effectively done, 0 if no-op, -1 on failure
         """
@@ -419,6 +420,9 @@ class Packager(object):
         base = runez.resolved_path(base)
         target = runez.resolved_path(target)
         for path in self.executables:
+            if path and root:
+                path = runez.resolved_path(root + path)
+
             if not path.startswith(base) or len(path) <= len(base):
                 return runez.abort("Symlink base '%s' does not cover '%s'", base, path, fatal=(fatal, -1))
 
