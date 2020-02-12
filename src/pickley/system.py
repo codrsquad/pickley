@@ -239,6 +239,11 @@ class PythonInstallation(object):
                         self.major = m.group(3)
                         self.minor = m.group(4)
 
+    @property
+    def has_builtin_venv(self):
+        """Does this python installation have a builtin venv module?"""
+        return self.major != "2"
+
     def resolve_executable(self):
         """Resolve executable from given major/minor"""
         self._set_executable(self._resolve_from_configured(SETTINGS.get_value("python_installs")))

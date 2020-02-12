@@ -653,7 +653,7 @@ class VenvPackager(Packager):
         clean_folder(folder)
 
         python = system.target_python(package_spec=self.package_spec)
-        if python.major == "2" or self.relocatable:
+        if not python.has_builtin_venv or self.relocatable:
             venv = "virtualenv==16.7.7"
 
         else:

@@ -159,7 +159,12 @@ class SharedVenv(object):
 
     def _run_builtin_module(self, mod, *args, **kwargs):
         args = runez.flattened(args, split=runez.SHELL)
-        return runez.run(self.python, "-m%s" % mod, *args, **kwargs)
+        python = self.python
+        if mod == "venv":
+            # Use original python installation when using the builtin venv module
+            python = self.venv_python.executable
+
+        return runez.run(python, "-m%s" % mod, *args, **kwargs)
 
     def _refresh_frozen(self):
         output = self._run_builtin_module("pip", "freeze", "--all", fatal=False)
