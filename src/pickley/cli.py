@@ -229,9 +229,9 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
         # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
         target = target_dist[4:]
         if os.path.isdir(target):
-            target_dist = target
             root = target_dist[:4]
-            LOG.debug("debian mode: %s -> %s", target_dist, target)
+            target_dist = target
+            LOG.debug("debian mode: %s -> %s", dist, target)
 
     folder = runez.resolved_path(folder)
 
