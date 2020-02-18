@@ -373,7 +373,7 @@ class Packager(object):
         runez.ensure_folder(self.build_folder, folder=True)
         return vrun(
             self.package_spec,
-            "pip", "wheel",
+            "pip", "wheel", "-vv",
             "-i", system.SETTINGS.index,
             "--cache-dir", self.build_folder,
             "--wheel-dir", self.build_folder,
