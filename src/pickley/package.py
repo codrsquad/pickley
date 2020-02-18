@@ -636,7 +636,7 @@ def clean_folder(folder):
             runez.delete(os.path.join(folder, fname))
 
     else:
-        runez.ensure_folder(folder, folder=True, logger=None)
+        runez.ensure_folder(folder, folder=True)
 
 
 @PACKAGERS.register

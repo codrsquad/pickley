@@ -87,7 +87,7 @@ class SoftLock(object):
         """
         if not self._should_keep():
             runez.delete(self.folder, logger=LOG.debug if self.keep else None)
-        runez.delete(self.lock, logger=None)
+        runez.delete(self.lock)
 
 
 def vrun(package_spec, command, *args, **kwargs):
