@@ -159,7 +159,7 @@ def test_settings_base():
         system.PackageSpec("some.bogus name")
 
 
-@patch("runez.get_lines", return_value=None)
+@patch("runez.readlines", return_value=None)
 @patch("runez.run", side_effect=Exception)
 def test_pypi(*_):
     pyyaml = system.PackageSpec("PyYAML.Yandex==1.0")

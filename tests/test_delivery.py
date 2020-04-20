@@ -67,19 +67,19 @@ def test_relocate_venv(temp_base):
         # Simulate already seen
         expected = ["line 1: source\n", "line 2\n"]
         assert relocate_venv("foo", "source", "dest", fatal=False, _seen={"foo"}) == 0
-        assert runez.get_lines("foo/bar/bin/baz") == expected
+        assert runez.readlines("foo/bar/bin/baz") == expected
         assert not logged
 
         # Simulate failure to write
         with patch("runez.write", return_value=-1):
             assert relocate_venv("foo", "source", "dest", fatal=False) == -1
-        assert runez.get_lines("foo/bar/bin/baz") == expected
+        assert runez.readlines("foo/bar/bin/baz") == expected
         assert not logged
 
         # Simulate effective relocation, by folder
         expected = ["line 1: dest\n", "line 2\n"]
         assert relocate_venv("foo", "source", "dest", fatal=False) == 1
-        assert runez.get_lines("foo/bar/bin/baz") == expected
+        assert runez.readlines("foo/bar/bin/baz") == expected
         assert not logged
 
         # Second relocation is a no-op
@@ -88,4 +88,4 @@ def test_relocate_venv(temp_base):
         # Test relocating a single file
         runez.write("foo/bar/bin/baz", original, logger=logging.debug)
         assert relocate_venv("foo/bar/bin/baz", "source", "dest", fatal=False) == 1
-        assert runez.get_lines("foo/bar/bin/baz") == expected
+        assert runez.readlines("foo/bar/bin/baz") == expected

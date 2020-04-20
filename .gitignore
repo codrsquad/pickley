@@ -19,3 +19,4 @@ venv/
 .DS_Store
 .cache/
 .idea/
+.vscode/

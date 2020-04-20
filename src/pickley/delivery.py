@@ -203,7 +203,7 @@ def relocate_venv(path, source, destination, fatal=True, _seen=None):
                     relocated += r
         return relocated
 
-    content = runez.get_lines(path, fatal=fatal)
+    content = runez.readlines(path)
     if not content:
         return 0
 

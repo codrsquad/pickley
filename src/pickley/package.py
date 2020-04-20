@@ -311,7 +311,9 @@ class Packager(object):
                             wdir, wbase = os.path.split(wname)
                             if wbase == "entry_points.txt":
                                 with wheel.open(wname) as fh:
-                                    scripts.update(runez.get_conf(fh.readlines(), default={}).get("console_scripts"))
+                                    eps = runez.ini_to_dict(fh, default={})
+                                    scripts.update(eps.get("console_scripts"))
+
                             elif wdir.endswith("/scripts") and "_completer" not in wbase:
                                 with wheel.open(wname) as fh:
                                     first_line = runez.decode(fh.readline())
@@ -668,7 +670,7 @@ class VenvPackager(Packager):
         if self.relocatable:
             python = system.target_python(package_spec=self.package_spec).executable
             vrun(self.package_spec, "virtualenv", "--relocatable", "--python=%s" % python, folder)
-            runez.run(os.path.join(bin_folder, "python"), "-m", "compileall")
+            runez.run(os.path.join(bin_folder, "python"), "-mcompileall")
 
         self.packaged.append(folder)
         self.executables = [os.path.join(bin_folder, name) for name in self.entry_points]

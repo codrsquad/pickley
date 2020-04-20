@@ -276,7 +276,7 @@ def get_user_index():
     Returns:
         (str | None): User configured pypi index, if any
     """
-    conf = runez.get_conf(runez.resolved_path("~/.config/pip/pip.conf"), fatal=None, default={})
+    conf = runez.ini_to_dict("~/.config/pip/pip.conf", default={})
     return conf.get("global", {}).get("index-url")
 
 

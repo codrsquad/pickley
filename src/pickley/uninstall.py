@@ -37,7 +37,7 @@ def find_uninstaller(target):
         # Empty file
         return runez.delete
 
-    content = runez.get_lines(target, fatal=None)
+    content = runez.readlines(target)
     if content and any(line.startswith(system.WRAPPER_MARK) for line in content):
         # pickley's own wrapper also fine to simply delete
         return runez.delete
