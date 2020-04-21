@@ -1,5 +1,5 @@
 # pinned
 click==7.1.1
-runez==1.11.3
-setuptools==41.4.0
-virtualenv==16.7.7
+runez==1.11.5
+setuptools==44.1.0
+virtualenv==16.7.10
