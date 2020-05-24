@@ -311,7 +311,7 @@ class Packager(object):
                             wdir, wbase = os.path.split(wname)
                             if wbase == "entry_points.txt":
                                 with wheel.open(wname) as fh:
-                                    eps = runez.ini_to_dict(fh, default={})
+                                    eps = runez.file.ini_to_dict(fh, default={})
                                     scripts.update(eps.get("console_scripts"))
 
                             elif wdir.endswith("/scripts") and "_completer" not in wbase:
@@ -391,7 +391,11 @@ class Packager(object):
             setup_py = os.path.join(self.source_folder, "setup.py")
             if not os.path.isfile(setup_py):
                 return runez.abort("No setup.py in %s", short(self.source_folder), fatal=(True, []))
-            self.desired.version = system.run_python(setup_py, "--version", dryrun=False, fatal=False, package_spec=self.package_spec)
+            self.desired.version = None
+            result = system.run_python(setup_py, "--version", dryrun=False, fatal=False, package_spec=self.package_spec)
+            if result.succeeded:
+                self.desired.version = result.output
+
             if not self.desired.version:
                 return runez.abort("Could not determine version from %s", short(setup_py), fatal=(True, []))
 
@@ -441,8 +445,8 @@ class Packager(object):
         """
         if args:
             for path in self.executables:
-                output = runez.run(path, args)
-                print("Sanity check: %s %s -> %s" % (short(path), args, output))
+                result = runez.run(path, args)
+                print("Sanity check: %s %s -> %s" % (short(path), args, result.full_output))
 
     def effective_package(self, template):
         """

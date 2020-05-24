@@ -32,7 +32,7 @@ LOG = logging.getLogger(__name__)
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", type=click.Choice(DELIVERERS.names()), help="Delivery method to use")
 @click.option("--packager", "-p", help="Packager to use (one of: %s)" % ",".join(PACKAGERS.names()))
-def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
+def main(ctx, debug, base, index, config, python, delivery, packager):
     """
     Package manager for python CLIs
     """
@@ -40,7 +40,6 @@ def main(ctx, debug, dryrun, base, index, config, python, delivery, packager):
         return
 
     runez.log.setup(
-        dryrun=dryrun,
         debug=debug,
         console_format="%(levelname)s %(message)s" if debug else "%(message)s",
         console_level=logging.WARNING,
@@ -246,8 +245,9 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
 
     with runez.CurrentFolder(folder):
         # Some setup.py's assume their working folder is the folder where they're in
-        name = system.run_python(setup_py, "--name", fatal=False, dryrun=False)
-        if not name:
+        result = system.run_python(setup_py, "--name", fatal=False, dryrun=False)
+        name = result.output
+        if result.failed or not name:
             sys.exit("Could not determine package name from %s" % short(setup_py))
 
     package_spec = system.PackageSpec(name)
@@ -263,7 +263,7 @@ def package(build, dist, symlink, relocatable, sanity_check, folder):
     p.sanity_check(sanity_check)
 
     if p.executables:
-        overview = "produced: %s" % runez.represented_args(p.executables)
+        overview = "produced: %s" % runez.quoted(p.executables)
 
     else:
         overview = "package has no entry-points"
@@ -306,7 +306,7 @@ def auto_upgrade(force, package):
         sys.exit("%s is not currently installed" % package)
 
     ping = system.SETTINGS.meta.full_path(package.dashed, ".ping")
-    if not force and runez.is_younger(ping, system.SETTINGS.version_check_seconds):
+    if not force and runez.file.is_younger(ping, system.SETTINGS.version_check_seconds):
         # We checked for auto-upgrade recently, no need to check again yet
         print("Skipping auto-upgrade, checked recently")
         sys.exit(0)

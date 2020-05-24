@@ -28,8 +28,8 @@ def test_lock(temp_base):
                 assert "Can't determine path to virtualenv.py" in verify_abort(SharedVenv, lock, None)
 
 
-@patch("runez.run", return_value="pex==1.0")
-@patch("runez.is_younger", return_value=True)
+@patch("runez.run", return_value=runez.program.RunResult("pex==1.0", "", 0))
+@patch("runez.file.is_younger", return_value=True)
 def test_ensure_freeze(_, __, temp_base):
     # Test edge case for _installed_module()
     with SoftLock(temp_base) as lock:

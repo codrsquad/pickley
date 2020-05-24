@@ -122,9 +122,9 @@ class DeliveryMethodWrap(DeliveryMethod):
         contents = wrapper.lstrip().format(
             hook=self.hook,
             bg=self.bg,
-            name=runez.quoted(self.package_spec.dashed),
-            pickley=runez.quoted(system.SETTINGS.base.full_path(system.PICKLEY)),
-            source=runez.quoted(source),
+            name=runez.quoted(self.package_spec.dashed, adapter=None),
+            pickley=runez.quoted(system.SETTINGS.base.full_path(system.PICKLEY), adapter=None),
+            source=runez.quoted(source, adapter=None),
         )
         runez.write(target, contents)
         runez.make_executable(target)
@@ -203,22 +203,23 @@ def relocate_venv(path, source, destination, fatal=True, _seen=None):
                     relocated += r
         return relocated
 
-    content = runez.readlines(path)
-    if not content:
-        return 0
-
     modified = False
     lines = []
-    for line in content:
-        if source in line:
-            line = line.replace(source, destination)
-            modified = True
-        lines.append(line)
+    try:
+        for line in runez.readlines(path):
+            if source in line:
+                line = line.replace(source, destination)
+                modified = True
+
+            lines.append(line)
+
+    except Exception:
+        return 0  # If binary file, skip
 
     if not modified:
         return 0
 
-    return runez.write(path, "".join(lines), fatal=fatal)
+    return runez.write(path, "\n".join(lines), fatal=fatal)
 
 
 def find_venvs(folder, _seen=None):

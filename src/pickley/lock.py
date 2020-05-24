@@ -51,17 +51,17 @@ class SoftLock(object):
         """
         :return bool: True if lock is held by another process
         """
-        if not runez.is_younger(self.lock, self.invalid):
+        if not runez.file.is_younger(self.lock, self.invalid):
             # Lock file does not exist or invalidation age reached
             return False
 
         # Consider locked if pid stated in lock file is still valid
-        pid = runez.to_int(runez.first_line(self.lock))
-        return runez.check_pid(pid)
+        for line in runez.readlines(self.lock, errors="ignore", fatal=False):
+            return runez.check_pid(runez.to_int(line))
 
     def _should_keep(self):
         """Should we keep folder after lock release?"""
-        return runez.is_younger(self.folder, self.keep)
+        return runez.file.is_younger(self.folder, self.keep)
 
     def __enter__(self):
         """
@@ -98,7 +98,7 @@ def vrun(package_spec, command, *args, **kwargs):
     :param system.PackageSpec package_spec: Associated pypi package the run is for
     :param str command: Command to run (pip, pex, etc...)
     :param args: Command line args
-    :param kwargs: Optional named args to pass-through to runez.run_program()
+    :param kwargs: Optional named args to pass-through to runez.run()
     """
     python = system.target_python(package_spec=package_spec)
     folder = system.SETTINGS.venvs.full_path("_%s" % python.short_name)
@@ -129,7 +129,7 @@ class SharedVenv(object):
         self.bin = os.path.join(self.folder, "bin")
         self.python = os.path.join(self.bin, "python")
         self._frozen = None
-        if runez.is_younger(self.python, self.lock.keep):
+        if runez.file.is_younger(self.python, self.lock.keep):
             return
         runez.delete(self.folder)
 
@@ -158,7 +158,7 @@ class SharedVenv(object):
         return self._frozen or {}
 
     def _run_builtin_module(self, mod, *args, **kwargs):
-        args = runez.flattened(args, split=runez.SHELL)
+        args = runez.flattened(args, shellify=True)
         python = self.python
         if mod == "venv":
             # Use original python installation when using the builtin venv module
@@ -167,19 +167,19 @@ class SharedVenv(object):
         return runez.run(python, "-m%s" % mod, *args, **kwargs)
 
     def _refresh_frozen(self):
-        output = self._run_builtin_module("pip", "freeze", "--all", fatal=False)
+        result = self._run_builtin_module("pip", "freeze", "--all", fatal=False)
         self._frozen = {}
-        if output:
-            for line in output.split("\n"):
+        if result.output:
+            for line in result.output.split("\n"):
                 name, version = system.despecced(line)
                 self._frozen[name] = version
+
         if self._frozen:
             runez.save_json(self._frozen, self.frozen_path)
 
     def _installed_module(self, command_spec):
         """
         :param system.PackageSpec command_spec: Associated package spec
-        :param str command: Program to install in venv, if not already installed
         """
         program = os.path.join(self.bin, command_spec.dashed)
         current = self.frozen.get(command_spec.dashed)
@@ -204,6 +204,6 @@ class SharedVenv(object):
         if cmd.dashed in ("pip", "venv"):
             return self._run_builtin_module(cmd.dashed, *args, **kwargs)
 
-        args = runez.flattened(args, split=runez.SHELL)
+        args = runez.flattened(args, shellify=True)
         full_path = self._installed_module(cmd)
         return runez.run(full_path, *args, **kwargs)

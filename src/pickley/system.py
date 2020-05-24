@@ -162,7 +162,7 @@ def resolved_package_specs(names, auto_complete=False):
                     if os.path.exists(os.path.join(fpath, ".current.json")):
                         result.append(fname)
 
-    return [PackageSpec(name) for name in runez.flattened(result, split=runez.UNIQUE)]
+    return [PackageSpec(name) for name in runez.flattened(result, unique=True)]
 
 
 def is_universal(wheels_folder):
@@ -238,9 +238,9 @@ class PythonInstallation(object):
         if runez.is_executable(path):
             self.executable = path
             if not self.major or not self.minor:
-                output = runez.run(self.executable, "--version", dryrun=False, fatal=None, include_error=True)
-                if output:
-                    m = RE_PYTHON_LOOSE.match(output)
+                result = runez.run(self.executable, "--version", dryrun=False, fatal=False)
+                if result.succeeded:
+                    m = RE_PYTHON_LOOSE.match(result.full_output)
                     if m:
                         self.major = m.group(3)
                         self.minor = m.group(4)

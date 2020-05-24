@@ -1,5 +1,5 @@
 # pinned
 click==7.1.1
-runez==1.12.1
+runez==2.0.6
 setuptools==44.1.0
 virtualenv==16.7.10

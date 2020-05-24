@@ -1,5 +1,6 @@
 import os
 
+import runez
 from mock import patch
 
 from pickley.uninstall import brew_uninstall, find_brew_name, uninstall_existing
@@ -19,6 +20,7 @@ def brew_exists(path):
     """Pretend any file under BREW_INSTALL exists"""
     if path == BREW:
         return False
+
     return path and path.startswith(BREW_INSTALL)
 
 
@@ -37,8 +39,9 @@ def brew_realpath(path):
 def brew_run_program(*args, **kwargs):
     """Simulate success for uninstall tox, failure otherwise"""
     if args[1] == "uninstall" and args[3] == "tox":
-        return "OK"
-    return False
+        return runez.program.RunResult("OK", "", 0)
+
+    return runez.program.RunResult("", "something failed", 1)
 
 
 def test_cant_uninstall():

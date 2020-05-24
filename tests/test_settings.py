@@ -212,7 +212,7 @@ def test_pypi(*_):
         # GET fails, and fallback curl also fails
         assert request_get("") is None
 
-        with patch("runez.run", return_value="foo"):
+        with patch("runez.run", return_value=runez.program.RunResult("foo", "", 0)):
             # GET fails, but curl succeeds
             assert request_get("") == "foo"
 
@@ -254,12 +254,12 @@ def simulated_which(program, *args, **kwargs):
 
 def simulated_run(program, *args, **kwargs):
     if program.startswith(sys.exec_prefix) or program == sys.executable:
-        return "Python 2.7.10"
+        return runez.program.RunResult("Python 2.7.10", "", 0)
 
     if program == "/usr/bin/python":
-        return "Python 2.7.10"
+        return runez.program.RunResult("Python 2.7.10", "", 0)
 
-    return None
+    return runez.program.RunResult("", "something failed", 1)
 
 
 @patch("runez.is_executable", side_effect=simulated_is_executable)

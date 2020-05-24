@@ -99,7 +99,7 @@ def add_representation(result, data, indent=""):
     if isinstance(data, dict):
         for key, value in sorted(data.items()):
             if isinstance(value, list):
-                brief = runez.represented_args(value, separator=", ")
+                brief = runez.quoted(value, delimiter=", ")
                 if len(brief) < REPRESENTATION_WIDTH:
                     result.append("%s%s: [%s]" % (indent, short(key), brief))
                     continue
@@ -157,7 +157,7 @@ class SettingsFile(object):
             if isinstance(arg, dict):
                 kwargs.update(args[0])
         self._contents = kwargs
-        self.flatten("bundle", separator=" ")
+        self.flatten("bundle", split=" ")
         self.flatten("include", direct=True)
         bundle = self._contents.get("bundle")
         if isinstance(bundle, dict):
@@ -177,23 +177,23 @@ class SettingsFile(object):
                 if name.startswith("bundle:"):
                     bundle = self.get_definition("bundle.%s" % name[7:])
                     if bundle and bundle.value:
-                        result.extend(runez.flattened(bundle.value, split=(" ", runez.UNIQUE)))
+                        result.extend(runez.flattened(bundle.value, split=" ", unique=True))
                         continue
                 result.append(name)
-        return runez.flattened(result, split=(" ", runez.UNIQUE))
+        return runez.flattened(result, split=" ", unique=True)
 
-    def flatten(self, key, separator=None, direct=False):
+    def flatten(self, key, split=None, direct=False):
         if not self._contents:
             return
         node = self._contents.get(key)
         if not node:
             return
         if direct:
-            self._contents[key] = runez.flattened(node, split=(separator, runez.UNIQUE))
+            self._contents[key] = runez.flattened(node, split=split, unique=True)
             return
         result = {}
         for name, value in node.items():
-            result[name] = runez.flattened(value, split=(separator, runez.UNIQUE))
+            result[name] = runez.flattened(value, split=split, unique=True)
         self._contents[key] = result
 
     @property
@@ -276,7 +276,7 @@ def get_user_index():
     Returns:
         (str | None): User configured pypi index, if any
     """
-    conf = runez.ini_to_dict("~/.config/pip/pip.conf", default={})
+    conf = runez.file.ini_to_dict("~/.config/pip/pip.conf", default={})
     return conf.get("global", {}).get("index-url")
 
 

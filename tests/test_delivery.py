@@ -3,6 +3,7 @@ import os
 
 import runez
 from mock import patch
+from runez.program import RunResult
 
 from pickley import system
 from pickley.delivery import _relocator, DeliveryMethodWrap, relocate_venv
@@ -19,31 +20,31 @@ def test_wrapper(temp_base):
     # Actual wrapper
     d = DeliveryMethodWrap(system.PackageSpec(system.PICKLEY))
     d.install(target, repeater)
-    assert runez.run(target, "auto-upgrade", "foo") == ":: auto-upgrade foo"
-    assert runez.run(target, "--debug", "auto-upgrade", "foo") == ":: --debug auto-upgrade foo"
-    assert runez.run(target, "settings", "-d") == ":: settings -d"
+    assert runez.run(target, "auto-upgrade", "foo") == RunResult(":: auto-upgrade foo", "", 0)
+    assert runez.run(target, "--debug", "auto-upgrade", "foo") == RunResult(":: --debug auto-upgrade foo", "", 0)
+    assert runez.run(target, "settings", "-d") == RunResult(":: settings -d", "", 0)
 
     # Verify that we're triggering background auto-upgrade as expected
     d.hook = "echo "
     d.bg = ""
     d.install(target, repeater)
 
-    output = runez.run(target, "settings", "-d")
-    assert "nohup" in output
-    assert "repeat.sh settings -d" in output
+    result = runez.run(target, "settings", "-d")
+    assert "nohup" in result.output
+    assert "repeat.sh settings -d" in result.output
 
-    output = runez.run(target, "auto-upgrade", "foo")
-    assert "nohup" not in output
-    assert "repeat.sh auto-upgrade foo" in output
+    result = runez.run(target, "auto-upgrade", "foo")
+    assert "nohup" not in result.output
+    assert "repeat.sh auto-upgrade foo" in result.output
 
-    output = runez.run(target, "--debug", "auto-upgrade", "foo")
-    assert "nohup" not in output
-    assert "repeat.sh --debug auto-upgrade foo" in output
+    result = runez.run(target, "--debug", "auto-upgrade", "foo")
+    assert "nohup" not in result.output
+    assert "repeat.sh --debug auto-upgrade foo" in result.output
 
     runez.delete(repeater)
-    with runez.CaptureOutput() as logged:
-        runez.run(target, "foo", fatal=False)
-        assert "Please reinstall with" in logged
+    result = runez.run(target, "foo", fatal=False)
+    assert result.failed
+    assert "Please reinstall with" in result.full_output
 
     assert os.path.exists(target)
     assert uninstall_existing(target, fatal=False) == 1
@@ -65,21 +66,21 @@ def test_relocate_venv(temp_base):
         assert "Created" in logged.pop()
 
         # Simulate already seen
-        expected = ["line 1: source\n", "line 2\n"]
+        expected = ["line 1: source", "line 2"]
         assert relocate_venv("foo", "source", "dest", fatal=False, _seen={"foo"}) == 0
-        assert runez.readlines("foo/bar/bin/baz") == expected
+        assert list(runez.readlines("foo/bar/bin/baz")) == expected
         assert not logged
 
         # Simulate failure to write
         with patch("runez.write", return_value=-1):
             assert relocate_venv("foo", "source", "dest", fatal=False) == -1
-        assert runez.readlines("foo/bar/bin/baz") == expected
+        assert list(runez.readlines("foo/bar/bin/baz")) == expected
         assert not logged
 
         # Simulate effective relocation, by folder
-        expected = ["line 1: dest\n", "line 2\n"]
+        expected = ["line 1: dest", "line 2"]
         assert relocate_venv("foo", "source", "dest", fatal=False) == 1
-        assert runez.readlines("foo/bar/bin/baz") == expected
+        assert list(runez.readlines("foo/bar/bin/baz")) == expected
         assert not logged
 
         # Second relocation is a no-op
@@ -88,4 +89,4 @@ def test_relocate_venv(temp_base):
         # Test relocating a single file
         runez.write("foo/bar/bin/baz", original, logger=logging.debug)
         assert relocate_venv("foo/bar/bin/baz", "source", "dest", fatal=False) == 1
-        assert runez.readlines("foo/bar/bin/baz") == expected
+        assert list(runez.readlines("foo/bar/bin/baz")) == expected

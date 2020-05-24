@@ -37,8 +37,9 @@ def request_get(url):
 
         try:
             # Some old python installations have trouble with SSL (OSX for example), try curl
-            data = runez.run("curl", "-s", url, dryrun=False, fatal=False)
-            return data and runez.decode(data).strip()
+            result = runez.run("curl", "-s", url, dryrun=False, fatal=False)
+            if result.succeeded and result.output:
+                return result.output
 
         except Exception as e:
             LOG.debug("GET %s failed: %s", url, e, exc_info=e)

@@ -37,10 +37,10 @@ def find_uninstaller(target):
         # Empty file
         return runez.delete
 
-    content = runez.readlines(target)
-    if content and any(line.startswith(system.WRAPPER_MARK) for line in content):
-        # pickley's own wrapper also fine to simply delete
-        return runez.delete
+    for line in runez.readlines(target, first=10, fatal=False):
+        if line.startswith(system.WRAPPER_MARK):
+            # pickley's own wrapper also fine to simply delete
+            return runez.delete
 
     brew, name = find_brew_name(target)
     if brew and name:
@@ -81,8 +81,8 @@ def brew_uninstall(target, fatal=False):
     if not brew or not name:
         return -1
 
-    output = runez.run(brew, "uninstall", "-f", name, fatal=False, logger=LOG.info)
-    if output is False:
+    result = runez.run(brew, "uninstall", "-f", name, fatal=False, logger=LOG.info)
+    if result.failed:
         # Failed brew uninstall
         return runez.abort("'%s uninstall %s' failed, please check", brew, name, fatal=(fatal, -1))
 

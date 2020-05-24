@@ -51,11 +51,14 @@ def test_auto_upgrade_locked(cli):
 def run_program(program, *args):
     if not os.path.isabs(program):
         program = os.path.abspath(program)
+
     return runez.run(program, *args, fatal=False)
 
 
 def test_package(cli):
-    expected_version = system.run_python(os.path.join(PROJECT, "setup.py"), "--version")
+    result = system.run_python(os.path.join(PROJECT, "setup.py"), "--version")
+    assert result.succeeded and result.output
+    expected_version = result.output
 
     # Package pickley as venv
     cli.expect_success(["package", "-d", "dist", PROJECT], "Packaged %s successfully" % short(PROJECT))
@@ -63,7 +66,7 @@ def test_package(cli):
     # Verify that it packaged OK, and is relocatable
     pickley = os.path.abspath("dist/pickley/bin/pickley")
     assert runez.is_executable(pickley)
-    assert run_program(pickley, "--version") == expected_version
+    assert run_program(pickley, "--version") == runez.program.RunResult(expected_version, "", 0)
 
 
 def test_bogus_install(cli):
@@ -130,8 +133,8 @@ def test_install(cli):
     assert os.path.exists(".pickley/tox/tox-old1-0.2")
 
     assert runez.is_executable("tox")
-    output = run_program("tox", "--version")
-    assert "tox" in output
+    result = run_program("tox", "--version")
+    assert "tox" in result.output
 
     cli.expect_success("auto-upgrade tox", "Skipping auto-upgrade")
     runez.delete(system.SETTINGS.meta.full_path("tox", ".ping"))
