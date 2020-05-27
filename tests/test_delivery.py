@@ -1,92 +1,104 @@
-import logging
 import os
 
+import pytest
 import runez
-from mock import patch
-from runez.program import RunResult
+from mock import MagicMock, patch
 
-from pickley import system
-from pickley.delivery import _relocator, DeliveryMethodWrap, relocate_venv
-from pickley.uninstall import uninstall_existing
+from pickley import PackageSpec, PickleyConfig
+from pickley.delivery import DeliveryMethod, ensure_safe_to_replace
 
 
-def test_wrapper(temp_base):
-    repeater = os.path.join(temp_base, "repeat.sh")
-    target = os.path.join(temp_base, system.PICKLEY)
-
-    runez.write(repeater, "#!/bin/bash\n\necho :: $*\n")
-    runez.make_executable(repeater)
-
-    # Actual wrapper
-    d = DeliveryMethodWrap(system.PackageSpec(system.PICKLEY))
-    d.install(target, repeater)
-    assert runez.run(target, "auto-upgrade", "foo") == RunResult(":: auto-upgrade foo", "", 0)
-    assert runez.run(target, "--debug", "auto-upgrade", "foo") == RunResult(":: --debug auto-upgrade foo", "", 0)
-    assert runez.run(target, "settings", "-d") == RunResult(":: settings -d", "", 0)
-
-    # Verify that we're triggering background auto-upgrade as expected
-    d.hook = "echo "
-    d.bg = ""
-    d.install(target, repeater)
-
-    result = runez.run(target, "settings", "-d")
-    assert "nohup" in result.output
-    assert "repeat.sh settings -d" in result.output
-
-    result = runez.run(target, "auto-upgrade", "foo")
-    assert "nohup" not in result.output
-    assert "repeat.sh auto-upgrade foo" in result.output
-
-    result = runez.run(target, "--debug", "auto-upgrade", "foo")
-    assert "nohup" not in result.output
-    assert "repeat.sh --debug auto-upgrade foo" in result.output
-
-    runez.delete(repeater)
-    result = runez.run(target, "foo", fatal=False)
-    assert result.failed
-    assert "Please reinstall with" in result.full_output
-
-    assert os.path.exists(target)
-    assert uninstall_existing(target, fatal=False) == 1
-    assert not os.path.exists(target)
+BREW_INSTALL = "/brew/install/bin"
+BREW = os.path.join(BREW_INSTALL, "brew")
+BREW_CELLAR = "/brew/install/Cellar"
+BREW_INSTALLED = ["tox", "twine"]
 
 
-def test_relocate_venv(temp_base):
-    with patch("pickley.delivery.relocate_venv", return_value=-1):
-        assert _relocator("source", "destination") == " (relocation failed)"
+def is_brew_link(path):
+    return path and path.startswith(BREW_INSTALL)
 
-    with runez.CaptureOutput() as logged:
-        original = "line 1: source\nline 2\n"
-        runez.write("foo/bar/bin/baz", original, logger=logging.debug)
-        runez.write("foo/bar/bin/empty", "", logger=logging.debug)
-        runez.write("foo/bar/bin/python", "", logger=logging.debug)
-        runez.make_executable("foo/bar/bin/baz")
-        runez.make_executable("foo/bar/bin/empty")
-        runez.make_executable("foo/bar/bin/python")
-        assert "Created" in logged.pop()
 
-        # Simulate already seen
-        expected = ["line 1: source", "line 2"]
-        assert relocate_venv("foo", "source", "dest", fatal=False, _seen={"foo"}) == 0
-        assert list(runez.readlines("foo/bar/bin/baz")) == expected
-        assert not logged
+def brew_exists(path):
+    """Pretend any file under BREW_INSTALL exists"""
+    return path and path.startswith(BREW_INSTALL)
 
-        # Simulate failure to write
-        with patch("runez.write", return_value=-1):
-            assert relocate_venv("foo", "source", "dest", fatal=False) == -1
-        assert list(runez.readlines("foo/bar/bin/baz")) == expected
-        assert not logged
 
-        # Simulate effective relocation, by folder
-        expected = ["line 1: dest", "line 2"]
-        assert relocate_venv("foo", "source", "dest", fatal=False) == 1
-        assert list(runez.readlines("foo/bar/bin/baz")) == expected
-        assert not logged
+def brew_realpath(path):
+    """Simulate brew symlink for names in BREW_INSTALLED"""
+    if path and path.startswith(BREW_INSTALL):
+        basename = os.path.basename(path)
+        if basename not in BREW_INSTALLED:
+            return path
 
-        # Second relocation is a no-op
-        assert relocate_venv("foo", "source", "dest", fatal=False) == 0
+        return "{cellar}/{basename}/1.0/bin/{basename}".format(cellar=BREW_CELLAR, basename=basename)
 
-        # Test relocating a single file
-        runez.write("foo/bar/bin/baz", original, logger=logging.debug)
-        assert relocate_venv("foo/bar/bin/baz", "source", "dest", fatal=False) == 1
-        assert list(runez.readlines("foo/bar/bin/baz")) == expected
+    return path
+
+
+def brew_run_program(*args, **kwargs):
+    """Simulate success for uninstall tox, failure otherwise"""
+    if args[1] == "uninstall" and args[3] == "tox":
+        return runez.program.RunResult("OK", "", 0)
+
+    return runez.program.RunResult("", "something failed", 1)
+
+
+@pytest.fixture
+def brew():
+    cfg = PickleyConfig()
+    cfg.set_base(".")
+    with patch("os.path.exists", side_effect=brew_exists):
+        with patch("os.path.islink", side_effect=is_brew_link):
+            with patch("os.path.realpath", side_effect=brew_realpath):
+                with patch("runez.run", side_effect=brew_run_program):
+                    yield cfg
+
+
+def test_edge_cases(temp_folder, logged):
+    venv = MagicMock(bin_path=lambda x: os.path.join("mypkg/bin", x))
+    entry_points = {"some-source": ""}
+    cfg = PickleyConfig()
+    cfg.set_base(".")
+    pspec = PackageSpec(cfg, "mgit==1.0.0")
+    d = DeliveryMethod()
+    with pytest.raises(SystemExit):
+        d.install(pspec, venv, entry_points)
+    assert "Can't deliver some-source -> mypkg/bin/some-source: source does not exist" in logged.pop()
+
+    runez.touch("mypkg/bin/some-source")
+    with pytest.raises(SystemExit):
+        d.install(pspec, venv, entry_points)
+    assert "Failed to deliver" in logged.pop()
+
+
+def test_uninstall(temp_folder, logged):
+    cfg = PickleyConfig()
+    cfg.set_base(".")
+    with pytest.raises(SystemExit):
+        ensure_safe_to_replace(cfg, "/dev/null")  # Can't uninstall unknown locations
+    assert "Can't automatically uninstall" in logged.pop()
+
+    runez.touch(".p/foo/bin/foo")
+    runez.symlink(".p/foo/bin/foo", "foo")
+    ensure_safe_to_replace(cfg, "foo")
+
+    runez.write("bar", "# pickley wrapper")
+    ensure_safe_to_replace(cfg, "bar")
+
+    runez.touch("empty")
+    ensure_safe_to_replace(cfg, "empty")
+
+
+def test_uninstall_brew(temp_folder, brew, logged):
+    # Simulate successful uninstall
+    ensure_safe_to_replace(brew, "%s/tox" % BREW_INSTALL)
+    assert "Auto-uninstalled brew formula 'tox'" in logged.pop()
+
+    # Simulate failed uninstall
+    with pytest.raises(SystemExit):
+        ensure_safe_to_replace(brew, "%s/twine" % BREW_INSTALL)
+    assert "brew uninstall twine' failed, please check" in logged.pop()
+
+    with pytest.raises(SystemExit):
+        ensure_safe_to_replace(brew, "%s/wget" % BREW_INSTALL)
+    assert "Can't automatically uninstall" in logged.pop()

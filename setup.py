@@ -14,4 +14,9 @@ setup(
     setup_requires="setupmeta",
     versioning="dev",
     author="Zoran Simic zoran@simicweb.com",
+    entry_points={
+        "console_scripts": [
+            "pickley = pickley.cli:protected_main",
+        ],
+    },
 )

@@ -3,7 +3,7 @@ Ideas for new features in pickley
 
 - Support packaging via shiv_, nuitka_
 
-- Use yaml for config files (will need a fast, pure python yaml library for that)
+- Use yaml for configuration files (will need a fast, pure python yaml library for that)
 
 - Add support for Windows
 

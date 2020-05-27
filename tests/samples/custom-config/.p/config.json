@@ -1,0 +1,19 @@
+{
+  "include": "custom.json",
+  "bundle": {
+    "dev": "tox mgit",
+    "dev2": "bundle:dev pipenv"
+  },
+  "delivery": "wrap",
+  "index": "https://pypi-mirror.mycompany.net/pypi",
+  "pinned": {
+    "mgit": "1.2.1",
+    "tox": {
+        "delivery": "custom-delivery",
+        "index": "custom-index",
+        "install_timeout": 42,
+        "python": "3.7.1",
+        "version": "3.2.1"
+    }
+  }
+}

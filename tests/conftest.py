@@ -2,10 +2,9 @@ import os
 
 import pytest
 import runez
-from runez.conftest import cli
+from runez.conftest import cli, logged, temp_folder
 
 from pickley.cli import main
-from pickley.settings import DOT_PICKLEY  # noqa: imported to ensure that system.SETTINGS is set
 
 
 TESTS = runez.parent_folder(__file__)
@@ -14,6 +13,7 @@ INEXISTING_FILE = "/dev/null/foo/bar"
 
 
 cli.default_main = main
+assert logged, temp_folder  # Just making fixtures available, with no complaints about unused imports
 
 
 def sample_path(*relative):

@@ -8,9 +8,9 @@ For developers
     which pickley
     pickley --version
     pickley --help
-    pickley install twine
+    pickley install mgit
     pickley list
-    .venv/root/twine --version
+    .venv/root/mgit --version
     deactivate
 
 * Package up pickley for deployment::
@@ -18,11 +18,4 @@ For developers
     tox -e package
     head -1 .tox/package/pickley
 
-
-Find all config key usages::
-
-    ag '\.(get_definition|get_value|contents\.get)\(["'"'"']'
-
-    # or if you don't have 'ag':
-    egrep -r '\.(get_definition|get_value|contents\.get)\(["'"'"']' src/ tests/
 
