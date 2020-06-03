@@ -4,7 +4,7 @@ import runez
 from mock import MagicMock, patch
 from runez.conftest import resource_path
 
-from pickley import despecced, inform, PackageSpec, PickleyConfig, pypi_name_problem, specced, TrackedSettings
+from pickley import __version__, despecced, inform, PackageSpec, PickleyConfig, pypi_name_problem, specced, TrackedSettings
 from pickley.cli import auto_upgrade_v1
 from pickley.v1upgrade import V1Status
 
@@ -70,35 +70,52 @@ def test_edge_cases():
     assert pypi_name_problem("mgit") is None
 
 
-def test_speccing():
+def test_desired_version(temp_folder):
     cfg = PickleyConfig()
     sample = resource_path("samples/custom-config")
-    cfg.set_base(sample, cli=TrackedSettings(None, None, None))
+    runez.copy(sample, "temp-base")
+    cfg.set_base("temp-base", cli=TrackedSettings(None, None, None))
 
-    p1 = PackageSpec(cfg, "mgit == 1.0.0")
-    p2 = PackageSpec(cfg, "pickley")
-    assert p1 < p2  # Ordering based on package name, then version
-    assert str(p1) == "mgit==1.0.0"
-    assert str(p2) == "pickley"
+    mgit = PackageSpec(cfg, "mgit == 1.0.0")
+    pickley = PackageSpec(cfg, "pickley")
+    assert mgit < pickley  # Ordering based on package name, then version
+    assert str(mgit) == "mgit==1.0.0"
+    assert str(pickley) == "pickley"
+    assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
+    assert mgit.cfg.install_timeout(mgit) == 2  # From custom.json
 
-    d = p1.get_desired_version_info()
-    assert d.source == "desired"
-    assert d.version == "1.0.0"
+    with patch("pickley.PypiInfo", return_value=MagicMock(problem=None, latest="0.1.2")):
+        d = pickley.get_desired_version_info()
+        assert d.source == "current"
+        assert d.version == __version__
 
-    # Verify pinned versions in samples/.../config.json are respected
-    p = PackageSpec(cfg, "mgit")
-    d = p.get_desired_version_info()
-    assert d.version == "1.2.1"
-    assert p.cfg.install_timeout(p) == 2  # From custom.json
+        d = mgit.get_desired_version_info()
+        assert d.source == "explicit"
+        assert d.version == "1.0.0"
 
-    p = PackageSpec(cfg, "tox")
-    d = p.get_desired_version_info()
-    assert d.version == "3.2.1"
-    assert p.settings.delivery == "custom-delivery"
-    assert p.settings.index == "custom-index"
-    assert p.settings.python == "2.8.1"
-    assert p.cfg.install_timeout(p) == 42  # From tox specific pin in samples/.../config.json
+        # Verify latest when no pins configured
+        p = PackageSpec(cfg, "foo")
+        d = p.get_desired_version_info()
+        assert d.version == "0.1.2"
+        assert d.source == "latest"
 
+        # Verify pinned versions in samples/.../config.json are respected
+        p = PackageSpec(cfg, "mgit")
+        d = p.get_desired_version_info()
+        assert d.version == "1.2.1"
+        assert d.source == "pinned"
+
+        p = PackageSpec(cfg, "tox")
+        d = p.get_desired_version_info()
+        assert d.version == "3.2.1"
+        assert d.source == "pinned"
+        assert p.settings.delivery == "custom-delivery"
+        assert p.settings.index == "custom-index"
+        assert p.settings.python == "2.8.1"
+        assert p.cfg.install_timeout(p) == 42  # From tox specific pin in samples/.../config.json
+
+
+def test_speccing():
     assert specced("mgit", "1.0.0") == "mgit==1.0.0"
     assert specced(" mgit ", " 1.0.0 ") == "mgit==1.0.0"
     assert specced("mgit", None) == "mgit"

@@ -73,7 +73,7 @@ def test_dryrun(cli):
     cli.expect_success("--help", "Usage:")
 
     cli.expect_success("-n auto-upgrade", "Would save")
-    cli.expect_failure("-n --debug auto-upgrade mgit", "'mgit' is not installed")
+    cli.expect_success("-n --debug auto-upgrade mgit", "Would wrap mgit")
     runez.touch(".pickley/mgit.lock")
     cli.expect_success("-n --debug auto-upgrade mgit", "Lock file present, another installation is in progress")
 

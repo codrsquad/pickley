@@ -142,11 +142,14 @@ def perform_install(pspec, give_up=5, is_upgrade=False, force=False, quiet=False
         is_upgrade (bool): If True, intent is an upgrade (not a new install)
         force (bool): If True, check latest version even if recently checked
         quiet (bool): If True, don't chatter
+
+    Returns:
+        (pickley.TrackedManifest): Manifest is successfully installed (or was already up-to-date)
     """
     with SoftLock(pspec.lock_path, give_up=give_up * 60, invalid=pspec.cfg.install_timeout(pspec) * 60, quiet=quiet):
         started = time.time()
         manifest = pspec.get_manifest()
-        if is_upgrade and not manifest:
+        if is_upgrade and not manifest and not quiet:
             abort("'%s' is not installed" % runez.red(pspec))
 
         if not pspec.version:

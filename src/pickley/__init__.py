@@ -196,6 +196,15 @@ class PackageSpec(object):
         runez.save_json(payload, os.path.join(self.install_path, ".manifest.json"))
         return manifest
 
+    def get_current_version(self):
+        """
+        Returns:
+            (str | None): Currently installed version, if any
+        """
+        manifest = self.get_manifest()
+        if manifest:
+            return manifest.version
+
     def get_desired_version_info(self, force=False):
         """
         Args:
@@ -205,7 +214,7 @@ class PackageSpec(object):
             (TrackedLatest): Object describing desired version
         """
         if self.version:
-            return TrackedLatest(source="desired", version=self.version)
+            return TrackedLatest(source="explicit", version=self.version)
 
         if self.pinned:
             return TrackedLatest(source="pinned", version=self.pinned)
@@ -219,16 +228,29 @@ class PackageSpec(object):
 
         index = self.index
         info = PypiInfo(index, self)
-        source = "latest"
-        if self.dashed == PICKLEY and info.latest and info.latest < __version__:  # pragma: no cover, need a better way
-            source = "pinned"
-            info.latest = __version__
+        candidates = [("installed", self.get_current_version())]
+        if self.dashed == PICKLEY:
+            candidates.append(("current", __version__))
 
-        desired = TrackedLatest(index=index, problem=info.problem, source=source, version=info.latest)
+        candidates.append(("latest", info.latest))  # Latest is last to ensure its 'source' is picked if all candidates are None
+        source, desired_version = max_version(candidates)
+        desired = TrackedLatest(index=index, problem=info.problem, source=source, version=desired_version)
         if not desired.problem:
             runez.save_json(desired.to_dict(), path, fatal=None)
 
         return desired
+
+
+def max_version(candidates):
+    """Allows to ensure we don't downgrade"""
+    highest_name = None
+    highest = None
+    for name, version in candidates:
+        if highest is None or (version and version > highest):
+            highest_name = name
+            highest = version
+
+    return highest_name, highest
 
 
 class PickleyConfig(object):
