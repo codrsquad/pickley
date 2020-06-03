@@ -27,7 +27,7 @@ Configuration
 Pickley loads a configuration file (if present) from:
 
 - ``--config`` command line argument
-- ``<base>/.p/config.json`` by default
+- ``<base>/.pickley/config.json`` by default
 
 More configuration files can be included, via an ``include`` directive.
 First definition found wins. Search order is:

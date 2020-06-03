@@ -78,8 +78,8 @@ def test_uninstall(temp_folder, logged):
         ensure_safe_to_replace(cfg, "/dev/null")  # Can't uninstall unknown locations
     assert "Can't automatically uninstall" in logged.pop()
 
-    runez.touch(".p/foo/bin/foo")
-    runez.symlink(".p/foo/bin/foo", "foo")
+    runez.touch(".pickley/foo/bin/foo")
+    runez.symlink(".pickley/foo/bin/foo", "foo")
     ensure_safe_to_replace(cfg, "foo")
 
     runez.write("bar", "# pickley wrapper")

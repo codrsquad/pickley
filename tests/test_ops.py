@@ -23,7 +23,7 @@ def test_base(temp_folder):
     with runez.TempArgv([], exe="temp-base/pickley"):
         assert find_base() == expected_base
 
-    with runez.TempArgv([], exe="temp-base/.p/pickley"):
+    with runez.TempArgv([], exe="temp-base/.pickley/pickley"):
         assert find_base() == expected_base
 
     with runez.TempArgv([], exe=".venv/bin/pickley"):
@@ -74,7 +74,7 @@ def test_dryrun(cli):
 
     cli.expect_success("-n auto-upgrade", "Would save")
     cli.expect_failure("-n --debug auto-upgrade mgit", "'mgit' is not installed")
-    runez.touch(".p/mgit.lock")
+    runez.touch(".pickley/mgit.lock")
     cli.expect_success("-n --debug auto-upgrade mgit", "Lock file present, another installation is in progress")
 
     cli.expect_success("-n base", os.getcwd())
@@ -94,15 +94,15 @@ def test_dryrun(cli):
     cli.expect_failure("-n -Pfoo install mgit", "Python 'foo' is not usable: not available")
 
     # Simulate an old entry point that was now removed
-    runez.write(".p/mgit/.manifest.json", '{"entrypoints": ["bogus-mgit"]}')
+    runez.write(".pickley/mgit/.manifest.json", '{"entrypoints": ["bogus-mgit"]}')
     cli.expect_failure("-n install mgit pickley2.a", "Would install mgit", "not pypi canonical")
-    runez.delete(".p/mgit")
+    runez.delete(".pickley/mgit")
 
     cli.expect_success("-n diagnostics -v", "sys.executable")
     cli.run("-n install mgit")
     assert cli.succeeded
-    assert cli.match("Would wrap mgit -> .p/mgit/")
-    assert cli.match("Would save .p/mgit/.manifest.json")
+    assert cli.match("Would wrap mgit -> .pickley/mgit/")
+    assert cli.match("Would save .pickley/mgit/.manifest.json")
     assert cli.match("Would install mgit v")
 
     cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
@@ -182,7 +182,7 @@ def test_lock(temp_folder):
 def check_install(cli, delivery, package):
     cli.expect_success("-d%s install %s" % (delivery, package), "Installed %s" % package)
     assert runez.is_executable(package)
-    m = runez.read_json(".p/%s/.manifest.json" % package)
+    m = runez.read_json(".pickley/%s/.manifest.json" % package)
     assert m["settings"]
     assert package in m["entrypoints"]
     assert "command" in m["pickley"]
@@ -198,7 +198,7 @@ def check_install(cli, delivery, package):
     cli.expect_success("upgrade", "is already up-to-date")
 
     m["version"] = "0.0.0"
-    runez.save_json(m, ".p/%s/.manifest.json" % package)
+    runez.save_json(m, ".pickley/%s/.manifest.json" % package)
     cli.expect_success("check", "v0.0.0 installed, can be upgraded to")
 
 
@@ -212,8 +212,8 @@ def test_installation(cli):
 
     cli.expect_success("uninstall mgit", "Uninstalled mgit")
     assert not runez.is_executable("mgit")
-    assert not os.path.exists(".p/mgit")
-    assert os.path.exists(".p/audit.log")
+    assert not os.path.exists(".pickley/mgit")
+    assert os.path.exists(".pickley/audit.log")
 
     check_install(cli, "wrap", "mgit")
     assert not os.path.islink("mgit")

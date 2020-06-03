@@ -80,7 +80,7 @@ class DeliveryMethod(object):
         """
         Args:
             pspec (pickley.PackageSpec): Package spec this installation is for
-            venv (pickley.package.PythonVenv): Virtual env where executables reside (.p/<package>/...)
+            venv (pickley.package.PythonVenv): Virtual env where executables reside (.pickley/<package>/...)
             entry_points (dict | list): Full path of executable to deliver (<base>/<entry_point>)
         """
         if pspec.dashed != PICKLEY:  # Pickley can be a pex during bootstrap, no need to inspect it anyhow

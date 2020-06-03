@@ -11,8 +11,8 @@ from pickley.pypi import PypiInfo
 
 
 __version__ = runez.get_version(__name__)
-DOT_META = ".p"
 PICKLEY = "pickley"
+DOT_META = ".%s" % PICKLEY
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
@@ -497,7 +497,7 @@ class PickleyConfig(object):
 
 
 class TrackedLatest(object):
-    """Tracked info in .p/.cache/<package>.latest"""
+    """Tracked info in .pickley/.cache/<package>.latest"""
 
     index = None  # type: str # Pypi url used
     pickley = None  # type: TrackedPickley

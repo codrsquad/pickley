@@ -18,19 +18,37 @@ class V1Status(object):
     """Temporary scan of older v1 installs, in order to auto-upgrade them to v2"""
 
     def __init__(self, cfg):
-        self.old_meta = os.path.join(cfg.base.path, ".pickley")
+        self.cfg = cfg
         self.installed = []
-        if not os.path.isdir(self.old_meta):
+        if not os.path.isdir(cfg.meta.path):
             return
 
-        for fname in os.listdir(self.old_meta):
+        for fname in os.listdir(cfg.meta.path):
             if fname == "pickley":
                 continue
 
-            folder = os.path.join(self.old_meta, fname)
-            if os.path.isdir(folder):
-                old_manifest = os.path.join(folder, ".current.json")
-                old_entrypoints = os.path.join(folder, ".entry-points.json")
-                old_entrypoints = runez.read_json(old_entrypoints, default=None)
-                if old_entrypoints and os.path.exists(old_manifest):
-                    self.installed.append(V1Install(fname, old_entrypoints))
+            old_manifest = cfg.meta.full_path(fname, ".current.json")
+            old_entrypoints = cfg.meta.full_path(fname, ".entry-points.json")
+            eps = runez.read_json(old_entrypoints, default=None)
+            if eps and os.path.exists(old_manifest):
+                v1 = V1Install(fname, eps)
+                self.installed.append(v1)
+
+    def clean_old_files(self):
+        for fname in os.listdir(self.cfg.meta.path):
+            fpath = os.path.join(self.cfg.meta.path, fname)
+            if fname == "_venvs":
+                runez.delete(fpath)
+                continue
+
+            if not os.path.isdir(fpath):
+                continue
+
+            runez.delete(os.path.join(fpath, ".current.json"))
+            runez.delete(os.path.join(fpath, ".entry-points.json"))
+            runez.delete(os.path.join(fpath, ".latest.json"))
+            runez.delete(os.path.join(fpath, ".ping"))
+
+            remaining = os.listdir(fpath)
+            if fname != "pickley" and not remaining:
+                runez.delete(fpath)

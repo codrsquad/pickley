@@ -36,13 +36,13 @@ def protected_main():
         abort(msg.format(packager=runez.red(PACKAGER.__name__.replace("Packager", "").lower())))
 
 
-def setup_audit_log():
+def setup_audit_log(cfg=CFG):
     """Setup audit.log log file handler"""
     if not runez.DRYRUN and not runez.log.file_handler:
         runez.log.setup(
             file_format="%(asctime)s %(timezone)s [%(process)d] %(context)s%(levelname)s - %(message)s",
             file_level=logging.DEBUG,
-            file_location=CFG.meta.full_path("audit.log"),
+            file_location=cfg.meta.full_path("audit.log"),
             greetings=":: {argv}",
             rotate="size:500k",
             rotate_count=1,
@@ -143,7 +143,7 @@ def perform_install(pspec, give_up=5, is_upgrade=False, force=False, quiet=False
         force (bool): If True, check latest version even if recently checked
         quiet (bool): If True, don't chatter
     """
-    with SoftLock(pspec.lock_path, give_up=give_up * 60, invalid=CFG.install_timeout(pspec) * 60, quiet=quiet):
+    with SoftLock(pspec.lock_path, give_up=give_up * 60, invalid=pspec.cfg.install_timeout(pspec) * 60, quiet=quiet):
         started = time.time()
         manifest = pspec.get_manifest()
         if is_upgrade and not manifest:
@@ -186,7 +186,7 @@ def _find_base_from_program_path(path):
     dirpath, basename = os.path.split(path)
     if basename:
         basename = basename.lower()
-        if basename in (DOT_META, ".pickley"):
+        if basename == DOT_META:
             return dirpath  # We're running from an installed pickley
 
         if basename == ".venv":
@@ -238,31 +238,31 @@ def main(ctx, debug, config, index, python, delivery, packager):
     )
 
 
-def auto_upgrade_v1():  # pragma: no cover, exercised via test_bootstrap() functional test
+def auto_upgrade_v1(cfg):
     """Look for v1 installations, and upgrade them to v2"""
-    v1 = V1Status(CFG)
+    v1 = V1Status(cfg)
     if v1.installed:
         # On first auto-upgrade pickley (ran in background by wrapper)
-        setup_audit_log()
+        setup_audit_log(cfg)
         inform("Auto-upgrading %s packages with pickley v2" % len(v1.installed))
         for prev in v1.installed:
-            pspec = PackageSpec(CFG, prev.name)
+            pspec = PackageSpec(cfg, prev.name)
             try:
-                manifest = perform_install(pspec, is_upgrade=False, quiet=True)
+                manifest = perform_install(pspec, is_upgrade=False, quiet=False)
                 if manifest and manifest.entrypoints and prev.entrypoints:
                     for old_ep in prev.entrypoints:
                         if old_ep not in manifest.entrypoints:
-                            runez.delete(os.path.join(CFG.base.path, old_ep))
+                            runez.delete(os.path.join(cfg.base.path, old_ep))
 
-            except BaseException as e:
-                inform("%s could not be upgraded, please reinstall it: %s" % (prev.name, runez.red(e)))
+            except BaseException:
+                inform("%s could not be upgraded, please reinstall it" % runez.red(prev.name))
                 if prev.entrypoints:
                     for old_ep in prev.entrypoints:
-                        runez.delete(os.path.join(CFG.base.path, old_ep))
+                        runez.delete(os.path.join(cfg.base.path, old_ep))
 
             inform("----")
 
-        runez.delete(v1.old_meta)
+        v1.clean_old_files()
         inform("Done")
 
 
@@ -311,7 +311,7 @@ def auto_upgrade(force, package):
             sys.exit(0)  # When called without 'package' specified: intent was to bootstrap only
 
         # We were called by auto-upgrade wrapper (in the background)
-        auto_upgrade_v1()
+        auto_upgrade_v1(CFG)
         if manifest:
             sys.exit(0)  # Bootstrap already got us up-to-date
 

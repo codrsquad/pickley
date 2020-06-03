@@ -1,7 +1,11 @@
+import os
+
 import runez
+from mock import MagicMock, patch
 from runez.conftest import resource_path
 
-from pickley import despecced, PackageSpec, PickleyConfig, pypi_name_problem, specced, TrackedSettings
+from pickley import despecced, inform, PackageSpec, PickleyConfig, pypi_name_problem, specced, TrackedSettings
+from pickley.cli import auto_upgrade_v1
 from pickley.v1upgrade import V1Status
 
 
@@ -10,7 +14,7 @@ base: {base}
 
 cli:  # empty
 
-{base}/.p/config.json:
+{base}/.pickley/config.json:
   bundle:
     dev: tox mgit
     dev2: bundle:dev pipenv
@@ -26,7 +30,7 @@ cli:  # empty
       python: 2.8.1
       version: 3.2.1
 
-{base}/.p/custom.json:
+{base}/.pickley/custom.json:
   delivery: wrap
   include:
     - bogus.json
@@ -108,7 +112,18 @@ def test_speccing():
     assert despecced(" mgit == ") == ("mgit", None)
 
 
-def test_v1(temp_folder):
+def mock_install(pspec, **_):
+    if pspec.dashed == "pickley2-a":
+        raise Exception("does not exist")
+
+    inform("Upgraded %s" % pspec.dashed)
+    entrypoints = [pspec.dashed]
+    pspec.version = "1.0"
+    pspec.save_manifest(entrypoints)
+    return MagicMock(entrypoints=entrypoints)
+
+
+def test_v1(temp_folder, logged):
     cfg = PickleyConfig()
     cfg.set_base(".")
     s = V1Status(cfg)
@@ -120,3 +135,21 @@ def test_v1(temp_folder):
     assert len(s.installed) == 2
     installed = sorted([str(s) for s in s.installed])
     assert installed == ["mgit", "pickley2-a"]
+
+    # Add some files that should get cleaned up
+    runez.touch(".pickley/_venvs/_py37/bin/pip")
+    runez.touch(".pickley/foo/.ping")
+
+    with patch("pickley.cli.perform_install", side_effect=mock_install):
+        auto_upgrade_v1(cfg)
+        assert "Auto-upgrading 2 packages" in logged
+        assert "pickley2-a could not be upgraded, please reinstall it" in logged
+        assert "Upgraded mgit" in logged
+        assert "Deleting .pickley/_venvs" in logged
+
+        assert os.path.exists(".pickley/README.md")  # untouched
+        assert os.path.exists(".pickley/mgit/mgit-1.0/.manifest.json")
+        assert os.path.isdir(".pickley/pickley")
+        assert not os.path.exists(".pickley/_venvs")  # cleaned
+        assert not os.path.exists(".pickley/foo")
+        assert not os.path.exists(".pickley/pickley2-a")

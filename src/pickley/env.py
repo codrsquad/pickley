@@ -186,12 +186,13 @@ class AvailablePythons(object):
         Returns:
             (PythonInstallation): Object representing python installation (may not be usable, see reported .problem)
         """
-        if not desired:
-            # Don't bother scanning/caching anything until a specifically desired python is needed
-            return self.invoker
-
         if isinstance(desired, PythonInstallation):
             return desired
+
+        if not desired or not isinstance(desired, runez.system.string_type):
+            # Don't bother scanning/caching anything until a specifically desired python is needed
+            # Non-string is for backwards compatibility, older configs may have had a dict
+            return self.invoker
 
         return self._find_python(desired)
 
