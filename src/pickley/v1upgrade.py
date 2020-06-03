@@ -28,10 +28,9 @@ class V1Status(object):
                 continue
 
             folder = os.path.join(self.old_meta, fname)
-            if not os.path.isdir(folder):
-                continue
-
-            old_manifest = os.path.join(folder, ".current.json")
-            old_entrypoints = os.path.join(folder, ".entry-points.json")
-            if os.path.exists(old_manifest):
-                self.installed.append(V1Install(fname, runez.read_json(old_entrypoints, default=None)))
+            if os.path.isdir(folder):
+                old_manifest = os.path.join(folder, ".current.json")
+                old_entrypoints = os.path.join(folder, ".entry-points.json")
+                old_entrypoints = runez.read_json(old_entrypoints, default=None)
+                if old_entrypoints and os.path.exists(old_manifest):
+                    self.installed.append(V1Install(fname, old_entrypoints))

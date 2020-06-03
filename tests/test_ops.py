@@ -72,8 +72,8 @@ def test_debian_mode(temp_folder, logged):
 def test_dryrun(cli):
     cli.expect_success("--help", "Usage:")
 
-    cli.expect_success("-n auto-upgrade", "Pickley is already bootstrapped")
-    cli.expect_failure("-n --debug auto-upgrade mgit", "Would touch .p/.cache/mgit.ping", "'mgit' is not installed")
+    cli.expect_success("-n auto-upgrade", "Would save")
+    cli.expect_failure("-n --debug auto-upgrade mgit", "'mgit' is not installed")
     runez.touch(".p/mgit.lock")
     cli.expect_success("-n --debug auto-upgrade mgit", "Lock file present, another installation is in progress")
 

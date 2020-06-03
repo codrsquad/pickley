@@ -183,6 +183,19 @@ class PackageSpec(object):
         """TrackedManifest: Manifest of the current installation of this package"""
         return TrackedManifest.from_file(self.manifest_path)
 
+    def save_manifest(self, entry_points):
+        manifest = TrackedManifest(
+            self.manifest_path,
+            self.settings,
+            entry_points,
+            pinned=self.pinned,
+            version=self.version,
+        )
+        payload = manifest.to_dict()
+        runez.save_json(payload, self.manifest_path)
+        runez.save_json(payload, os.path.join(self.install_path, ".manifest.json"))
+        return manifest
+
     def get_desired_version_info(self, force=False):
         """
         Args:
@@ -206,7 +219,12 @@ class PackageSpec(object):
 
         index = self.index
         info = PypiInfo(index, self)
-        desired = TrackedLatest(index=index, problem=info.problem, source="latest", version=info.latest)
+        source = "latest"
+        if self.dashed == PICKLEY and info.latest and info.latest < __version__:  # pragma: no cover, need a better way
+            source = "pinned"
+            info.latest = __version__
+
+        desired = TrackedLatest(index=index, problem=info.problem, source=source, version=info.latest)
         if not desired.problem:
             runez.save_json(desired.to_dict(), path, fatal=None)
 

@@ -268,11 +268,11 @@ def auto_upgrade_v1():  # pragma: no cover, exercised via test_bootstrap() funct
 
 def bootstrap():  # pragma: no cover, exercised via test_bootstrap() functional test
     """Bootstrap pickley (reinstall with venv instead of downloaded pex package)"""
+    pspec = PackageSpec(CFG, "%s==%s" % (PICKLEY, __version__))
     grand_parent = runez.parent_folder(runez.parent_folder(__file__))
     if grand_parent and grand_parent.endswith(".whl"):
         # We are indeed running from pex
         setup_audit_log()
-        pspec = PackageSpec(CFG, "%s==%s" % (PICKLEY, __version__))
         python = CFG.find_python("/usr/bin/python3")  # Prefer system py3, for stability
         if not python or python.problem:
             python = pspec.python
@@ -289,6 +289,12 @@ def bootstrap():  # pragma: no cover, exercised via test_bootstrap() functional 
 
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
         return delivery.install(pspec, venv, {PICKLEY: "bootstrapped"})
+
+    else:
+        manifest = pspec.get_manifest()
+        if not manifest:
+            # We're not running from pex, but we need to re-install pickley with latest version, so it gets a manifest etc
+            return perform_install(pspec, is_upgrade=False, quiet=False)
 
 
 @main.command(name="auto-upgrade")

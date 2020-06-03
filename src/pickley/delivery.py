@@ -4,7 +4,7 @@ import os
 import runez
 from runez import short
 
-from pickley import abort, PICKLEY, TrackedManifest
+from pickley import abort, PICKLEY
 
 LOG = logging.getLogger(__name__)
 
@@ -103,16 +103,7 @@ class DeliveryMethod(object):
                 LOG.debug("%s %s -> %s" % (self.action, short(dest), short(src)))
                 self._install(pspec, dest, src)
 
-            manifest = TrackedManifest(
-                pspec.manifest_path,
-                pspec.settings,
-                entry_points,
-                pinned=pspec.pinned,
-                version=pspec.version,
-            )
-            payload = manifest.to_dict()
-            runez.save_json(payload, pspec.manifest_path)
-            runez.save_json(payload, os.path.join(venv.folder, ".manifest.json"))
+            manifest = pspec.save_manifest(entry_points)
             if prev_manifest and prev_manifest.entrypoints:
                 for old_ep in prev_manifest.entrypoints:
                     if old_ep and old_ep not in entry_points:
