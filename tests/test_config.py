@@ -23,7 +23,7 @@ cli:  # empty
       delivery: custom-delivery
       index: custom-index
       install_timeout: 42
-      python: 3.7.1
+      python: 2.8.1
       version: 3.2.1
 
 {base}/.p/custom.json:
@@ -92,7 +92,7 @@ def test_speccing():
     assert d.version == "3.2.1"
     assert p.settings.delivery == "custom-delivery"
     assert p.settings.index == "custom-index"
-    assert p.settings.python == "3.7.1"
+    assert p.settings.python == "2.8.1"
     assert p.cfg.install_timeout(p) == 42  # From tox specific pin in samples/.../config.json
 
     assert specced("mgit", "1.0.0") == "mgit==1.0.0"
