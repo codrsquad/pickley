@@ -64,7 +64,8 @@ class PepVersion(object):
 
 def request_get(url):
     try:
-        return requests.get(url, timeout=30).text
+        r = requests.get(url, timeout=30)
+        return r.text if r.status_code != 404 else "does not exist"
 
     except IOError:
         return None
@@ -89,7 +90,7 @@ class PypiInfo(object):
 
         else:
             # Assume legacy only for now for custom pypi indices
-            self.url = os.path.join(self.index, self.pspec.dashed)
+            self.url = "%s/" % os.path.join(self.index, self.pspec.dashed)
 
         data = request_get(self.url)
         if not data:

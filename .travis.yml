@@ -1,4 +1,5 @@
 dist: xenial
+os: linux
 language: python
 python:
   - "2.7"
@@ -17,20 +18,18 @@ after_success:
 
 deploy:
   - provider: pypi
-    user: zsimic
+    username: zsimic
     password:
       secure: KQlK7VkxBZsexEHwhutDIBZCin/k5fLtf2Oa3Z7ITewghWw1OzHZ6QQOukPMPQJ64+6W2ryL/6JesRXxTJNnoCdK6/JeFj9mnXChbAX5wmtDNw5gL4UmbCL8q2p53Y5ZlT/MAmBLudcL4TnHdxK2UN1nibURXnmELM7hSQpRg+R5qzUA/seIz+bRTbDr0YnEUGcv0ojDmenuwxT3n6YQOjt4cDXu8+GqLiSwAzTi41gcmQmAyiOpZZMztpD9gpqO7gyhB0N/U0xqSOLp8oNJfTFP7b+MCuqECvRHEGDXfZ8Z1SA5ZYhRvOucroQwhV8XDvn/A2GQdZW7rakTtwhgTPPjj/4497Q1KOAmluTjW7BTtDiX32ewsTQ2I7mLMX1k7oKPMVNk8/VLb4r3U+RLj2a5ls7dEEzF4/PnJapiSTyzqbrbZpgCA8GxJXBtQIF+Ur6QlUtGCwJyYf3rFTgViwgbAsMGTvYuL17899fDYQyuURnOmG5gvU9Jb+lWv2utzd6h1LheL5h7e5Q96OOBhzipS8/pGJixgNcH3CstTrW1kIvhp2RavV035mVP16XFP39DSrUYpYn6DS5uv3HVKaR2LUJFlA23Psvw8YTMM2V1KdHtbVwDE27SwCLHed/Q8JaWuXeQxlOZEy6t2WnUOHg8WJzu2wm1n3nQoQiHjjg=
     distributions: "sdist bdist_wheel --universal"
-    skip_cleanup: true
     on:
       python: 3.7
       repo: zsimic/pickley
       tags: true
   - provider: releases
-    api_key:
+    token:
       secure: hxq/sH4tNdS40Q1roenVhswsv+EUSFXlqugTbJPkUD5CUdWldriuvZQA19uc+kILZ+cZzuE6Y2XOE1pHGnA/Pe1PwEOr2wyfWVueD+1ewxHJuiLVXJOSLA5i1MEz67/pMgEwzHulCTbMo3KjLDzKTZ6JpicpwPe8iFdvx50+GPXji6U1quLhcr/+V4sQWayAsuc9KIY8VBpazpDGUUAMt3VzVyLu3NINUpuoRm7QyFqdlzV3pSLdqQmwqZiOHyoUNzYsgwy1sJfpTjRoN3S0kuFHoWTpwP/9fSOrKMol13Kz+rlg7c2OR/qmGVbtQ64J4LOA/PmcZIuSCbm/J8DWWKYNzjgs/A4FSWEmdK8mg0AbspdppGW7rXZyTv9pVzQ7QEc7a4sccDyNkW4QGchPhc4ZQbLR5OMAL4KgfKm/w0owdiJs7+ipDfJFMr6M1PysAtfD7P3EKHTSVLY9R9xTDwb7y1BXRORVO3iv9B8t69Q/uK3AboaQn6DbavTR4RMf6jfw99JAGarq9GZxfKcV8wa3PZoG77T1fszHfnin+ym/RP3SNEThNpK3bau5JlhCc94I7VOfMQuG2RUiASIoVh56AMwJH+hxOZyodefHVW3DdZFLj1QWaV0aGU2aBAb1mENkhtl56rvPi94zAZBYtqBMuHl+ERoAwHS7Omdextk=
     file: ".tox/package/dist/pickley"
-    skip_cleanup: true
     on:
       python: 3.7
       repo: zsimic/pickley
