@@ -62,6 +62,15 @@ class PythonInstallation(object):
     def is_invoker(self):
         return False
 
+    @property
+    def needs_virtualenv(self):
+        if self.major == 2:
+            return True
+
+        if self.major == 3 and self.minor == 7:
+            if self.patch < 2:  # 3.7.1 possibly has a non-functional -mvenv (travis has that old version and fails)
+                return True
+
     def satisfies(self, desired):
         """
         Args:

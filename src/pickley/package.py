@@ -59,7 +59,7 @@ class PythonVenv(object):
                 abort("Python '%s' is not usable: %s" % (runez.bold(python), runez.red(python.problem)))
 
             runez.delete(folder, logger=None)
-            if python.major == 2:
+            if python.needs_virtualenv:
                 import virtualenv
 
                 vpath = virtualenv.__file__

@@ -64,6 +64,9 @@ def test_searching(temp_folder):
     assert p.problem == "does not respond to --version"
     assert not p.version
 
+    p = PythonFromPath("p1/python", version="3.7.1")  # Simulate 3.7.1
+    assert p.needs_virtualenv
+
     with patch.dict(os.environ, {"PATH": "p1:p2"}, clear=True):
         invoker = cfg.find_python()
         assert cfg.find_python(None) is invoker
