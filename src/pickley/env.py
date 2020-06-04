@@ -111,9 +111,9 @@ class InvokerPython(PythonInstallation):
     @staticmethod
     def invoker_python_executable():
         """Path to python that created pickley's venv"""
-        prefix = getattr(sys, "base_prefix", None)
+        prefix = getattr(sys, "real_prefix", None)
         if not prefix:
-            prefix = getattr(sys, "real_prefix", sys.prefix)  # pragma: no cover, old py2 venv
+            prefix = getattr(sys, "base_prefix", sys.prefix)
 
         if prefix:
             if "Python3.framework" in prefix and "Versions/3" in prefix:  # pragma: no cover, simplify OSX ridiculous paths

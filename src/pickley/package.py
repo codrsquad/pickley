@@ -58,7 +58,7 @@ class PythonVenv(object):
             if python.problem:
                 abort("Python '%s' is not usable: %s" % (runez.bold(python), runez.red(python.problem)))
 
-            runez.delete(folder, logger=None)
+            clean_folder(folder)
             if python.needs_virtualenv:
                 import virtualenv
 
@@ -163,7 +163,7 @@ class PythonVenv(object):
         return runez.run(self.py_path, *args, **kwargs)
 
     def _run_pip(self, *args, **kwargs):
-        return self.run_python("-mpip", *args, **kwargs)
+        return self.run_python("-mpip", "-v", *args, **kwargs)
 
 
 class Packager:
@@ -198,7 +198,7 @@ class PexPackager(Packager):
 
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements):
-        runez.delete("~/.pex", logger=None)
+        runez.delete("~/.pex", fatal=False, logger=None)
         wheels = os.path.join(build_folder, "wheels")
         clean_folder(build_folder)
         pex_venv = PythonVenv(os.path.join(build_folder, "pex-venv"), pspec.python, pspec.index)
@@ -209,7 +209,7 @@ class PexPackager(Packager):
             result = []
             for name in entry_points:
                 target = os.path.join(dist_folder, name)
-                runez.delete(target)
+                runez.delete(target, logger=None)
                 pex_venv.run_python(
                     "-mpex", "-v", "--no-pypi", "--pre", "--cache-dir", wheels, "-f", wheels,
                     "-c%s" % name, "-o%s" % target, name,
