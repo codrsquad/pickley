@@ -253,6 +253,17 @@ def max_version(candidates):
     return highest_name, highest
 
 
+def get_default_index(*paths):
+    """Configured pypi index from pip.conf"""
+    for path in paths:
+        conf = runez.file.ini_to_dict(path, default={})
+        index = conf.get("global", {}).get("index-url")
+        if index:
+            return path, index
+
+    return None, None
+
+
 class PickleyConfig(object):
     """Pickley configuration"""
 
@@ -262,14 +273,11 @@ class PickleyConfig(object):
     cli = None  # type: TrackedSettings # Tracks any custom command line cfg flags given, such as --index, --python or --delivery
     configs = None  # type: list
 
-    def __init__(self, default_index=None):
+    def __init__(self):
         self.configs = []
         self.available_pythons = AvailablePythons(self._pyenv_scanner)
-        if default_index is None:
-            pip_conf = runez.file.ini_to_dict("~/.config/pip/pip.conf", default={})
-            default_index = pip_conf.get("global", {}).get("index-url")
-
-        self.default_index = default_index or DEFAULT_PYPI
+        self.pip_conf, self.pip_conf_index = get_default_index("~/.config/pip/pip.conf", "/etc/pip.conf")
+        self.default_index = self.pip_conf_index or DEFAULT_PYPI
         self._explored = set()
 
     def __repr__(self):

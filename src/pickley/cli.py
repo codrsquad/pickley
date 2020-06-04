@@ -389,10 +389,13 @@ def diagnostics(verbose):
     table.header[1].style = "bold"
     table.add_row("base", runez.short(CFG.base))
     python = CFG.find_python()
-    table.add_row("python", "%s %s" % (python.executable, runez.dim("(%s)" % python.version)))
+    table.add_row("python", "%s %s" % (runez.short(python.executable), runez.dim("(%s)" % python.version)))
     table.add_row("sys.executable", runez.short(sys.executable))
-    table.add_row("sys.prefix", runez.short(sys.prefix))
+    table.add_row("default index", CFG.default_index)
+    table.add_row("pip.conf", runez.short(CFG.pip_conf, none=runez.dim("-not found-")))
+
     if verbose:
+        table.add_row("sys.prefix", runez.short(sys.prefix))
         table.add_row("sys.arg[0]", runez.short(sys.argv[0]))
         table.add_row("__file__", runez.short(__file__))
 

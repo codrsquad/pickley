@@ -4,7 +4,8 @@ import runez
 from mock import MagicMock, patch
 from runez.conftest import resource_path
 
-from pickley import __version__, despecced, inform, PackageSpec, PickleyConfig, pypi_name_problem, specced, TrackedSettings
+from pickley import __version__, despecced, get_default_index, inform, PackageSpec
+from pickley import PickleyConfig, pypi_name_problem, specced, TrackedSettings
 from pickley.cli import auto_upgrade_v1
 from pickley.v1upgrade import V1Status
 
@@ -63,6 +64,17 @@ def test_config():
     actual = cfg.represented().strip()
     expected = SAMPLE_CONFIG.strip().format(base=runez.short(cfg.base))
     assert actual == expected
+
+
+def test_default_index(temp_folder, logged):
+    assert get_default_index() == (None, None)
+
+    # Verify that we try 'a' (no such file), then find a configured index in 'b'
+    runez.write("b", "[global]\nindex-url = https://example.com/pypi", logger=None)
+    assert get_default_index("a", "b") == ("b", "https://example.com/pypi")
+
+    # Not logging, since default is pypi, and which index is used can be configured and seen via diagnostics command
+    assert not logged
 
 
 def test_edge_cases():
@@ -143,14 +155,14 @@ def mock_install(pspec, **_):
 def test_v1(temp_folder, logged):
     cfg = PickleyConfig()
     cfg.set_base(".")
-    s = V1Status(cfg)
-    assert not s.installed
+    status = V1Status(cfg)
+    assert not status.installed
 
     sample = resource_path("samples/v1")
     runez.copy(sample, ".pickley")
-    s = V1Status(cfg)
-    assert len(s.installed) == 2
-    installed = sorted([str(s) for s in s.installed])
+    status = V1Status(cfg)
+    assert len(status.installed) == 2
+    installed = sorted([str(s) for s in status.installed])
     assert installed == ["mgit", "pickley2-a"]
 
     # Add some files that should get cleaned up
