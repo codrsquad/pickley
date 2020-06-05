@@ -196,61 +196,51 @@ class PackageSpec(object):
         runez.save_json(payload, os.path.join(self.install_path, ".manifest.json"))
         return manifest
 
-    def get_current_version(self):
-        """
-        Returns:
-            (str | None): Currently installed version, if any
-        """
-        manifest = self.get_manifest()
-        if manifest:
-            return manifest.version
-
     def get_desired_version_info(self, force=False):
         """
         Args:
             force (bool): If True, ignore configured 'version_check_delay'
 
         Returns:
-            (TrackedLatest): Object describing desired version
+            (TrackedVersion): Object describing desired version
         """
         if self.version:
-            return TrackedLatest(source="explicit", version=self.version)
+            return TrackedVersion(source="explicit", version=self.version)
 
         if self.pinned:
-            return TrackedLatest(source="pinned", version=self.pinned)
+            return TrackedVersion(source="pinned", version=self.pinned)
 
-        path = self.cfg.cache.full_path("%s.latest" % self.dashed)
-        age = self.cfg.version_check_delay(self)
-        if not force or runez.file.is_younger(path, age):
-            desired = TrackedLatest.from_file(path)
-            if desired:
-                return desired
+        desired = self.get_latest(force=force)  # By default, the latest is desired
+        candidates = []
+        manifest = self.get_manifest()
+        if manifest and manifest.version:
+            candidates.append(TrackedVersion(index=manifest.index, pickley=manifest.pickley, source="installed", version=manifest.version))
 
-        index = self.index
-        info = PypiInfo(index, self)
-        candidates = [("installed", self.get_current_version())]
         if self.dashed == PICKLEY:
-            candidates.append(("current", __version__))
+            candidates.append(TrackedVersion(source="current", version=__version__))
 
-        candidates.append(("latest", info.latest))  # Latest is last to ensure its 'source' is picked if all candidates are None
-        source, desired_version = max_version(candidates)
-        desired = TrackedLatest(index=index, problem=info.problem, source=source, version=desired_version)
-        if not desired.problem:
-            runez.save_json(desired.to_dict(), path, fatal=None)
+        for candidate in candidates:
+            if candidate.version and candidate.version > desired.version:
+                desired = candidate
 
         return desired
 
+    def get_latest(self, force=False):
+        """Tracked in .pickley/.cache/<package>.latest"""
+        path = self.cfg.cache.full_path("%s.latest" % self.dashed)
+        age = self.cfg.version_check_delay(self)
+        if not force and age and runez.file.is_younger(path, age * 60):
+            latest = TrackedVersion.from_file(path)
+            if latest:
+                return latest
 
-def max_version(candidates):
-    """Allows to ensure we don't downgrade"""
-    highest_name = None
-    highest = None
-    for name, version in candidates:
-        if highest is None or (version and version > highest):
-            highest_name = name
-            highest = version
+        index = self.index
+        info = PypiInfo(index, self)
+        latest = TrackedVersion(index=index, problem=info.problem, source="latest", version=info.latest)
+        if not latest.problem:
+            runez.save_json(latest.to_dict(), path, fatal=None)
 
-    return highest_name, highest
+        return latest
 
 
 def get_default_index(*paths):
@@ -526,13 +516,13 @@ class PickleyConfig(object):
         return "\n".join(result).strip()
 
 
-class TrackedLatest(object):
-    """Tracked info in .pickley/.cache/<package>.latest"""
+class TrackedVersion(object):
+    """Object tracking a version, and the source it was obtained from"""
 
-    index = None  # type: str # Pypi url used
-    pickley = None  # type: TrackedPickley
+    index = None  # type: str # Associated pypi url, if any
+    pickley = None  # type: TrackedPickley # pickley that recorded this info
     problem = None  # type: str # Problem that occurred during pypi lookup, if any
-    source = None  # type: str # How 'version' was determined
+    source = None  # type: str # How 'version' was determined (can be: latest, pinned, ...)
     version = None  # type: str
 
     def __init__(self, index=None, pickley=None, problem=None, source=None, version=None):
@@ -594,6 +584,21 @@ class TrackedManifest(object):
                 pinned=data.get("pinned"),
                 version=data.get("version"),
             )
+
+    @property
+    def delivery(self):
+        if self.settings:
+            return self.settings.delivery
+
+    @property
+    def index(self):
+        if self.settings:
+            return self.settings.index
+
+    @property
+    def python(self):
+        if self.settings:
+            return self.settings.python
 
     def to_dict(self):
         return dict(

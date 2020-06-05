@@ -40,7 +40,7 @@ def setup_audit_log(cfg=CFG):
     """Setup audit.log log file handler"""
     if not runez.DRYRUN and not runez.log.file_handler:
         runez.log.setup(
-            file_format="%(asctime)s %(timezone)s [%(process)d] %(context)s%(levelname)s - %(message)s",
+            file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",
             file_level=logging.DEBUG,
             file_location=cfg.meta.full_path("audit.log"),
             greetings=":: {argv}",
@@ -352,7 +352,7 @@ def check(force, verbose, packages):
 
     for pspec in packages:
         desired = pspec.get_desired_version_info(force=force)
-        dv = runez.bold(desired.version)
+        dv = runez.bold(desired and desired.version)
         manifest = pspec.get_manifest()
         if desired.problem:
             msg = desired.problem
@@ -381,10 +381,11 @@ def config():
 
 
 @main.command()
+@runez.click.border("-b", default="colon")
 @click.option("--verbose", "-v", is_flag=True, help="Show internal info")
-def diagnostics(verbose):
+def diagnostics(border, verbose):
     """Show diagnostics info"""
-    table = PrettyTable(2, border="colon")
+    table = PrettyTable(2, border=border)
     table.header[0].align = "right"
     table.header[1].style = "bold"
     table.add_row("base", runez.short(CFG.base))
@@ -413,23 +414,24 @@ def install(force, packages):
 
 
 @main.command()
+@runez.click.border("-b", default="github")
 @click.option("--verbose", "-v", is_flag=True, help="Show more information")
-def list(verbose):
+def list(border, verbose):
     """List installed packages"""
     packages = CFG.package_specs()
     if not packages:
         print("No packages installed")
         sys.exit(0)
 
-    table = PrettyTable("Package,Version,Delivery,Python,From index", border="github")
+    table = PrettyTable("Package,Version,Delivery,Python,From index", border=border)
     table.header.style = runez.bold
     if not verbose:
         table.header.hide(2, 3, 4)
 
     for pspec in packages:
         manifest = pspec.get_manifest()
-        settings = manifest.settings or TrackedSettings(None, None, None)
-        table.add_row(pspec.dashed, manifest and manifest.version, settings.delivery, settings.python, settings.index)
+        if manifest:
+            table.add_row(pspec.dashed, manifest.version, manifest.delivery, manifest.python, manifest.index)
 
     print(table)
 
