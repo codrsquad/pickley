@@ -160,7 +160,7 @@ class DeliveryMethodWrap(DeliveryMethod):
             pickley=runez.quoted(pspec.cfg.base.full_path(PICKLEY), adapter=None),
             source=runez.quoted(source, adapter=None),
         )
-        runez.write(target, contents)
+        runez.write(target, contents, logger=False)
         runez.make_executable(target)
 
 

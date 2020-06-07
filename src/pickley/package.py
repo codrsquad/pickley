@@ -12,20 +12,6 @@ LOG = logging.getLogger(__name__)
 RE_BIN_SCRIPT = re.compile(r"^[./]+/bin/([-a-z0-9_.]+)$", re.IGNORECASE)
 
 
-def clean_folder(folder):
-    """Clean contents of 'folder' (if any), but don't delete the folder itself"""
-    if os.path.isdir(folder):
-        cleaned = 0
-        for fname in os.listdir(folder):
-            cleaned += runez.delete(os.path.join(folder, fname), logger=None)
-
-        if cleaned:
-            logging.debug("Cleaned %s files from %s" % (cleaned, runez.short(folder)))
-
-    else:
-        runez.ensure_folder(folder)
-
-
 def entry_points_from_txt(path):
     metadata = runez.file.ini_to_dict(path, default={})
     return metadata.get("console_scripts")
@@ -58,7 +44,7 @@ class PythonVenv(object):
             if python.problem:
                 abort("Python '%s' is not usable: %s" % (runez.bold(python), runez.red(python.problem)))
 
-            clean_folder(folder)
+            runez.ensure_folder(folder, clean=True)
             if python.needs_virtualenv:
                 import virtualenv
 
@@ -99,7 +85,7 @@ class PythonVenv(object):
         if runez.DRYRUN:
             return {pspec.dashed: "dryrun"}  # Pretend an entry point exists in dryrun mode
 
-        r = self.run_python("-mpip", "show", "-f", pspec.dashed, fatal=False, logger=None)
+        r = self.run_python("-mpip", "show", "-f", pspec.dashed, fatal=False, logger=False)
         if r.succeeded:
             expected_shebang = "#!%s" % runez.quoted(os.path.dirname(self.py_path), adapter=None)
             location = None
@@ -198,9 +184,9 @@ class PexPackager(Packager):
 
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements):
-        runez.delete("~/.pex", fatal=False, logger=None)
+        runez.delete("~/.pex", fatal=False, logger=False)
         wheels = os.path.join(build_folder, "wheels")
-        clean_folder(build_folder)
+        runez.ensure_folder(build_folder, clean=True)
         pex_venv = PythonVenv(os.path.join(build_folder, "pex-venv"), pspec.python, pspec.index)
         pex_venv.pip_install("wheel", "pex==1.6.7", *requirements)
         pex_venv.pip_wheel("-v", "--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
@@ -209,7 +195,7 @@ class PexPackager(Packager):
             result = []
             for name in entry_points:
                 target = os.path.join(dist_folder, name)
-                runez.delete(target, logger=None)
+                runez.delete(target, logger=False)
                 pex_venv.run_python(
                     "-mpex", "-v", "--no-pypi", "--pre", "--cache-dir", wheels, "-f", wheels,
                     "-c%s" % name, "-o%s" % target, name,
@@ -239,7 +225,7 @@ class VenvPackager(Packager):
 
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements):
-        clean_folder(dist_folder)
+        runez.ensure_folder(dist_folder, clean=True)
         venv = PythonVenv(dist_folder, pspec.python, pspec.index)
         venv.pip_install(*requirements)
         entry_points = venv.find_entry_points(pspec)

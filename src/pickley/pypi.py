@@ -9,6 +9,7 @@ import requests
 LOG = logging.getLogger(__name__)
 RE_BASENAME = re.compile(r'href=".+/([^/#]+)\.(tar\.gz|whl)#', re.IGNORECASE)
 RE_VERSION = re.compile(r"^((\d+)((\.(\d+))+)((a|b|c|rc)(\d+))?(\.(dev|post)(\d+))?).*$")
+REQUESTS_SESSION = requests.sessions.Session()
 
 
 class PepVersion(object):
@@ -64,7 +65,7 @@ class PepVersion(object):
 
 def request_get(url):
     try:
-        r = requests.get(url, timeout=30)
+        r = REQUESTS_SESSION.get(url, timeout=30)
         return r.text if r.status_code != 404 else "does not exist"
 
     except IOError:

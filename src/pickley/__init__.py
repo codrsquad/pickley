@@ -1,13 +1,16 @@
+#  -*- encoding: utf-8 -*-
+
 import logging
 import os
 import re
 import sys
+import time
 from datetime import datetime
 
 import runez
 
 from pickley.env import AvailablePythons, py_version_components, PythonFromPath
-from pickley.pypi import PypiInfo
+from pickley.pypi import PepVersion, PypiInfo
 
 
 __version__ = runez.get_version(__name__)
@@ -182,6 +185,44 @@ class PackageSpec(object):
     def get_manifest(self):
         """TrackedManifest: Manifest of the current installation of this package"""
         return TrackedManifest.from_file(self.manifest_path)
+
+    def groom_installation(self, keep_for=60 * 60):
+        """
+        Args:
+            keep_for (int): Time in seconds for how long to keep the previously installed version
+        """
+        current = self.get_manifest()
+        meta_path = self.meta_path
+        if current and os.path.isdir(meta_path):
+            now = time.time()
+            candidates = []
+            for fname in os.listdir(meta_path):
+                if fname.startswith("."):  # Pickley's meta files start with '.'
+                    continue
+
+                fpath = os.path.join(meta_path, fname)
+                version = PepVersion(fname[len(self.dashed) + 1:])
+                if version.text == current.version:
+                    continue
+
+                if not version.components:
+                    # Not a proper installation
+                    runez.delete(fpath, fatal=False)
+                    continue
+
+                # Different version, previously installed
+                candidates.append((now - os.path.getmtime(fpath), version, fpath))
+
+            if not candidates:
+                return
+
+            candidates = sorted(candidates)
+            youngest = candidates[0]
+            for candidate in candidates[1:]:
+                runez.delete(candidate[2], fatal=False)
+
+            if youngest[0] > keep_for:
+                runez.delete(youngest[2], fatal=False)
 
     def save_manifest(self, entry_points):
         manifest = TrackedManifest(

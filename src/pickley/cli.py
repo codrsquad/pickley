@@ -59,18 +59,16 @@ class SoftLock(object):
     A 'lock' is a simple file containing 2 lines: process id of the logfetch holding it, and the CLI args it was invoked with.
     """
 
-    def __init__(self, lock, give_up, invalid, quiet=False):
+    def __init__(self, lock, give_up, invalid):
         """
         Args:
             lock (str): Path to lock file
             give_up (int): Timeout in seconds after which to give up (raise SoftLockException) if lock could not be acquired
             invalid (int): Age in seconds after which to consider existing lock as invalid
-            quiet (bool): If True, don't chatter
         """
         self.lock = lock
         self.give_up = give_up
         self.invalid = invalid
-        self.quiet = quiet
 
     def __repr__(self):
         return self.lock
@@ -109,29 +107,27 @@ class SoftLock(object):
             holder_args = self._locked_by()
 
         # We got the soft lock
-        if not self.quiet:
-            if runez.DRYRUN:
-                print("Would acquire %s" % runez.short(self.lock))
+        if runez.DRYRUN:
+            print("Would acquire %s" % runez.short(self.lock))
 
-            else:
-                logging.debug("Acquired %s" % runez.short(self.lock))
+        else:
+            logging.debug("Acquired %s" % runez.short(self.lock))
 
-        runez.write(self.lock, "%s\n%s\n" % (os.getpid(), runez.quoted(sys.argv[1:])), logger=None)
+        runez.write(self.lock, "%s\n%s\n" % (os.getpid(), runez.quoted(sys.argv[1:])), logger=False)
         return self
 
     def __exit__(self, *_):
         """Release lock"""
-        if not self.quiet:
-            if runez.DRYRUN:
-                print("Would release %s" % runez.short(self.lock))
+        if runez.DRYRUN:
+            print("Would release %s" % runez.short(self.lock))
 
-            else:
-                logging.debug("Released %s" % runez.short(self.lock))
+        else:
+            logging.debug("Released %s" % runez.short(self.lock))
 
         if CFG.base:
             runez.Anchored.pop(CFG.base.path)
 
-        runez.delete(self.lock, logger=None)
+        runez.delete(self.lock, logger=False)
 
 
 def perform_install(pspec, give_up=5, is_upgrade=False, force=False, quiet=False):
@@ -146,7 +142,7 @@ def perform_install(pspec, give_up=5, is_upgrade=False, force=False, quiet=False
     Returns:
         (pickley.TrackedManifest): Manifest is successfully installed (or was already up-to-date)
     """
-    with SoftLock(pspec.lock_path, give_up=give_up * 60, invalid=pspec.cfg.install_timeout(pspec) * 60, quiet=quiet):
+    with SoftLock(pspec.lock_path, give_up=give_up * 60, invalid=pspec.cfg.install_timeout(pspec) * 60):
         started = time.time()
         manifest = pspec.get_manifest()
         if is_upgrade and not manifest and not quiet:
@@ -165,20 +161,20 @@ def perform_install(pspec, give_up=5, is_upgrade=False, force=False, quiet=False
                 status = "up-to-date" if is_upgrade else "installed"
                 inform("%s v%s is already %s" % (pspec.dashed, runez.bold(pspec.version), status))
 
+            pspec.groom_installation()
             return manifest
 
+        setup_audit_log()
         manifest = PACKAGER.install(pspec)
         if manifest and not quiet:
-            note = ""
+            note = " in %s" % runez.represented_duration(time.time() - started)
+            action = "Upgraded" if is_upgrade else "Installed"
             if runez.DRYRUN:
-                action = "Would upgrade" if is_upgrade else "Would install"
+                action = "Would state: %s" % action
 
-            else:
-                note = runez.dim(" in %s" % runez.represented_duration(time.time() - started))
-                action = "Upgraded" if is_upgrade else "Installed"
+            inform("%s %s v%s%s" % (action, pspec.dashed, runez.bold(pspec.version), runez.dim(note)))
 
-            inform("%s %s v%s%s" % (action, pspec.dashed, runez.bold(pspec.version), note))
-
+        pspec.groom_installation()
         return manifest
 
 
@@ -225,6 +221,12 @@ def main(ctx, debug, config, index, python, delivery, packager):
     """Package manager for python CLIs"""
     global PACKAGER
     PACKAGER = PexPackager if packager == "pex" else VenvPackager
+
+    if runez.PY2:
+        import codecs
+
+        UTF8Writer = codecs.getwriter("utf8")
+        sys.stdout = UTF8Writer(sys.stdout)
 
     runez.system.AbortException = SystemExit
     if ctx.invoked_subcommand != "package":
@@ -297,6 +299,7 @@ def bootstrap():  # pragma: no cover, exercised via test_bootstrap() functional 
         manifest = pspec.get_manifest()
         if not manifest:
             # We're not running from pex, but we need to re-install pickley with latest version, so it gets a manifest etc
+            setup_audit_log()
             return perform_install(pspec, is_upgrade=False, quiet=False)
 
 
@@ -440,12 +443,12 @@ def list(border, verbose):
 @click.argument("packages", nargs=-1, required=False)
 def upgrade(packages):
     """Upgrade an installed package"""
-    setup_audit_log()
     packages = CFG.package_specs(packages)
     if not packages:
         inform("No packages installed, nothing to upgrade")
         sys.exit(0)
 
+    setup_audit_log()
     for pspec in packages:
         perform_install(pspec, is_upgrade=True, force=False, quiet=False)
 
@@ -456,13 +459,13 @@ def upgrade(packages):
 def uninstall(all, packages):
     """Uninstall packages"""
     if packages and all:
-        sys.exit("Either specify packages to uninstall, or --all (but not both)")
+        abort("Either specify packages to uninstall, or --all (but not both)")
 
     if not packages and not all:
-        sys.exit("Specify packages to uninstall, or --all")
+        abort("Specify packages to uninstall, or --all")
 
     if packages and PICKLEY in packages:
-        sys.exit("Run 'uninstall --all' if you wish to uninstall pickley itself (and everything it installed)")
+        abort("Run 'uninstall --all' if you wish to uninstall pickley itself (and everything it installed)")
 
     setup_audit_log()
     for pspec in CFG.package_specs(packages):
@@ -496,7 +499,7 @@ def package(build, dist, symlink, no_sanity_check, sanity_check, folder, require
     """Package a project from source checkout"""
     folder = runez.resolved_path(folder)
     if not os.path.isdir(folder):
-        sys.exit("Folder %s does not exist" % runez.short(folder))
+        abort("Folder %s does not exist" % runez.red(runez.short(folder)))
 
     if no_sanity_check:
         sanity_check = None
@@ -504,7 +507,7 @@ def package(build, dist, symlink, no_sanity_check, sanity_check, folder, require
     finalizer = PackageFinalizer(folder, build, dist, symlink, sanity_check, requirement)
     problem = finalizer.resolve()
     if problem:
-        sys.exit(problem)
+        abort(problem)
 
     report = finalizer.finalize()
     if report:
@@ -580,16 +583,32 @@ class PackageFinalizer(object):
                 return "Could not determine package name from setup.py"
 
             validate_pypi_name(self.package_name)
-            self.resolve_dist()
             r = runez.run(sys.executable, "setup.py", "--version", fatal=False, dryrun=False)
             self.package_version = r.output
             if r.failed or not self.package_version:
                 return "Could not determine package version from setup.py"
 
+            self.resolve_dist()
+
+    @staticmethod
+    def validate_sanity_check(exe, sanity_check):
+        if not exe or not sanity_check:
+            return None
+
+        r = runez.run(exe, sanity_check, fatal=False, logger=None)
+        exe_info = r.output or r.error
+        if r.failed:
+            if exe_info and "usage:" in exe_info.lower():
+                return "does not respond to %s" % sanity_check
+
+            abort("'%s' failed sanity check" % exe)
+
+        return runez.first_line(exe_info)
+
     def finalize(self):
         """Run sanity check and/or symlinks, and return a report"""
         with runez.Anchored(self.folder):
-            runez.ensure_folder(self.build)
+            runez.ensure_folder(self.build, clean=True)
             CFG.set_base(self.build)
             pspec = PackageSpec(CFG, specced(self.package_name, self.package_version))
             exes = PACKAGER.package(pspec, self.build, runez.resolved_path(self.dist), self.requirements)
@@ -600,11 +619,7 @@ class PackageFinalizer(object):
                     report.header[1].shown = False
 
                 for exe in exes:
-                    exe_info = None
-                    if self.sanity_check:
-                        r = runez.run(exe, self.sanity_check)
-                        exe_info = r.output or r.error
-
+                    exe_info = self.validate_sanity_check(exe, self.sanity_check)
                     report.add_row(runez.quoted(exe), exe_info)
                     if self.symlink and exe and self.root:
                         self.symlink.apply(exe, self.root)

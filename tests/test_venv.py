@@ -5,7 +5,7 @@ import runez
 from mock import patch
 
 from pickley import CFG, PackageSpec
-from pickley.package import clean_folder, PythonVenv
+from pickley.package import PythonVenv
 
 
 BOGUS_PIP_SHOW = """
@@ -32,8 +32,8 @@ def test_shebang(temp_folder, logged):
     runez.touch("dummy.whl")
     shebang = venv.get_shebang(".")
     assert shebang.endswith("python%s" % sys.version_info[0])
-    clean_folder(".")
-    assert "Cleaned 1 file" in logged.pop()
+    runez.ensure_folder(".", clean=True)
+    assert "Cleaned 1 file from" in logged.pop()
     assert not os.path.exists("dummy.whl")
 
 

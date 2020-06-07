@@ -53,7 +53,7 @@ def test_pypi(logged):
         assert str(i) == "some-proj 1.3.0"
         assert "not pypi canonical" in logged.pop()
 
-    with patch("requests.get", side_effect=IOError):
+    with patch("requests.sessions.Session.get", side_effect=IOError):
         i = PypiInfo(None, PackageSpec(CFG, "foo"))
         assert "no data for" in i.problem
 
