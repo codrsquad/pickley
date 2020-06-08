@@ -56,7 +56,7 @@ class DeliveryMethod(object):
     Various implementation of delivering the actual executables
     """
 
-    action = "Delivering"
+    action = "Delivered"
     short_name = "deliver"
 
     @classmethod
@@ -126,7 +126,7 @@ class DeliveryMethodSymlink(DeliveryMethod):
     Deliver via symlink
     """
 
-    action = "Symlinking"
+    action = "Symlinked"
     short_name = "symlink"
 
     def _install(self, pspec, target, source):
@@ -144,7 +144,7 @@ class DeliveryMethodWrap(DeliveryMethod):
     Deliver via a small wrap that ensures target executable is up-to-date
     """
 
-    action = "Wrapping"
+    action = "Wrapped"
     short_name = "wrap"
 
     # Can be set in tests to make wrapper a no-op
@@ -161,7 +161,7 @@ class DeliveryMethodWrap(DeliveryMethod):
             source=runez.quoted(source, adapter=None),
         )
         runez.write(target, contents, logger=False)
-        runez.make_executable(target)
+        runez.make_executable(target, logger=False)
 
 
 def ensure_safe_to_replace(cfg, target):

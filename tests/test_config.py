@@ -174,7 +174,7 @@ def test_v1(temp_folder, logged):
         assert "Auto-upgrading 2 packages" in logged
         assert "pickley2-a could not be upgraded, please reinstall it" in logged
         assert "Upgraded mgit" in logged
-        assert "Deleting .pickley/_venvs" in logged
+        assert "Deleted .pickley/_venvs" in logged
 
         assert os.path.exists(".pickley/README.md")  # untouched
         assert os.path.exists(".pickley/mgit/mgit-1.0/.manifest.json")

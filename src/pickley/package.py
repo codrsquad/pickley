@@ -44,7 +44,7 @@ class PythonVenv(object):
             if python.problem:
                 abort("Python '%s' is not usable: %s" % (runez.bold(python), runez.red(python.problem)))
 
-            runez.ensure_folder(folder, clean=True)
+            runez.ensure_folder(folder, clean=True, logger=False)
             if python.needs_virtualenv:
                 import virtualenv
 
