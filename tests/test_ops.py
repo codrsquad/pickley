@@ -140,6 +140,13 @@ def test_dryrun(cli):
     cli.expect_success("-n upgrade", "No packages installed, nothing to upgrade")
     cli.expect_failure("-n upgrade mgit", "'mgit' is not installed")
 
+    # Simulate old pickley v1 install
+    cli.expect_success("-n list", "No packages installed")
+    runez.write(".pickley/mgit/.current.json", '{"version": "0.0.1"}')
+    runez.write(".pickley/mgit/.entry-points.json", '{"mgit": "mgit.cli:main"}')
+    cli.expect_success("-n upgrade mgit", "Would state: Upgraded mgit")
+    cli.expect_success("-n list", "mgit")
+
 
 def test_edge_cases(temp_folder, logged):
     import pickley.__main__  # noqa, just verify it imports

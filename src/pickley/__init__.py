@@ -184,7 +184,16 @@ class PackageSpec(object):
 
     def get_manifest(self):
         """TrackedManifest: Manifest of the current installation of this package"""
-        return TrackedManifest.from_file(self.manifest_path)
+        manifest = TrackedManifest.from_file(self.manifest_path)
+        if not manifest:
+            # Temporary: take into account old v1 installs as well
+            old_base = self.cfg.meta.full_path(self.dashed)
+            old_manifest = runez.read_json(os.path.join(old_base, ".current.json"), default=None)
+            entry_points = runez.read_json(os.path.join(old_base, ".entry-points.json"), default=None)
+            if old_manifest and entry_points:
+                manifest = TrackedManifest(self.manifest_path, self.settings, entry_points)
+
+        return manifest
 
     def groom_installation(self, keep_for=60 * 60):
         """
@@ -424,7 +433,7 @@ class PickleyConfig(object):
                 if fname != PICKLEY:
                     fpath = os.path.join(self.meta.path, fname)
                     if os.path.isdir(fpath):
-                        if os.path.exists(os.path.join(fpath, ".manifest.json")):
+                        if os.path.exists(os.path.join(fpath, ".manifest.json")) or os.path.exists(os.path.join(fpath, ".current.json")):
                             result.append(PackageSpec(self, fname))
 
         return result
