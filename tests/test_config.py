@@ -82,11 +82,15 @@ def test_edge_cases():
     assert pypi_name_problem("mgit") is None
 
 
-def test_desired_version(temp_folder):
+def test_desired_version(temp_folder, logged):
     cfg = PickleyConfig()
     sample = resource_path("samples/custom-config")
     runez.copy(sample, "temp-base")
     cfg.set_base("temp-base", cli=TrackedSettings(None, None, None))
+
+    mgit = PackageSpec(cfg, "mgit", preferred_python="/dev/null")
+    assert mgit.python is cfg.available_pythons.invoker
+    assert "Can't use preferred python /dev/null: not an executable" in logged.pop()
 
     mgit = PackageSpec(cfg, "mgit == 1.0.0")
     pickley = PackageSpec(cfg, "pickley")
@@ -95,6 +99,7 @@ def test_desired_version(temp_folder):
     assert str(pickley) == "pickley"
     assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
     assert mgit.cfg.install_timeout(mgit) == 2  # From custom.json
+    assert not logged
 
     with patch("pickley.PypiInfo", return_value=MagicMock(problem=None, latest="0.1.2")):
         d = pickley.get_desired_version_info()

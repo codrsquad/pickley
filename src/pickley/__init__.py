@@ -120,11 +120,12 @@ class PackageSpec(object):
     - wheel transforms dashes to underscores
     """
 
-    def __init__(self, cfg, text):
+    def __init__(self, cfg, text, preferred_python=None):
         """
         Args:
             cfg (PickleyConfig): Associated configuration
             text (str): Given package name, with optional version spec
+            preferred_python (str | None): Preferred python to use, when possible
         """
         self.cfg = cfg
         self.original, self.version = despecced(text)
@@ -132,8 +133,18 @@ class PackageSpec(object):
         self.dashed = canonical_pypi_name(self.original)
         self.wheelified = self.original.replace("-", "_").replace(".", "_")
         self.pinned = cfg.pinned_version(self)
-        desired = cfg.get_value("python", pspec=self)
-        self.python = self.cfg.available_pythons.find_python(desired)
+        if preferred_python:
+            python = self.cfg.available_pythons.find_python(preferred_python)
+            if python.problem:
+                msg = "Can't use preferred python %s: %s" % (preferred_python, python.problem)
+                python = self.cfg.available_pythons.invoker
+                msg += "\nUsing invoker python instead: %s" % python
+                logging.warning(msg)
+
+        else:
+            python = self.cfg.available_pythons.find_python(cfg.get_value("python", pspec=self))
+
+        self.python = python
         self.settings = TrackedSettings(
             delivery=cfg.delivery_method(self),
             index=cfg.index(self) or cfg.default_index,

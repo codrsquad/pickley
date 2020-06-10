@@ -274,18 +274,14 @@ def auto_upgrade_v1(cfg):
 
 def bootstrap():  # pragma: no cover, exercised via test_bootstrap() functional test
     """Bootstrap pickley (reinstall with venv instead of downloaded pex package)"""
-    pspec = PackageSpec(CFG, "%s==%s" % (PICKLEY, __version__))
+    pspec = PackageSpec(CFG, "%s==%s" % (PICKLEY, __version__), preferred_python="/usr/bin/python3")  # Prefer system py3, for stability
     grand_parent = runez.parent_folder(runez.parent_folder(__file__))
     if grand_parent and grand_parent.endswith(".whl"):
         # We are indeed running from pex
         setup_audit_log()
-        python = CFG.find_python("/usr/bin/python3")  # Prefer system py3, for stability
-        if not python or python.problem:
-            python = pspec.python
-
-        LOG.debug("Bootstrapping pickley %s with %s (re-installing as venv instead of pex package)" % (pspec.version, python))
+        LOG.debug("Bootstrapping pickley %s with %s (re-installing as venv instead of pex package)" % (pspec.version, pspec.python))
         target = pspec.install_path
-        venv = PythonVenv(target, python, pspec.index)
+        venv = PythonVenv(target, pspec.python, pspec.index)
         venv.pip_install("wheel")
         with runez.TempFolder():
             venv.run_python("-mwheel", "pack", grand_parent)
