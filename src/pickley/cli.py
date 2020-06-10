@@ -294,8 +294,8 @@ def bootstrap():  # pragma: no cover, exercised via test_bootstrap() functional 
 
     else:
         manifest = pspec.get_manifest()
-        if not manifest:
-            # We're not running from pex, but we need to re-install pickley with latest version, so it gets a manifest etc
+        if not manifest or not manifest.version:
+            # We're running from an old pickley v1 install
             setup_audit_log()
             return perform_install(pspec, is_upgrade=False, quiet=False)
 
