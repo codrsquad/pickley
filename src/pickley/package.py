@@ -136,13 +136,22 @@ class PythonVenv(object):
 
         return shebang
 
-    def pip_install(self, *args, **kwargs):
+    def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""
-        return self._run_pip("install", "-i", self.index, *args, **kwargs)
+        r = self._run_pip("install", "-i", self.index, *args, fatal=False)
+        if r.failed:
+            if "No matching distribution" in r.error:
+                lines = r.error.splitlines()
+                abort(lines[-1])
 
-    def pip_wheel(self, *args, **kwargs):
+            LOG.debug("pip install failed, output:\n%s" % r.output)
+            abort(r.error)
+
+        return r
+
+    def pip_wheel(self, *args):
         """Allows to not forget to state the -i index..."""
-        return self._run_pip("wheel", "-i", self.index, *args, **kwargs)
+        return self._run_pip("wheel", "-i", self.index, *args)
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""

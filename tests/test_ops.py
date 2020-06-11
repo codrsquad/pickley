@@ -83,19 +83,21 @@ def test_debian_mode(temp_folder, logged):
 def test_dryrun(cli):
     cli.expect_success("--help", "Usage:")
 
-    cli.run("-n auto-upgrade")
-    assert cli.succeeded
-    assert "Pass 1 bootstrap done" in cli.logged
-    assert ".ping" not in cli.logged
-    with runez.TempArgv(["-n", "auto-upgrade"], exe="pickley.bootstrap/bin/pickley"):
+    if sys.version_info[0] > 2:
+        # Bootstrapping out of py2 is tested separately
         cli.run("-n auto-upgrade")
         assert cli.succeeded
-        assert "Pass 2 bootstrap done" in cli.logged
+        assert "Pass 1 bootstrap done" in cli.logged
         assert ".ping" not in cli.logged
+        with runez.TempArgv(["-n", "auto-upgrade"], exe="pickley.bootstrap/bin/pickley"):
+            cli.run("-n auto-upgrade")
+            assert cli.succeeded
+            assert "Pass 2 bootstrap done" in cli.logged
+            assert ".ping" not in cli.logged
 
-    cli.expect_success("-n --debug auto-upgrade mgit", "Would wrap mgit")
-    runez.touch(".pickley/mgit.lock")
-    cli.expect_success("-n --debug auto-upgrade mgit", "Lock file present, another installation is in progress")
+        cli.expect_success("-n --debug auto-upgrade mgit", "Would wrap mgit")
+        runez.touch(".pickley/mgit.lock")
+        cli.expect_success("-n --debug auto-upgrade mgit", "Lock file present, another installation is in progress")
 
     cli.expect_success("-n base", os.getcwd())
     cli.expect_success("-n check", "No packages installed")
@@ -218,7 +220,10 @@ def check_install(cli, delivery, package, simulate_version=None):
     r = runez.run(package, "--version")
     assert r.succeeded
 
-    cli.expect_success("--debug auto-upgrade %s" % package, "Skipping auto-upgrade, checked recently")
+    if sys.version_info[0] > 2:
+        # Bootstrapping out of py2 is tested separately
+        cli.expect_success("--debug auto-upgrade %s" % package, "Skipping auto-upgrade, checked recently")
+
     cli.expect_success("install %s" % package, "is already installed")
     cli.expect_success("check", "is installed")
     cli.expect_success("list", package)
@@ -261,10 +266,12 @@ def test_installation(cli):
     assert not os.path.exists(".pickley/mgit")
     assert os.path.exists(".pickley/audit.log")
 
-    check_install(cli, "wrap", "mgit", simulate_version="0.0.0")
-    assert not os.path.islink("mgit")
-    contents = runez.readlines("mgit")
-    assert WRAPPER_MARK in contents
+    if sys.version_info[0] > 2:
+        # Bootstrapping out of py2 is tested separately
+        check_install(cli, "wrap", "mgit", simulate_version="0.0.0")
+        assert not os.path.islink("mgit")
+        contents = runez.readlines("mgit")
+        assert WRAPPER_MARK in contents
 
 
 @pytest.mark.skipif(sys.version_info[:2] != (3, 7), reason="Long test, testing with most common python version only")

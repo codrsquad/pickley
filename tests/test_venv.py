@@ -1,6 +1,7 @@
 import os
 import sys
 
+import pytest
 import runez
 from mock import patch
 
@@ -55,3 +56,21 @@ def test_entry_points(temp_folder):
         pspec = PackageSpec(CFG, "bogus")
         venv = PythonVenv("", CFG.find_python(), None)
         assert venv.find_entry_points(pspec) is None
+
+
+def test_pip_fail(logged):
+    venv = PythonVenv("", CFG.available_pythons.invoker, None)
+    with patch("pickley.package.PythonVenv._run_pip", return_value=runez.program.RunResult("", "some\nerror", code=1)):
+        with pytest.raises(SystemExit):
+            venv.pip_install("foo")
+
+        assert "pip install failed, output:" in logged.stderr.pop()
+        assert "some\nerror" == logged.stdout.pop()
+
+    r = runez.program.RunResult("", "foo\nNo matching distribution for ...", code=1)
+    with patch("pickley.package.PythonVenv._run_pip", return_value=r):
+        with pytest.raises(SystemExit):
+            venv.pip_install("foo")
+
+        assert not logged.stderr
+        assert logged.stdout.pop() == "No matching distribution for ..."

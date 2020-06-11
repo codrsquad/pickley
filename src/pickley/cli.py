@@ -330,10 +330,12 @@ def bootstrap():
 @click.argument("package", required=False)
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
-    if not package or package == PICKLEY:
-        # We were called by auto-upgrade wrapper (in the background)
+    if not package or CFG.available_pythons.invoker.major < 3 or ".whl" in __file__ or "pickley.bootstrap" in __file__:  # pragma: no cover
+        # We may need to bootstrap, or auto-upgrade v1, covered by test_config:test_v1
         bootstrap()
-        auto_upgrade_v1(CFG)  # pragma: no cover, covered by test_config:test_v1
+        auto_upgrade_v1(CFG)
+        if not package:
+            sys.exit(0)
 
     pspec = PackageSpec(CFG, package)
     ping = pspec.ping_path
