@@ -58,6 +58,7 @@ class DeliveryMethod(object):
 
     action = "Delivered"
     short_name = "deliver"
+    ping = True  # Touch .ping file when done?
 
     @classmethod
     def delivery_method_by_name(cls, name):
@@ -83,7 +84,8 @@ class DeliveryMethod(object):
             venv (pickley.package.PythonVenv): Virtual env where executables reside (.pickley/<package>/...)
             entry_points (dict | list): Full path of executable to deliver (<base>/<entry_point>)
         """
-        if pspec.dashed != PICKLEY:  # Pickley can be a pex during bootstrap, no need to inspect it anyhow
+        if pspec.dashed != PICKLEY:
+            # No need to double-check pickley itself
             for name in entry_points:
                 # First, ensure every entry point is either coming from pickley, or can be auto-uninstalled
                 ensure_safe_to_replace(pspec.cfg, pspec.exe_path(name))
@@ -110,8 +112,10 @@ class DeliveryMethod(object):
                         # Remove old entry points that are not in new manifest any more
                         runez.delete(pspec.exe_path(old_ep))
 
-            # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-            runez.touch(pspec.ping_path)
+            if self.ping:
+                # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
+                runez.touch(pspec.ping_path)
+
             return manifest
 
         except Exception as e:

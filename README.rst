@@ -26,7 +26,7 @@ A bit like brew_ or apt_, but based solely on pypi_
 
 It can work out of the box, **without any configuration**:
 
-- **pickley** will install in the same folder it's running from (drop it in ``/usr/local/bin`` or ``~/.local/bin`` for example)
+- **pickley** will install in the same folder it's running from (drop it in ``~/.local/bin`` or ``/usr/local/bin`` for example)
 
 -  All pypi packages with ``console_scripts`` entry point(s) can be immediately installed
 
@@ -46,26 +46,30 @@ Example
 
 Once you have pickley_, you can get other python CLIs and use them as standalone programs, for example::
 
-    # One-liner to grab pickley, and drop it in /usr/local/bin
-    $ curl -sLo /usr/local/bin/pickley `curl -s https://pypi.org/pypi/pickley/json | grep -Eo '"download_url":"([^"]+)"' | cut -d'"' -f4`
+    # One-liner to grab pickley, and drop it in ~/.local/bin
+    $ curl -sLo ~/.local/bin/pickley `curl -s https://pypi.org/pypi/pickley/json | grep -Eo '"download_url":"([^"]+)"' | cut -d'"' -f4`
 
     $ which pickley
-    /usr/local/bin/pickley
+    ~/.local/bin/pickley
+
+    $ pickley base
+    ~/.local/bin
 
     $ pickley install tox twine
-    Installed tox 3.2.1
-    Installed twine 1.11
+    Installed tox v3.15.2 in 6 seconds 328 ms
+    Installed twine v3.1.1 in 6 seconds 954 ms
 
     $ which tox
-    /usr/local/bin/tox
+    ~/.local/bin/tox
 
     $ tox --version
-    tox version 3.2.1
+    tox version 3.15.2
 
     $ pickley list
-    base: /usr/local/bin
-    tox 3.2.1
-    twine 1.11
+    | Package    | Version |
+    -------------|----------
+    | tox        | 3.15.2  |
+    | twine      | 3.1.1   |
 
 
 Configuration
@@ -117,7 +121,7 @@ Features
 - Aims to work with zero configuration (but configuration is possible):
 
     - entirely portable, installations are performed in the same folder where **pickley** resides,
-      drop it in ``/usr/local/bin`` and all the stuff you install with it will also be there
+      drop it in ``~/.local/bin`` and all the stuff you install with it will also be there
 
     - latest non pre-release version from pypi is used
 

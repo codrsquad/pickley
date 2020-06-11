@@ -53,7 +53,7 @@ class PythonVenv(object):
                     vpath = vpath[:-1]
 
                 cmd = [python.executable, vpath]
-                if not python.is_invoker:  # pragma: no cover, when pickley install with py2...
+                if not python.is_invoker:  # pragma: no cover, only when pickley is installed with py2...
                     cmd.append("-p")
                     cmd.append(python.executable)
 
@@ -156,7 +156,7 @@ class Packager:
     """Ancestor to package/install implementations"""
 
     @staticmethod
-    def install(pspec):
+    def install(pspec, ping=True):
         """
         Args:
             pspec (pickley.PackageSpec): Targeted package spec
@@ -210,9 +210,10 @@ class VenvPackager(Packager):
     """Install in a virtualenv"""
 
     @staticmethod
-    def install(pspec):
+    def install(pspec, ping=True):
         assert pspec.version
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
+        delivery.ping = ping
         target = pspec.install_path
         venv = PythonVenv(target, pspec.python, pspec.index)
         venv.pip_install(pspec.specced)

@@ -270,14 +270,15 @@ def auto_upgrade_v1(cfg):
 
         v1.clean_old_files()
         inform("Done")
+        sys.exit(0)
 
 
-def bootstrap():  # pragma: no cover, exercised via test_bootstrap() functional test
+def bootstrap():
     """Bootstrap pickley (reinstall with venv instead of downloaded pex package)"""
     pspec = PackageSpec(CFG, "%s==%s" % (PICKLEY, __version__), preferred_python="/usr/bin/python3")  # Prefer system py3, for stability
     grand_parent = runez.parent_folder(runez.parent_folder(__file__))
-    if grand_parent and grand_parent.endswith(".whl"):
-        # We are indeed running from pex
+    if grand_parent and grand_parent.endswith(".whl"):  # pragma: no cover, coverage can't peek into pex-es
+        # We are running from a pex package
         setup_audit_log()
         LOG.debug("Bootstrapping pickley %s with %s (re-installing as venv instead of pex package)" % (pspec.version, pspec.python))
         target = pspec.install_path
@@ -290,14 +291,35 @@ def bootstrap():  # pragma: no cover, exercised via test_bootstrap() functional 
             venv.pip_install(names[0])
 
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
-        return delivery.install(pspec, venv, {PICKLEY: "bootstrapped"})
+        delivery.ping = False
+        delivery.install(pspec, venv, {PICKLEY: "bootstrapped"})
+        sys.exit(0)
 
-    else:
-        manifest = pspec.get_manifest()
-        if not manifest or not manifest.version:
-            # We're running from an old pickley v1 install
-            setup_audit_log()
-            return perform_install(pspec, is_upgrade=False, quiet=False)
+    if "pickley.bootstrap" in sys.argv[0]:
+        # We're running from pass1 bootstrap
+        setup_audit_log()
+        with SoftLock(pspec.lock_path, give_up=60, invalid=60):
+            VenvPackager.install(pspec, ping=False)
+
+        LOG.debug("Pass 2 bootstrap done")
+        sys.exit(0)
+
+    manifest = pspec.get_manifest()
+    if not manifest or not manifest.version:
+        # We're running from an old pickley v1 install: pass1 bootstrap ourselves with v2 and python3
+        setup_audit_log()
+        with SoftLock(pspec.lock_path, give_up=60, invalid=60):
+            delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
+            delivery.ping = False
+            target = pspec.cfg.meta.full_path("pickley.bootstrap")
+            venv = PythonVenv(target, pspec.python, pspec.index)
+            venv.pip_install(pspec.specced)
+            src = venv.bin_path(PICKLEY)
+            dest = pspec.exe_path(PICKLEY)
+            delivery._install(pspec, dest, src)
+
+        LOG.debug("Pass 1 bootstrap done")
+        sys.exit(0)
 
 
 @main.command(name="auto-upgrade")
@@ -305,18 +327,10 @@ def bootstrap():  # pragma: no cover, exercised via test_bootstrap() functional 
 @click.argument("package", required=False)
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
-    if not package or package == PICKLEY:  # pragma: no cover, exercised via test_bootstrap() functional test
-        manifest = bootstrap()
-        if not package:
-            if not manifest:
-                inform("Pickley is already bootstrapped")
-
-            sys.exit(0)  # When called without 'package' specified: intent was to bootstrap only
-
+    if not package or package == PICKLEY:
         # We were called by auto-upgrade wrapper (in the background)
-        auto_upgrade_v1(CFG)
-        if manifest:
-            sys.exit(0)  # Bootstrap already got us up-to-date
+        bootstrap()
+        auto_upgrade_v1(CFG)  # pragma: no cover, covered by test_config:test_v1
 
     pspec = PackageSpec(CFG, package)
     ping = pspec.ping_path

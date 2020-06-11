@@ -83,7 +83,16 @@ def test_debian_mode(temp_folder, logged):
 def test_dryrun(cli):
     cli.expect_success("--help", "Usage:")
 
-    cli.expect_success("-n auto-upgrade", "Would save")
+    cli.run("-n auto-upgrade")
+    assert cli.succeeded
+    assert "Pass 1 bootstrap done" in cli.logged
+    assert ".ping" not in cli.logged
+    with runez.TempArgv(["-n", "auto-upgrade"], exe="pickley.bootstrap/bin/pickley"):
+        cli.run("-n auto-upgrade")
+        assert cli.succeeded
+        assert "Pass 2 bootstrap done" in cli.logged
+        assert ".ping" not in cli.logged
+
     cli.expect_success("-n --debug auto-upgrade mgit", "Would wrap mgit")
     runez.touch(".pickley/mgit.lock")
     cli.expect_success("-n --debug auto-upgrade mgit", "Lock file present, another installation is in progress")

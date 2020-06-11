@@ -1,5 +1,6 @@
 import os
 
+import pytest
 import runez
 from mock import MagicMock, patch
 from runez.conftest import resource_path
@@ -175,7 +176,9 @@ def test_v1(temp_folder, logged):
     runez.touch(".pickley/foo/.ping")
 
     with patch("pickley.cli.perform_install", side_effect=mock_install):
-        auto_upgrade_v1(cfg)
+        with pytest.raises(SystemExit):
+            auto_upgrade_v1(cfg)
+
         assert "Auto-upgrading 2 packages" in logged
         assert "pickley2-a could not be upgraded, please reinstall it" in logged
         assert "Upgraded mgit" in logged
