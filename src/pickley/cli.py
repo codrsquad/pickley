@@ -293,6 +293,7 @@ def bootstrap():
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
         delivery.ping = False
         delivery.install(pspec, venv, {PICKLEY: "bootstrapped"})
+        runez.run(pspec.exe_path(PICKLEY), "auto-upgrade", fatal=None, stdout=None, stderr=None)  # Trigger auto_upgrade_v1()
         sys.exit(0)
 
     if "pickley.bootstrap" in sys.argv[0]:
@@ -302,6 +303,7 @@ def bootstrap():
             VenvPackager.install(pspec, ping=False)
 
         LOG.debug("Pass 2 bootstrap done")
+        runez.run(pspec.exe_path(PICKLEY), "auto-upgrade", fatal=None, stdout=None, stderr=None)  # Trigger auto_upgrade_v1()
         sys.exit(0)
 
     manifest = pspec.get_manifest()
@@ -311,7 +313,7 @@ def bootstrap():
         with SoftLock(pspec.lock_path, give_up=60, invalid=60):
             delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
             delivery.ping = False
-            target = pspec.cfg.meta.full_path("pickley.bootstrap")
+            target = pspec.cfg.meta.full_path(PICKLEY, "pickley.bootstrap")
             venv = PythonVenv(target, pspec.python, pspec.index)
             venv.pip_install(pspec.specced)
             src = venv.bin_path(PICKLEY)
@@ -319,6 +321,7 @@ def bootstrap():
             delivery._install(pspec, dest, src)
 
         LOG.debug("Pass 1 bootstrap done")
+        runez.run(pspec.exe_path(PICKLEY), "auto-upgrade", fatal=None, stdout=None, stderr=None)  # Trigger pass 2
         sys.exit(0)
 
 
