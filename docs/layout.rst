@@ -15,6 +15,6 @@ File structure at ``<base>`` installation folder, example ``~/.local/bin``::
     │   │   ├── .manifest.json          # PackageSpec.manifest_path: Metadata on current installation
     │   │   └── tox-2.9.1/              # PackageSpec.install_path: Actual installation, as packaged by pickley
     │   │       └── .manifest.json      # Metadata on this installation
-    ├── pickley                         # pickley itself
+    ├── pickley -> .pickley/pickley/... # pickley itself
     └── tox -> .pickley/tox/2.9.1/...   # PackageSpec.exe_path(): Produced exe, can be a symlink or a self-upgrading wrapper
 

@@ -21,24 +21,32 @@ Automate installation of standalone python CLIs
 Overview
 ========
 
-**pickley** allows to install and keep up-to-date standalone pip-installable python CLIs such as tox_, twine_, etc.
-A bit like brew_ or apt_, but based solely on pypi_
+**pickley** allows to install and keep up-to-date standalone pip-installable python CLIs
+such as tox_, twine_, etc. A bit like brew_ or apt_, but based solely on pypi_
+
+It is similar to pipx_, but supports any python (including py2), offers self-auto-upgrade, and
+can ``package`` folders as well (for deployment, as venv or pex_ currently).
 
 It can work out of the box, **without any configuration**:
 
-- **pickley** will install in the same folder it's running from (drop it in ``~/.local/bin`` or ``/usr/local/bin`` for example)
+- **pickley** is portable, it will run and install other CLIs in the same folder it's running from
+  (drop it in ``~/.local/bin`` or ``/usr/local/bin`` for example)
 
--  All pypi packages with ``console_scripts`` entry point(s) can be immediately installed
+- All pypi packages with ``console_scripts`` entry point(s) can be immediately installed
 
-- Latest non-prerelease pypi version will be used, no automatic updates (you can run ``pickley install ...`` any time to upgrade)
+- Latest non-prerelease pypi version will be installed by default
+  (can be pinned via explicit pin ``pickley install foo==1.0``, or via configuration)
 
 With **some configuration**, the following becomes possible:
 
-- You can create "channels" such as "stable" and choose which version you want installed
+- You can pin what version to install, what python to use etc, per pypi package
 
-- You can use the **wrap** delivery method, which will make all your installed CLIs auto-upgrade themselves
+- You can define ``bundle``-s: names that install several pypi packages at once,
+  for example: you could define a ``bundle:dev`` to install ``tox pipenv pre-commit``
 
-- You can have the installed packages produced as **pex** or **venv**
+- You can use a custom pypi server index (pip's default is respected by default)
+
+- You can use the **symlink** delivery method, which will use symlinks instead of self-upgrading wrapper
 
 
 Example
@@ -97,7 +105,7 @@ Packaging
 pickley packages itself like this for example.
 See ``pickley package --help`` for options, by default:
 
-- Produced package(s) (one per entry point) are dropped by default in ``./dist`` (configurable via ``--dist`` or ``-d``)
+- Produced package(s) (one per entry point) are dropped in ``./dist`` (configurable via ``--dist`` or ``-d``)
 
 - Used wheels are dropped in ``./build`` (configurable via ``--build`` or ``-b``)
 
@@ -106,7 +114,7 @@ See ``pickley package --help`` for options, by default:
 - Using tox's ``changedir = {envdir}`` allows to simplify invocations
   (relative paths are relative to ``{envdir}``, which is ``.tox/package`` in this case)
 
-- Using ``skip_install = True`` just for speedup (the project itself is not needed withing the 'pacakage' tox env)
+- Using ``skip_install = True`` just for speedup (the project itself is not needed within the 'pacakage' tox env)
 
 You can run the ``package`` command from anywhere, for example this will drop a pex package in ``./root/apps/myproject``::
 
@@ -124,8 +132,6 @@ Features
       drop it in ``~/.local/bin`` and all the stuff you install with it will also be there
 
     - latest non pre-release version from pypi is used
-
-- Packaging is done via pex_ by default, but virtualenv_ or shiv_ can be used to (more possible in the future)
 
 - Commands:
 
@@ -171,6 +177,8 @@ Run (you will need tox_)::
 .. _pypi: https://pypi.org/
 
 .. _pip: https://pypi.org/project/pip/
+
+.. _pipx: https://pypi.org/project/pipx/
 
 .. _pex: https://pypi.org/project/pex/
 

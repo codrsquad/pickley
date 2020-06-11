@@ -19,7 +19,7 @@ DOT_META = ".%s" % PICKLEY
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
-K_LEAVES = {"install_timeout", "pyenv", "version_check_delay"}
+K_LEAVES = {"install_timeout", "pyenv", "version", "version_check_delay"}
 
 DEFAULT_PYPI = "https://pypi.org/simple"
 RE_PYPI_CANONICAL = re.compile(r"^[a-z][a-z0-9-]*[a-z0-9]$")

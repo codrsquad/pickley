@@ -15,7 +15,6 @@
         "settings": {
             "delivery": "wrap",
             "index": "https://pypi-mirror.mycompany.net/pypi",
-            "packager": "venv",
             "python": "..."
         },
         "version": "3.14.6"

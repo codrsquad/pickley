@@ -2,18 +2,22 @@
 History
 =======
 
-2.0.0 (2020-06-01)
+2.0.1 (2020-06-11)
 ------------------
 
-* Strictly default to python 3 (was sticking to system python before)
+* Default to using ``/usr/bin/python3`` when possible (was sticking to system python before)
+
+* Default to using self-upgrading wrapper instead of symlinks
 
 * Refactored, simplified code
 
-  * Not using temporary build venvs anymore
+  * Not using temporary build venvs anymore, dropped support for relocating venvs
 
   * 3x faster now when installing average sized projects
 
-  * 1200 lines of code (was 1500)
+  * Added commands: ``base``, ``config``, ``diagnostics``, ``upgrade``
+
+  * Removed commands: ``copy``, ``move``, ``settings``
 
 
 1.9.19 (2020-02-18)
