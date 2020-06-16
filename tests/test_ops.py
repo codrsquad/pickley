@@ -4,12 +4,13 @@ import time
 
 import pytest
 import runez
-from mock import patch
+from mock import MagicMock, patch
 from runez.conftest import project_folder
 
 from pickley import PackageSpec, PickleyConfig
-from pickley.cli import find_base, PackageFinalizer, protected_main, SoftLock, SoftLockException
+from pickley.cli import find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
+from pickley.env import UnknownPython
 from pickley.package import Packager
 
 
@@ -30,6 +31,18 @@ def test_base(temp_folder):
 
     with runez.TempArgv([], exe=".venv/bin/pickley"):
         assert find_base() == runez.resolved_path(".venv/root")
+
+
+def test_bootstrap(temp_folder):
+    # Simulate py3 became available
+    cfg = PickleyConfig()
+    cfg.set_base(".")
+    pspec = PackageSpec(cfg, "pickley==1.0")
+    pspec.python = UnknownPython("py3")
+    pspec.python.major = 3
+    pspec.get_manifest = lambda: MagicMock(version="1.0")
+
+    assert bool(needs_bootstrap(pspec)) == (cfg.available_pythons.invoker.major < 3)
 
 
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):

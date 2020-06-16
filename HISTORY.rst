@@ -2,6 +2,12 @@
 History
 =======
 
+2.0.2 (2020-06-16)
+------------------
+
+* Corrected bootstrap case when py3 becomes available after initial install
+
+
 2.0.1 (2020-06-11)
 ------------------
 

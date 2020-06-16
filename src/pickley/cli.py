@@ -273,6 +273,15 @@ def auto_upgrade_v1(cfg):
         sys.exit(0)
 
 
+def needs_bootstrap(pspec):
+    if CFG.available_pythons.invoker.major < 3 <= pspec.python.major:
+        return True  # We're installed with py2, but py3 became available (example: OSX upgrade from 10.14 to 10.15)
+
+    manifest = pspec.get_manifest()
+    if not manifest or not manifest.version:
+        return True  # We're running from an old pickley v1 install (no v2 manifest)
+
+
 def bootstrap():
     """Bootstrap pickley (reinstall with venv instead of downloaded pex package)"""
     pspec = PackageSpec(CFG, "%s==%s" % (PICKLEY, __version__), preferred_python="/usr/bin/python3")  # Prefer system py3, for stability
@@ -306,9 +315,7 @@ def bootstrap():
         runez.run(pspec.exe_path(PICKLEY), "auto-upgrade", fatal=None, stdout=None, stderr=None)  # Trigger auto_upgrade_v1()
         sys.exit(0)
 
-    manifest = pspec.get_manifest()
-    if not manifest or not manifest.version:
-        # We're running from an old pickley v1 install: pass1 bootstrap ourselves with v2 and python3
+    if needs_bootstrap(pspec):
         setup_audit_log()
         with SoftLock(pspec.lock_path, give_up=60, invalid=60):
             delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
