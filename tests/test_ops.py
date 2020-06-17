@@ -55,23 +55,21 @@ def test_debian_mode(temp_folder, logged):
     p = dummy_finalizer("root/apps")
     p.resolve_dist()
     assert p.dist == "root/apps/foo"
-    assert p.root == "root"
     assert p.requirements == ["."]
     assert not logged
+
+    # Symlink not created unless source effectively exists
+    p.symlink.apply("root/foo")
+    assert "skipping symlink" in logged.pop()
+    assert not os.path.isdir("root/usr/local/bin")
 
     foo = runez.resolved_path("root/foo")
     runez.touch(foo)
     logged.pop()
 
-    # Symlink not created unless target effectively exists
-    p.symlink.apply(foo, p.root)
-    assert "skipping symlink" in logged.pop()
-    assert not os.path.isdir("root/usr/local/bin")
-
     # Simulate symlink
-    p.symlink.must_exist = False
-    p.symlink.apply(foo, p.root)
-    assert "Symlinked root/usr/local/bin/foo -> /foo" in logged.pop()
+    p.symlink.apply(foo)
+    assert "Symlinked root/usr/local/bin/foo -> root/foo" in logged.pop()
     assert os.path.isdir("root/usr/local/bin")
     assert os.path.islink("root/usr/local/bin/foo")
 
@@ -81,7 +79,6 @@ def test_debian_mode(temp_folder, logged):
 
     assert "debian mode" in logged.pop()
     assert p.dist == "/apps/foo"
-    assert p.root == "root"
 
     with patch("runez.run", return_value=runez.program.RunResult("usage: ...")):
         assert p.validate_sanity_check("foo", "--version") == "does not respond to --version"
@@ -300,10 +297,11 @@ def test_package_pex(cli):
 
 @pytest.mark.skipif(sys.version_info[:2] not in ((2, 7), (3, 7)), reason="Functional test")
 def test_package_venv(cli):
-    expected = "root/apps/pickley/bin/pickley"
-    # Using --no-sanity-check and -s for code coverage
-    cli.run("package", project_folder(), "-droot/apps", "--no-sanity-check", "-sroot:root/usr/local/bin")
+    # Using --no-sanity-check for code coverage
+    runez.delete("/tmp/pickley")
+    cli.run("package", project_folder(), "-droot/tmp", "--no-sanity-check", "-sroot:root/usr/local/bin")
     assert cli.succeeded
-    assert runez.is_executable(expected)
-    r = runez.run(expected, "--version")
+    assert runez.is_executable("/tmp/pickley/bin/pickley")
+    r = runez.run("/tmp/pickley/bin/pickley", "--version")
     assert r.succeeded
+    runez.delete("/tmp/pickley")

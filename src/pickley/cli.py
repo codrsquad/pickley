@@ -563,7 +563,6 @@ class PackageFinalizer(object):
         self.folder = folder
         self.build = runez.resolved_path(build)
         self.dist = dist
-        self.root = None
         self.symlink = Symlinker(symlink) if symlink else None
         self.sanity_check = sanity_check
         self.border = border
@@ -581,13 +580,11 @@ class PackageFinalizer(object):
     def resolve_dist(self):
         """Resolve 'dist' folder, taking into account possible debian mode"""
         if self.dist.startswith("root/"):
-            self.root = "root"
             # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
             target = self.dist[4:]
             if os.path.isdir(target):
                 LOG.debug("debian mode: %s -> %s", self.dist, target)
                 self.dist = target
-                self.root = "root"
 
             parts = self.dist.split("/")
             if len(parts) <= 2:
@@ -644,15 +641,14 @@ class PackageFinalizer(object):
                 for exe in exes:
                     exe_info = self.validate_sanity_check(exe, self.sanity_check)
                     report.add_row(runez.quoted(exe), exe_info)
-                    if self.symlink and exe and self.root:
-                        self.symlink.apply(exe, self.root)
+                    if self.symlink and exe:
+                        self.symlink.apply(exe)
 
                 return report
 
 
 class Symlinker(object):
     def __init__(self, spec):
-        self.must_exist = True  # Used to help in test mode
         self.base, _, self.target = spec.partition(":")
         if not self.base or not self.target:
             abort("Invalid symlink specification '%s'" % spec)
@@ -660,14 +656,13 @@ class Symlinker(object):
         self.base = runez.resolved_path(self.base)
         self.target = runez.resolved_path(self.target)
 
-    def apply(self, exe, root):
-        src = exe[len(self.base):]
+    def apply(self, exe):
         dest = os.path.join(self.target, os.path.basename(exe))
-        if not self.must_exist or os.path.exists(src):
+        if os.path.exists(exe):
             runez.delete(dest)
-            r = runez.symlink(src, dest, must_exist=self.must_exist)
+            r = runez.symlink(exe, dest, must_exist=False)
             if r > 0:
-                inform("Symlinked %s -> %s" % (runez.short(dest), runez.short(src)))
+                inform("Symlinked %s -> %s" % (runez.short(dest), runez.short(exe)))
 
         else:
-            LOG.debug("'%s' does not exist, skipping symlink" % src)
+            LOG.debug("'%s' does not exist, skipping symlink" % exe)
