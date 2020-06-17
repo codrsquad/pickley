@@ -65,10 +65,10 @@ def test_debian_mode(temp_folder, logged):
 
     # Symlink not created unless target effectively exists
     p.symlink.apply(foo, p.root)
-    assert not logged
+    assert "skipping symlink" in logged.pop()
     assert not os.path.isdir("root/usr/local/bin")
 
-    # Simulate target exists
+    # Simulate symlink
     p.symlink.must_exist = False
     p.symlink.apply(foo, p.root)
     assert "Symlinked root/usr/local/bin/foo -> /foo" in logged.pop()

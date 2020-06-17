@@ -663,7 +663,11 @@ class Symlinker(object):
     def apply(self, exe, root):
         src = exe[len(self.base):]
         dest = os.path.join(self.target, os.path.basename(exe))
-        runez.delete(dest)
-        r = runez.symlink(src, dest, must_exist=self.must_exist, fatal=False, logger=None)
-        if r > 0:
-            inform("Symlinked %s -> %s" % (runez.short(dest), runez.short(src)))
+        if not self.must_exist or os.path.exists(src):
+            runez.delete(dest)
+            r = runez.symlink(src, dest, must_exist=self.must_exist)
+            if r > 0:
+                inform("Symlinked %s -> %s" % (runez.short(dest), runez.short(src)))
+
+        else:
+            LOG.debug("'%s' does not exist, skipping symlink" % src)

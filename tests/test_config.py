@@ -34,6 +34,7 @@ cli:  # empty
 
 {base}/.pickley/custom.json:
   delivery: wrap
+  foo: bar
   include:
     - bogus.json
     - /dev/null/non-existent-config-file.json

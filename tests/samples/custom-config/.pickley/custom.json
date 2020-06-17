@@ -1,7 +1,8 @@
 {
-  "delivery": "wrap",
-  "include": ["bogus.json", "/dev/null/non-existent-config-file.json"],
-  "install_timeout": 2,
-  "pyenv": "/dev/null",
-  "version_check_delay": 1
+    "delivery": "wrap",
+    "foo": "bar",
+    "include": ["bogus.json", "/dev/null/non-existent-config-file.json"],
+    "install_timeout": 2,
+    "pyenv": "/dev/null",
+    "version_check_delay": 1
 }
