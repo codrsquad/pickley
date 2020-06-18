@@ -8,8 +8,10 @@ from pickley.env import InvokerPython, PythonFromPath, std_python_name
 
 
 def mocked_invoker(**sysattrs):
-    sysattrs.setdefault("version_info", (3, 8, 2))
+    major = sysattrs.pop("major", 3)
+    sysattrs.setdefault("base_prefix", None)
     sysattrs.setdefault("real_prefix", None)
+    sysattrs.setdefault("version_info", (major, 7, 1))
     with patch("pickley.env.sys") as mocked:
         for k, v in sysattrs.items():
             setattr(mocked, k, v)
@@ -25,19 +27,31 @@ def test_invoker():
         assert p.major == 3
 
     # Linux case without py3
-    with patch("runez.is_executable", side_effect=lambda x: "python3" not in x):
-        p = mocked_invoker(base_prefix="/usr")
+    with patch("runez.is_executable", return_value=True):
+        p = mocked_invoker(major=2, real_prefix="/usr")
+        assert p.executable == "/usr/bin/python2"
+        assert p.major == 2
+
+    # Linux case without py3 or py2 (but only /usr/bin/python)
+    with patch("runez.is_executable", side_effect=lambda x: "python2" not in x):
+        p = mocked_invoker(major=2, real_prefix="/usr")
         assert p.executable == "/usr/bin/python"
-        assert p.major == 3
+        assert p.major == 2
 
     # Use sys.executable when prefix can't be used to determine invoker
     with patch("runez.is_executable", return_value=False):
-        p = mocked_invoker(version_info=(2, 7, 18), real_prefix="/foo", executable="/bar")
-        assert p.executable == "/bar"
+        p = mocked_invoker(major=2, executable="/foo")
+        assert p.executable == "/foo"
         assert p.major == 2
 
+    # Bogus prefix: fall back to sys.executable
+    with patch("runez.is_executable", return_value=False):
+        p = mocked_invoker(real_prefix="/dev/null", executable="/foo")
+        assert p.executable == "/foo"
+        assert p.major == 3
+
     # OSX py2 case
-    p = mocked_invoker(version_info=(2, 7, 16), real_prefix="/System/Library/Frameworks/Python.framework/Versions/2.7")
+    p = mocked_invoker(major=2, real_prefix="/System/Library/Frameworks/Python.framework/Versions/2.7")
     assert p.executable == "/usr/bin/python"
     assert p.major == 2
 

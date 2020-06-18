@@ -2,7 +2,7 @@
 History
 =======
 
-2.0.5 (2020-06-18)
+2.0.6 (2020-06-18)
 ------------------
 
 * Corrected determination of invoker python on Linux

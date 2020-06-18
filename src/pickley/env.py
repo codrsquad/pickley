@@ -116,19 +116,19 @@ class InvokerPython(PythonInstallation):
     def simplified_python_executable(prefix, major):
         """Path to python that created pickley's venv"""
         if prefix:
-            if "Python3.framework" in prefix and "Versions/3" in prefix:
+            if "Python3.framework" in prefix and "Versions/3" in prefix:  # Simplify OSX ridiculous paths
                 return "/usr/bin/python3"
 
             elif "Python.framework" in prefix and "Versions/2" in prefix:
                 return "/usr/bin/python"
 
-        path = os.path.join(prefix, "bin", "python%s" % major)
-        if runez.is_executable(path):
-            return path
+            path = os.path.join(prefix, "bin", "python%s" % major)
+            if runez.is_executable(path):
+                return path
 
-        path = os.path.join(prefix, "bin", "python")
-        if runez.is_executable(path):
-            return path
+            path = os.path.join(prefix, "bin", "python")
+            if runez.is_executable(path):
+                return path
 
         return sys.executable  # Running from pex (NOT a venv)
 
