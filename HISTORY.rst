@@ -2,8 +2,10 @@
 History
 =======
 
-2.0.4 (2020-06-16)
+2.0.5 (2020-06-18)
 ------------------
+
+* Corrected determination of invoker python on Linux
 
 * Corrected bootstrap case when py3 becomes available after initial install
 

@@ -4,7 +4,47 @@ import runez
 from mock import patch
 
 from pickley import PickleyConfig
-from pickley.env import PythonFromPath, std_python_name
+from pickley.env import InvokerPython, PythonFromPath, std_python_name
+
+
+def mocked_invoker(**sysattrs):
+    sysattrs.setdefault("version_info", (3, 8, 2))
+    sysattrs.setdefault("real_prefix", None)
+    with patch("pickley.env.sys") as mocked:
+        for k, v in sysattrs.items():
+            setattr(mocked, k, v)
+
+        return InvokerPython()
+
+
+def test_invoker():
+    # Linux case with py3
+    with patch("runez.is_executable", return_value=True):
+        p = mocked_invoker(base_prefix="/usr")
+        assert p.executable == "/usr/bin/python3"
+        assert p.major == 3
+
+    # Linux case without py3
+    with patch("runez.is_executable", side_effect=lambda x: "python3" not in x):
+        p = mocked_invoker(base_prefix="/usr")
+        assert p.executable == "/usr/bin/python"
+        assert p.major == 3
+
+    # Use sys.executable when prefix can't be used to determine invoker
+    with patch("runez.is_executable", return_value=False):
+        p = mocked_invoker(version_info=(2, 7, 18), real_prefix="/foo", executable="/bar")
+        assert p.executable == "/bar"
+        assert p.major == 2
+
+    # OSX py2 case
+    p = mocked_invoker(version_info=(2, 7, 16), real_prefix="/System/Library/Frameworks/Python.framework/Versions/2.7")
+    assert p.executable == "/usr/bin/python"
+    assert p.major == 2
+
+    # OSX py3 case
+    p = mocked_invoker(base_prefix="/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.7")
+    assert p.executable == "/usr/bin/python3"
+    assert p.major == 3
 
 
 def test_standardizing():
@@ -46,6 +86,12 @@ def test_searching(temp_folder):
     cfg.configs[0].values["pyenv"] = "pyenv-folder"
 
     # Simulate a few dummy python installations
+    mk_python("pythonrc", "Python 2.7.18rc1")
+    p = PythonFromPath("pythonrc")
+    assert p.major == 2
+    assert p.minor == 7
+    assert p.patch == 18
+
     mk_python("p1/python", "2.5.0")
     mk_python("p2/python3", "2.9.1")  # picking an unlikely version, for testing
     mk_python("pyenv-folder/versions/2.9.2/bin/python", "2.9.2")

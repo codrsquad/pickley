@@ -98,35 +98,39 @@ class InvokerPython(PythonInstallation):
     """Python currently running pickley"""
 
     def __init__(self):
-        self.executable = self.invoker_python_executable()
         v = sys.version_info
         self.major = v[0]
         self.minor = v[1]
         self.patch = v[2]
+        prefix = getattr(sys, "real_prefix", None)
+        if not prefix:
+            prefix = getattr(sys, "base_prefix", sys.prefix)
+
+        self.executable = self.simplified_python_executable(prefix, self.major)
 
     @property
     def is_invoker(self):
         return True
 
     @staticmethod
-    def invoker_python_executable():
+    def simplified_python_executable(prefix, major):
         """Path to python that created pickley's venv"""
-        prefix = getattr(sys, "real_prefix", None)
-        if not prefix:
-            prefix = getattr(sys, "base_prefix", sys.prefix)
-
         if prefix:
-            if "Python3.framework" in prefix and "Versions/3" in prefix:  # pragma: no cover, simplify OSX ridiculous paths
+            if "Python3.framework" in prefix and "Versions/3" in prefix:
                 return "/usr/bin/python3"
 
-            elif "Python.framework" in prefix and "Versions/2" in prefix:  # pragma: no cover
+            elif "Python.framework" in prefix and "Versions/2" in prefix:
                 return "/usr/bin/python"
 
-            path = os.path.join(prefix, "bin", "python")
-            if runez.is_executable(path):
-                return path
+        path = os.path.join(prefix, "bin", "python%s" % major)
+        if runez.is_executable(path):
+            return path
 
-        return sys.executable  # pragma: no cover, when running from pex (NOT a venv)
+        path = os.path.join(prefix, "bin", "python")
+        if runez.is_executable(path):
+            return path
+
+        return sys.executable  # Running from pex (NOT a venv)
 
 
 class PythonFromPath(PythonInstallation):
