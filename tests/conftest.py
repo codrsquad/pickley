@@ -4,6 +4,7 @@ import pytest
 import runez
 from runez.conftest import cli, logged, temp_folder
 
+from pickley import PickleyConfig
 from pickley.cli import main
 
 
@@ -44,6 +45,8 @@ cli.context = TemporaryBase
 
 
 @pytest.fixture
-def temp_base():
+def temp_cfg():
     with TemporaryBase() as base:
-        yield base
+        cfg = PickleyConfig()
+        cfg.set_base(base)
+        yield cfg

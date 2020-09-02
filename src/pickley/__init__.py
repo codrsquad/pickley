@@ -281,8 +281,9 @@ class PackageSpec(object):
             candidates.append(TrackedVersion(source="current", version=__version__))
 
         for candidate in candidates:
-            if candidate.version and candidate.version > desired.version:
-                desired = candidate
+            if candidate and candidate.version:
+                if not desired or not desired.version or PepVersion(candidate.version) > PepVersion(desired.version):
+                    desired = candidate
 
         return desired
 
@@ -844,6 +845,3 @@ class RawConfig(object):
 
         result.append("")
         return "\n".join(result)
-
-
-CFG = PickleyConfig()

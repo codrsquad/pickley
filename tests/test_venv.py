@@ -5,7 +5,8 @@ import pytest
 import runez
 from mock import patch
 
-from pickley import CFG, PackageSpec
+from pickley import PackageSpec
+from pickley.cli import CFG
 from pickley.package import PythonVenv
 
 

@@ -120,13 +120,15 @@ class PypiInfo(object):
         for line in lines:
             m = RE_BASENAME.search(line)
             if m:
-                version = PepVersion(self.version_part(m.group(1)))
-                if version.components:
-                    if version.prerelease:
-                        prereleases.add(version)
+                text = self.version_part(m.group(1))
+                if text:
+                    version = PepVersion(text)
+                    if version.components:
+                        if version.prerelease:
+                            prereleases.add(version)
 
-                    else:
-                        releases.add(version)
+                        else:
+                            releases.add(version)
 
         if include_prereleases or not releases:
             releases = releases | prereleases

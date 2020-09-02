@@ -11,7 +11,7 @@ import click
 import runez
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, CFG, DOT_META, inform, PackageSpec, specced, TrackedSettings, validate_pypi_name
+from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, specced, TrackedSettings, validate_pypi_name
 from pickley.delivery import DeliveryMethod, PICKLEY
 from pickley.package import PexPackager, PythonVenv, VenvPackager
 from pickley.v1upgrade import V1Status
@@ -19,6 +19,7 @@ from pickley.v1upgrade import V1Status
 
 LOG = logging.getLogger(__name__)
 PACKAGER = VenvPackager  # Packager to use for this run
+CFG = PickleyConfig()
 
 
 def protected_main():

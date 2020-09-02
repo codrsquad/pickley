@@ -1,6 +1,7 @@
+import runez
 from mock import patch
 
-from pickley import CFG, PackageSpec
+from pickley import PackageSpec, TrackedManifest
 from pickley.pypi import PepVersion, PypiInfo
 
 
@@ -11,10 +12,10 @@ LEGACY_SAMPLE = """
 <a href="/pypi/shell-functools/shell_functools-1.8.1!1-py2.py3-none-any.whl9#">shell_functools-1.8.1-py2.py3-none-any.whl</a><br/>
 <a href="/pypi/shell-functools/shell-functools-1.8.1!1.tar.gz#">shell-functools-1.8.1.tar.gz</a><br/>
 
-<a href="/pypi/shell-functools/shell_functools-1.9.0+local-py2.py3-none-any.whl#sha...">shell_functools-1.9.0-py2.py3-none-any.whl</a><br/>
-<a href="/pypi/shell-functools/shell-functools-1.9.0+local.tar.gz#sha256=ff...">shell-functools-1.9.0.tar.gz</a><br/>
-<a href="/pypi/shell-functools/shell_functools-1.9.1-py2.py3-none-any.whl#sha256=d3...">shell_functools-1.9.1-py2.py3-none-any.whl</a><br/>
-<a href="/pypi/shell-functools/shell-functools-1.9.1.tar.gz#sha256=ca...">shell-functools-1.9.1.tar.gz</a><br/>
+<a href="/pypi/shell-functools/shell_functools-1.9.9+local-py2.py3-none-any.whl#sha...">shell_functools-1.9.9-py2.py3-none-any.whl</a><br/>
+<a href="/pypi/shell-functools/shell-functools-1.9.9+local.tar.gz#sha256=ff...">shell-functools-1.9.9.tar.gz</a><br/>
+<a href="/pypi/shell-functools/shell_functools-1.9.11-py2.py3-none-any.whl#sha256=...">shell_functools-1.9.11-py2.py3-none-any.whl</a><br/>
+<a href="/pypi/shell-functools/shell-functools-1.9.11.tar.gz#sha256=ca...">shell-functools-1.9.11.tar.gz</a><br/>
 </body></html>
 """
 
@@ -32,39 +33,44 @@ FUNKY_SAMPLE = """
 """
 
 
-def check_version(data, name, expected_version, index="https://mycompany.net/pypi/"):
+def check_version(cfg, data, name, expected_version, index="https://mycompany.net/pypi/"):
     with patch("pickley.pypi.request_get", return_value=data):
-        pspec = PackageSpec(CFG, name)
+        pspec = PackageSpec(cfg, name)
         i = PypiInfo(index, pspec)
         assert str(i) == "%s %s" % (name, expected_version)
+        d = pspec.get_desired_version_info()
+        assert d.version == expected_version
 
 
-def test_pypi(logged):
-    check_version(LEGACY_SAMPLE, "shell-functools", "1.9.1")
-    check_version(LEGACY_SAMPLE, "shell-functools", "1.9.1", index="https://mycompany.net/pypi/{name}")
-    check_version(PRERELEASE_SAMPLE, "black", "18.3a1")
-    assert not logged
+def test_pypi(temp_cfg):
+    with patch("pickley.PackageSpec.get_manifest", return_value=TrackedManifest(None, None, None, version="1.9.9")):
+        check_version(temp_cfg, LEGACY_SAMPLE, "shell-functools", "1.9.11")
+
+    check_version(temp_cfg, LEGACY_SAMPLE, "shell-functools", "1.9.11", index="https://mycompany.net/pypi/{name}")
+    check_version(temp_cfg, PRERELEASE_SAMPLE, "black", "18.3a1")
 
     with patch("pickley.pypi.request_get", return_value='{"info": {"version": "1.0"}}'):
-        assert str(PypiInfo(None, PackageSpec(CFG, "foo"))) == "foo 1.0"
+        assert str(PypiInfo(None, PackageSpec(temp_cfg, "foo"))) == "foo 1.0"
 
     with patch("pickley.pypi.request_get", return_value=FUNKY_SAMPLE):
-        i = PypiInfo(None, PackageSpec(CFG, "some.proj"))
-        assert str(i) == "some-proj 1.3.0"
-        assert "not pypi canonical" in logged.pop()
+        with runez.CaptureOutput() as logged:
+            i = PypiInfo(None, PackageSpec(temp_cfg, "some.proj"))
+            assert str(i) == "some-proj 1.3.0"
+            assert "not pypi canonical" in logged
 
     with patch("requests.sessions.Session.get", side_effect=IOError):
-        i = PypiInfo(None, PackageSpec(CFG, "foo"))
+        i = PypiInfo(None, PackageSpec(temp_cfg, "foo"))
         assert "no data for" in i.problem
 
     with patch("pickley.pypi.request_get", return_value="empty"):
-        i = PypiInfo(None, PackageSpec(CFG, "foo"))
+        i = PypiInfo(None, PackageSpec(temp_cfg, "foo"))
         assert "no versions published" in i.problem
 
     with patch("pickley.pypi.request_get", return_value="{foo"):
-        i = PypiInfo(None, PackageSpec(CFG, "foo"))
-        assert "invalid json" in i.problem
-        assert "Failed to parse pypi json" in logged.pop()
+        with runez.CaptureOutput() as logged:
+            i = PypiInfo(None, PackageSpec(temp_cfg, "foo"))
+            assert "invalid json" in i.problem
+            assert "Failed to parse pypi json" in logged
 
 
 def test_version():
