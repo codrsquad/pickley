@@ -245,7 +245,7 @@ def check_install(cli, delivery, package, simulate_version=None):
         cli.expect_success("check", "v%s installed, can be upgraded to" % simulate_version)
 
 
-@pytest.mark.skipif(sys.version_info[:2] not in ((2, 7), (3, 7)), reason="Functional test")
+@pytest.mark.skipif(sys.version_info[:2] not in ((2, 7), (3, 8)), reason="Functional test")
 def test_installation(cli):
     cli.expect_failure("install six", "it is not a CLI")
     assert not os.path.exists(".pickley/six")
@@ -284,7 +284,7 @@ def test_installation(cli):
         assert WRAPPER_MARK in contents
 
 
-@pytest.mark.skipif(sys.version_info[:2] != (3, 7), reason="Long test, testing with most common python version only")
+@pytest.mark.skipif(sys.version_info[:2] != (3, 8), reason="Long test, testing with most common python version only")
 def test_package_pex(cli):
     expected = "dist/pickley"
     cli.run("-ppex", "package", project_folder())
@@ -295,7 +295,7 @@ def test_package_pex(cli):
     assert r.succeeded
 
 
-@pytest.mark.skipif(sys.version_info[:2] not in ((2, 7), (3, 7)), reason="Functional test")
+@pytest.mark.skipif(sys.version_info[:2] not in ((2, 7), (3, 8)), reason="Functional test")
 def test_package_venv(cli):
     # Using --no-sanity-check for code coverage
     runez.delete("/tmp/pickley")

@@ -64,12 +64,11 @@ class PythonInstallation(object):
 
     @property
     def needs_virtualenv(self):
-        if self.major == 2:
+        if self.major < 3:
             return True
 
-        if self.major == 3 and self.minor == 7:
-            if self.patch < 2:  # 3.7.1 possibly has a non-functional -mvenv (travis has that old version and fails)
-                return True
+        # 3.7.1 possibly has a non-functional -mvenv (travis has that old version and fails)
+        return self.major == 3 and self.minor <= 7 and self.patch < 2
 
     def satisfies(self, desired):
         """

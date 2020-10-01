@@ -1,6 +1,6 @@
 # pinned
 click==7.1.2
-requests==2.23.0
-runez==2.0.17
+requests==2.24.0
+runez==2.0.19
 setuptools==44.1.0  # Needed for version determination via pkg_resources, latest py2 compatible
 virtualenv==16.7.10

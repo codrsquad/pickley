@@ -2,6 +2,24 @@
 History
 =======
 
+2.0.8 (2020-10-02)
+------------------
+
+* Show why sanity check failed in ``package`` command
+
+* Call ``-mensurepip`` if pip is not available
+
+* Use ``--copies`` when creating venv
+
+* Publish with 3.8
+
+
+2.0.7 (2020-09-02)
+------------------
+
+* Properly compare versions when auto-determining desired version
+
+
 2.0.6 (2020-06-18)
 ------------------
 
