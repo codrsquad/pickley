@@ -36,7 +36,7 @@ PICKLEY_WRAPPER = """
 %s
 
 if [[ -x {source} ]]; then
-    if [[ "$*" != *"auto-upgrade"* ]]; then
+    if [[ "$*" != *"auto-"* ]]; then
         {hook}nohup {source} auto-upgrade {name}{bg}
     fi
     {hook}exec {source} "$@"
@@ -156,12 +156,21 @@ class DeliveryMethodWrap(DeliveryMethod):
     bg = " &> /dev/null &"
 
     def _install(self, pspec, target, source):
-        wrapper = PICKLEY_WRAPPER if pspec.dashed == PICKLEY else GENERIC_WRAPPER
+        pickley = pspec.cfg.base.full_path(PICKLEY)
+        if pspec.dashed == PICKLEY:
+            wrapper = PICKLEY_WRAPPER
+
+        else:
+            wrapper = GENERIC_WRAPPER
+            if not os.path.exists(pickley):
+                # We're running from development venv
+                pickley = pspec.cfg.pickley_program_path
+
         contents = wrapper.lstrip().format(
             hook=self.hook,
             bg=self.bg,
             name=runez.quoted(pspec.dashed, adapter=None),
-            pickley=runez.quoted(pspec.cfg.base.full_path(PICKLEY), adapter=None),
+            pickley=runez.quoted(pickley, adapter=None),
             source=runez.quoted(source, adapter=None),
         )
         runez.write(target, contents, logger=False)

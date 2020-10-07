@@ -31,6 +31,7 @@ MGIT_PIP_METADATA = """
 def test_shebang(temp_folder, logged):
     # Exercise shebang
     venv = PythonVenv("", CFG.find_python(), None)
+    assert str(venv) == ""
     runez.touch("dummy.whl")
     shebang = venv.get_shebang(".")
     assert shebang.endswith("python%s" % sys.version_info[0])
@@ -65,13 +66,13 @@ def test_pip_fail(logged):
         with pytest.raises(SystemExit):
             venv.pip_install("foo")
 
-        assert "pip install failed, output:" in logged.stderr.pop()
         assert "some\nerror" == logged.stdout.pop()
 
-    r = runez.program.RunResult("", "foo\nNo matching distribution for ...", code=1)
+    r = runez.program.RunResult("", "foo\nNo matching distribution for ...\nYou should consider upgrading pip", code=1)
     with patch("pickley.package.PythonVenv._run_pip", return_value=r):
         with pytest.raises(SystemExit):
             venv.pip_install("foo")
 
         assert not logged.stderr
-        assert logged.stdout.pop() == "No matching distribution for ..."
+        assert "No matching distribution for ..." in logged
+        assert "You should consider" not in logged

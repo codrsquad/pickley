@@ -2,14 +2,14 @@
 History
 =======
 
-2.0.8 (2020-10-02)
+2.0.8 (2020-10-07)
 ------------------
+
+* Prevent OSX framework python to pollute created venvs
 
 * Show why sanity check failed in ``package`` command
 
 * Call ``-mensurepip`` if pip is not available
-
-* Use ``--copies`` when creating venv
 
 * Publish with 3.8
 

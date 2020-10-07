@@ -190,7 +190,7 @@ def _find_base_from_program_path(path):
         if basename == DOT_META:
             return dirpath  # We're running from an installed pickley
 
-        if basename == ".venv":
+        if basename in (".venv", ".tox"):
             return os.path.join(path, "root")  # Convenience for development
 
     return _find_base_from_program_path(dirpath)
@@ -204,7 +204,7 @@ def find_base():
 
         return runez.resolved_path(base)
 
-    program_path = runez.resolved_path(sys.argv[0])
+    program_path = PickleyConfig.pickley_program_path
     return _find_base_from_program_path(program_path) or os.path.dirname(program_path)
 
 
@@ -223,6 +223,9 @@ def main(ctx, debug, config, index, python, delivery, packager):
     """Package manager for python CLIs"""
     global PACKAGER
     PACKAGER = PexPackager if packager == "pex" else VenvPackager
+    if "__PYVENV_LAUNCHER__" in os.environ:  # pragma: no cover
+        # See https://github.com/python/cpython/pull/9516
+        del os.environ["__PYVENV_LAUNCHER__"]
 
     if runez.PY2:
         import codecs

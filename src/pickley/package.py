@@ -4,7 +4,7 @@ import re
 
 import runez
 
-from pickley import abort
+from pickley import abort, PICKLEY
 from pickley.delivery import DeliveryMethod
 
 
@@ -29,6 +29,7 @@ def first_line(path):
 
 
 class PythonVenv(object):
+
     def __init__(self, folder, python, index):
         """
         Args:
@@ -63,6 +64,18 @@ class PythonVenv(object):
 
             else:
                 python.run("-mvenv", folder)
+                self.ensure_pip("pip", "pip3")
+
+    def __repr__(self):
+        return runez.short(self.folder)
+
+    def ensure_pip(self, *expected):
+        for p in expected:
+            pip = self.bin_path(p)
+            if os.path.exists(pip):
+                return
+
+        self.run_python("-mensurepip")
 
     def bin_path(self, name):
         """
@@ -84,6 +97,9 @@ class PythonVenv(object):
         """
         if runez.DRYRUN:
             return {pspec.dashed: "dryrun"}  # Pretend an entry point exists in dryrun mode
+
+        if pspec.dashed == PICKLEY:
+            return {PICKLEY: pspec.cfg.pickley_program_path}
 
         r = self.run_python("-mpip", "show", "-f", pspec.dashed, fatal=False, logger=False)
         if r.succeeded:
@@ -140,12 +156,8 @@ class PythonVenv(object):
         """Allows to not forget to state the -i index..."""
         r = self._run_pip("install", "-i", self.index, *args, fatal=False)
         if r.failed:
-            if "No matching distribution" in r.error:
-                lines = r.error.splitlines()
-                abort(lines[-1])
-
-            LOG.debug("pip install failed, output:\n%s" % r.output)
-            abort(r.error)
+            message = "\n".join(simplified_pip_error(r.error, r.output))
+            abort(message)
 
         return r
 
@@ -159,6 +171,14 @@ class PythonVenv(object):
 
     def _run_pip(self, *args, **kwargs):
         return self.run_python("-mpip", "-v", *args, **kwargs)
+
+
+def simplified_pip_error(error, output):
+    lines = error or output or "pip failed without output"
+    lines = lines.splitlines()
+    for line in lines:
+        if line and "You are using pip" not in line and "You should consider upgrading" not in line:
+            yield line
 
 
 class Packager:
@@ -225,7 +245,12 @@ class VenvPackager(Packager):
         delivery.ping = ping
         target = pspec.install_path
         venv = PythonVenv(target, pspec.python, pspec.index)
-        venv.pip_install(pspec.specced)
+        args = [pspec.specced]
+        if pspec.dashed == PICKLEY and runez.log.dev_folder():
+            project_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            args = ["-e", project_path]
+
+        venv.pip_install(*args)
         entry_points = venv.find_entry_points(pspec)
         if not entry_points:
             runez.delete(pspec.meta_path)

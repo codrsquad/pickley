@@ -324,6 +324,7 @@ class PickleyConfig(object):
     cache = None  # type: FolderBase # DOT_META/.cache subfolder
     cli = None  # type: TrackedSettings # Tracks any custom command line cfg flags given, such as --index, --python or --delivery
     configs = None  # type: list
+    pickley_program_path = runez.resolved_path(sys.argv[0])  # type: str
 
     def __init__(self):
         self.configs = []

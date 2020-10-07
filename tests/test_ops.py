@@ -15,22 +15,23 @@ from pickley.package import Packager
 
 
 def test_base(temp_folder):
-    expected_base = runez.resolved_path("temp-base")
     with patch.dict(os.environ, {"PICKLEY_ROOT": "temp-base"}, clear=True):
         with pytest.raises(SystemExit):  # Env var points to a non-existing folder
             find_base()
 
         runez.ensure_folder("temp-base")
-        assert find_base() == expected_base
+        assert find_base() == runez.resolved_path("temp-base")
 
-    with runez.TempArgv([], exe="temp-base/pickley"):
-        assert find_base() == expected_base
+    original = PickleyConfig.pickley_program_path
+    assert find_base() == os.path.join(runez.log.dev_folder(), "root")
 
-    with runez.TempArgv([], exe="temp-base/.pickley/pickley"):
-        assert find_base() == expected_base
+    PickleyConfig.pickley_program_path = "foo/.pickley/pickley-0.0.0/bin/pickley"
+    assert find_base() == "foo"
 
-    with runez.TempArgv([], exe=".venv/bin/pickley"):
-        assert find_base() == runez.resolved_path(".venv/root")
+    PickleyConfig.pickley_program_path = "foo/bar"
+    assert find_base() == "foo"
+
+    PickleyConfig.pickley_program_path = original
 
 
 def test_bootstrap(temp_folder):
