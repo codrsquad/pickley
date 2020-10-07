@@ -169,6 +169,9 @@ class PackageSpec(object):
 
     @property
     def install_path(self):
+        if self.dashed == PICKLEY and runez.log.dev_folder():
+            return self.cfg.meta.full_path(PICKLEY, "%s-dev" % PICKLEY)
+
         if self.version:
             return self.cfg.meta.full_path(self.dashed, "%s-%s" % (self.dashed, self.version))
 
@@ -222,7 +225,7 @@ class PackageSpec(object):
 
                 fpath = os.path.join(meta_path, fname)
                 version = PepVersion(fname[len(self.dashed) + 1:])
-                if version.text == current.version:
+                if version.text == current.version or version.text == "dev":
                     continue
 
                 if not version.components:

@@ -64,15 +64,14 @@ class PythonVenv(object):
 
             else:
                 python.run("-mvenv", folder)
-                self.ensure_pip("pip", "pip3")
+                self.ensure_pip()
 
     def __repr__(self):
         return runez.short(self.folder)
 
-    def ensure_pip(self, *expected):
-        for p in expected:
-            pip = self.bin_path(p)
-            if os.path.exists(pip):
+    def ensure_pip(self):
+        for name in ("pip", "pip3"):
+            if os.path.exists(self.bin_path(name)):
                 return
 
         self.run_python("-mensurepip")
@@ -244,12 +243,12 @@ class VenvPackager(Packager):
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
         delivery.ping = ping
         target = pspec.install_path
-        venv = PythonVenv(target, pspec.python, pspec.index)
         args = [pspec.specced]
         if pspec.dashed == PICKLEY and runez.log.dev_folder():
             project_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
             args = ["-e", project_path]
 
+        venv = PythonVenv(target, pspec.python, pspec.index)
         venv.pip_install(*args)
         entry_points = venv.find_entry_points(pspec)
         if not entry_points:
