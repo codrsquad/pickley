@@ -5,7 +5,7 @@ History
 2.0.8 (2020-10-07)
 ------------------
 
-* Prevent OSX framework python to pollute created venvs
+* Prevent OSX framework python from polluting created venvs
 
 * Show why sanity check failed in ``package`` command
 

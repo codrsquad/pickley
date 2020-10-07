@@ -224,17 +224,16 @@ class PackageSpec(object):
                     continue
 
                 fpath = os.path.join(meta_path, fname)
-                version = PepVersion(fname[len(self.dashed) + 1:])
-                if version.text == current.version or version.text == "dev":
-                    continue
+                vpart = fname[len(self.dashed) + 1:]
+                if vpart != "dev" and vpart != current.version:
+                    version = PepVersion(vpart)
+                    if not version.components:
+                        # Not a proper installation
+                        runez.delete(fpath, fatal=False)
+                        continue
 
-                if not version.components:
-                    # Not a proper installation
-                    runez.delete(fpath, fatal=False)
-                    continue
-
-                # Different version, previously installed
-                candidates.append((now - os.path.getmtime(fpath), version, fpath))
+                    # Different version, previously installed
+                    candidates.append((now - os.path.getmtime(fpath), version, fpath))
 
             if not candidates:
                 return

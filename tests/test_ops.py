@@ -88,7 +88,7 @@ def test_debian_mode(temp_folder, logged):
         with pytest.raises(SystemExit):
             p.validate_sanity_check("foo", "--version")
 
-        assert "'foo' failed sanity check" in logged.pop()
+        assert "'foo' failed --version sanity check" in logged.pop()
 
 
 def test_dryrun(cli):

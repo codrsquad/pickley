@@ -622,10 +622,10 @@ class PackageFinalizer(object):
         r = runez.run(exe, sanity_check, fatal=False, logger=None)
         exe_info = r.output or r.error
         if r.failed:
-            if exe_info and "usage:" in exe_info.lower():
+            if does_not_implement_cli_flag(r.output, r.error):
                 return "does not respond to %s" % sanity_check
 
-            abort("'%s' failed sanity check" % exe)
+            abort("'%s' failed %s sanity check: %s" % (exe, sanity_check, r.full_output))
 
         return runez.first_line(exe_info)
 
@@ -649,6 +649,15 @@ class PackageFinalizer(object):
                         self.symlink.apply(exe)
 
                 return report
+
+
+def does_not_implement_cli_flag(*messages):
+    """Detect case where packaged CLI does not respond to --version"""
+    for msg in messages:
+        if msg:
+            msg = msg.lower()
+            if "usage:" in msg or "unrecognized" in msg:
+                return True
 
 
 class Symlinker(object):
