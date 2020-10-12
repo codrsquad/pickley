@@ -11,7 +11,7 @@ import click
 import runez
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, specced, TrackedSettings, validate_pypi_name
+from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, specced, validate_pypi_name
 from pickley.delivery import DeliveryMethod, PICKLEY
 from pickley.package import PexPackager, PythonVenv, VenvPackager
 from pickley.v1upgrade import V1Status
@@ -234,10 +234,10 @@ def main(ctx, debug, config, index, python, delivery, packager):
         sys.stdout = UTF8Writer(sys.stdout)
 
     runez.system.AbortException = SystemExit
+    CFG.set_cli(config, delivery, index, python)
+
     if ctx.invoked_subcommand != "package":
-        cli = TrackedSettings(delivery, index, python)
-        base = find_base()
-        CFG.set_base(base, config_path=config, cli=cli)
+        CFG.set_base(find_base())
 
     runez.log.setup(
         debug=debug,

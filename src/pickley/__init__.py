@@ -330,6 +330,7 @@ class PickleyConfig(object):
 
     def __init__(self):
         self.configs = []
+        self.config_path = None
         self.available_pythons = AvailablePythons(self._pyenv_scanner)
         self.pip_conf, self.pip_conf_index = get_default_index("~/.config/pip/pip.conf", "/etc/pip.conf")
         self.default_index = self.pip_conf_index or DEFAULT_PYPI
@@ -338,26 +339,35 @@ class PickleyConfig(object):
     def __repr__(self):
         return "<not-configured>" if self.base is None else runez.short(self.base)
 
-    def set_base(self, base_path, config_path=None, cli=None):
+    def set_base(self, base_path):
         """
         Args:
             base_path (str): Path to pickley base installation
-            config_path (str | None): Optional configuration to use
-            cli (TrackedSettings | None): Optional configuration settings passed via CLI flags
         """
+        self.configs = []
         self.base = FolderBase("base", base_path)
         self.meta = FolderBase("meta", os.path.join(self.base.path, DOT_META))
         self.cache = FolderBase("cache", os.path.join(self.meta.path, ".cache"))
-        self.cli = cli
-        self.configs = []
-        if cli:
-            cli = runez.serialize.json_sanitized(cli.to_dict(), keep_none=False)
+
+        if self.cli:
+            cli = runez.serialize.json_sanitized(self.cli.to_dict(), keep_none=False)
             self.configs.append(RawConfig(self, "cli", cli))
 
-        self._add_config_file(config_path)
+        self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
         defaults = dict(delivery="wrap", install_timeout=30, version_check_delay=5)
         self.configs.append(RawConfig(self, "defaults", defaults))
+
+    def set_cli(self, config_path, delivery, index, python):
+        """
+        Args:
+            config_path (str | None): Optional configuration to use
+            delivery (str | None): Optional delivery method to use
+            index (str | None): Optional pypi index to use
+            python (str | None): Optional python interpreter to use
+        """
+        self.config_path = config_path
+        self.cli = TrackedSettings(delivery, index, python)
 
     def _add_config_file(self, path, base=None):
         path = runez.resolved_path(path, base=base)

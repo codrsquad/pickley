@@ -6,7 +6,7 @@ from mock import MagicMock, patch
 from runez.conftest import resource_path
 
 from pickley import __version__, despecced, get_default_index, inform, PackageSpec
-from pickley import PickleyConfig, pypi_name_problem, specced, TrackedSettings
+from pickley import PickleyConfig, pypi_name_problem, specced
 from pickley.cli import auto_upgrade_v1
 from pickley.v1upgrade import V1Status
 
@@ -54,7 +54,8 @@ def test_config():
     assert str(cfg) == "<not-configured>"
 
     sample = resource_path("samples/custom-config")
-    cfg.set_base(sample, cli=TrackedSettings(None, None, None))
+    cfg.set_cli("config.json", None, None, None)
+    cfg.set_base(sample)
     assert str(cfg) == runez.short(sample)
     assert str(cfg.configs[0]) == "cli (0 values)"
     assert cfg.base.path == sample
@@ -88,7 +89,7 @@ def test_desired_version(temp_folder, logged):
     cfg = PickleyConfig()
     sample = resource_path("samples/custom-config")
     runez.copy(sample, "temp-base")
-    cfg.set_base("temp-base", cli=TrackedSettings(None, None, None))
+    cfg.set_base("temp-base")
 
     mgit = PackageSpec(cfg, "mgit", preferred_python="/dev/null")
     assert mgit.python is cfg.available_pythons.invoker
