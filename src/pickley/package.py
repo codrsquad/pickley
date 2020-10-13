@@ -158,6 +158,9 @@ class PythonVenv(object):
             message = "\n".join(simplified_pip_error(r.error, r.output))
             abort(message)
 
+        if "--compile" in args:
+            self.run_python("-mcompileall")
+
         return r
 
     def pip_wheel(self, *args):
@@ -192,7 +195,7 @@ class Packager:
         raise NotImplementedError("Installation with packager '{packager}' is not supported")
 
     @staticmethod
-    def package(pspec, build_folder, dist_folder, requirements):
+    def package(pspec, build_folder, dist_folder, requirements, compile=True):
         """Package current folder
 
         Args:
@@ -200,6 +203,7 @@ class Packager:
             build_folder (str): Folder to use as build cache
             dist_folder (str): Folder where to produce package
             requirements (list): Additional requirements (same convention as pip, can be package names or package specs)
+            compile (bool): Byte-compile packaged venv
 
         Returns:
             (list | None): List of packaged executables
@@ -211,7 +215,7 @@ class PexPackager(Packager):
     """Package via pex (https://pypi.org/project/pex/)"""
 
     @staticmethod
-    def package(pspec, build_folder, dist_folder, requirements):
+    def package(pspec, build_folder, dist_folder, requirements, compile=True):
         runez.delete("~/.pex", fatal=False, logger=False)
         wheels = os.path.join(build_folder, "wheels")
         runez.ensure_folder(build_folder, clean=True)
@@ -258,10 +262,14 @@ class VenvPackager(Packager):
         return delivery.install(pspec, venv, entry_points)
 
     @staticmethod
-    def package(pspec, build_folder, dist_folder, requirements):
+    def package(pspec, build_folder, dist_folder, requirements, compile=True):
         runez.ensure_folder(dist_folder, clean=True)
         venv = PythonVenv(dist_folder, pspec.python, pspec.index)
-        venv.pip_install(*requirements)
+        venv.pip_install("--compile" if compile else "--no-compile", *requirements)
+        if not compile:
+            # Remove share/python-wheels/ folder, not sure where it's coming from
+            runez.delete(os.path.join(venv.folder, "share"))
+
         entry_points = venv.find_entry_points(pspec)
         if entry_points:
             result = []

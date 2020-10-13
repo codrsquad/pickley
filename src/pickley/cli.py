@@ -4,6 +4,7 @@ See https://github.com/zsimic/pickley
 
 import logging
 import os
+import platform
 import sys
 import time
 
@@ -226,6 +227,10 @@ def main(ctx, debug, config, index, python, delivery, packager):
     if "__PYVENV_LAUNCHER__" in os.environ:  # pragma: no cover
         # See https://github.com/python/cpython/pull/9516
         del os.environ["__PYVENV_LAUNCHER__"]
+
+    if platform.system().lower() == "darwin" and "ARCHFLAGS" not in os.environ:
+        # Avoid issue on some OSX installations where ARM support seems to have been enabled too early
+        os.environ["ARCHFLAGS"] = "-arch x86_64"
 
     if runez.PY2:
         import codecs
@@ -518,11 +523,12 @@ def uninstall(all, packages):
 @click.option("--build", "-b", default="./build", show_default=True, help="Folder to use as build cache")
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
 @click.option("--symlink", "-s", help="Create symlinks for debian-style packaging, example: root:root/usr/local/bin")
+@click.option("--no-compile", is_flag=True, help="Don't byte-compile packaged venv")
 @click.option("--no-sanity-check", is_flag=True, help="Disable sanity check")
 @click.option("--sanity-check", default="--version", show_default=True, help="Args to invoke produced package for sanity check")
 @click.option("--requirement", "-r", multiple=True, help="Install from the given requirements file (can be used multiple times)")
 @click.argument("folder", required=True)
-def package(build, dist, symlink, no_sanity_check, sanity_check, folder, requirement):
+def package(build, dist, symlink, no_compile, no_sanity_check, sanity_check, folder, requirement):
     """Package a project from source checkout"""
     folder = runez.resolved_path(folder)
     if not os.path.isdir(folder):
@@ -531,7 +537,7 @@ def package(build, dist, symlink, no_sanity_check, sanity_check, folder, require
     if no_sanity_check:
         sanity_check = None
 
-    finalizer = PackageFinalizer(folder, build, dist, symlink, sanity_check, requirement)
+    finalizer = PackageFinalizer(folder, build, dist, symlink, sanity_check, requirement, compile=not no_compile)
     problem = finalizer.resolve()
     if problem:
         abort(problem)
@@ -553,7 +559,7 @@ class PackageFinalizer(object):
     package_name = None  # type: str # Name from associated setup.py (after call to resolve())
     package_version = None  # type: str # Version from associated setup.py (after call to resolve())
 
-    def __init__(self, folder, build, dist, symlink, sanity_check, requirement, border="reddit"):
+    def __init__(self, folder, build, dist, symlink, sanity_check, requirement, compile=True, border="reddit"):
         """
         Args:
             folder (str): Folder where project to be packaged resides (must have a setup.py)
@@ -562,6 +568,7 @@ class PackageFinalizer(object):
             symlink (str | None): Synlink specification, of the form 'root:root/...'
             sanity_check (str | None): CLI to use as sanity check for packaged exes (default: --version)
             requirement (list | None): Optional list of requirements files
+            compile (bool): Don't byte-compile pacakged venv
             border (str): Border to use for PrettyTable overview
         """
         self.folder = folder
@@ -569,6 +576,7 @@ class PackageFinalizer(object):
         self.dist = dist
         self.symlink = Symlinker(symlink) if symlink else None
         self.sanity_check = sanity_check
+        self.compile = compile
         self.border = border
         default_req = runez.resolved_path("requirements.txt", base=folder)
         if not requirement and os.path.exists(default_req):
@@ -635,7 +643,7 @@ class PackageFinalizer(object):
             runez.ensure_folder(self.build, clean=True)
             CFG.set_base(self.build)
             pspec = PackageSpec(CFG, specced(self.package_name, self.package_version))
-            exes = PACKAGER.package(pspec, self.build, runez.resolved_path(self.dist), self.requirements)
+            exes = PACKAGER.package(pspec, self.build, runez.resolved_path(self.dist), self.requirements, compile=self.compile)
             if exes:
                 report = PrettyTable(["Executable", self.sanity_check], border=self.border)
                 report.header.style = "bold"

@@ -2,13 +2,21 @@
 History
 =======
 
-2.0.9 (2020-10-12)
-------------------
+2.0.11 (2020-10-13)
+-------------------
+
+* ``compileall`` packaged venvs by default (can be turned off via ``--no-compile``)
+
+* Disable OSX ARM explicitly for now
+
+
+2.0.10 (2020-10-12)
+-------------------
 
 * Respect ``--python`` CLI flag in ``package`` command
 
 
-2.0.8 (2020-10-07)
+2.0.9 (2020-10-07)
 ------------------
 
 * Prevent OSX framework python from polluting created venvs
@@ -62,29 +70,3 @@ History
 * Corrected venv creation with py3
 
 * Default to absolute venvs (non-relocatable), as relocatable venvs are tricky to keep working
-
-
-1.9.10 (2020-01-20)
--------------------
-
-* ``package`` command enhancements
-
-
-1.9.8 (2019-11-17)
-------------------
-
-* Use builtin venv module with py3
-
-* Package projects without entry point as well
-
-
-1.9.6 (2019-10-06)
-------------------
-
-* Bug fixes
-
-
-1.9.4 (2019-09-12)
-------------------
-
-* ``compileall`` ran on packaged venvs are
