@@ -643,7 +643,8 @@ class PackageFinalizer(object):
             runez.ensure_folder(self.build, clean=True)
             CFG.set_base(self.build)
             pspec = PackageSpec(CFG, specced(self.package_name, self.package_version))
-            exes = PACKAGER.package(pspec, self.build, runez.resolved_path(self.dist), self.requirements, compile=self.compile)
+            dist_folder = runez.resolved_path(self.dist)
+            exes = PACKAGER.package(pspec, self.build, dist_folder, self.requirements, compile=self.compile)
             if exes:
                 report = PrettyTable(["Executable", self.sanity_check], border=self.border)
                 report.header.style = "bold"
@@ -655,6 +656,9 @@ class PackageFinalizer(object):
                     report.add_row(runez.quoted(exe), exe_info)
                     if self.symlink and exe:
                         self.symlink.apply(exe)
+
+                if not self.compile and not runez.DRYRUN:
+                    clean_compiled_artifacts(dist_folder)
 
                 return report
 
@@ -687,3 +691,32 @@ class Symlinker(object):
 
         else:
             LOG.debug("'%s' does not exist, skipping symlink" % exe)
+
+
+def delete_file(path):
+    if runez.delete(path, fatal=False, logger=None) > 0:
+        return 1
+
+    return 0
+
+
+def clean_compiled_artifacts(folder):
+    """Remove usual byte-code compiled artifacts from `folder`"""
+    # See https://www.debian.org/doc/packaging-manuals/python-policy/ch-module_packages.html
+    deleted = delete_file(os.path.join(folder, "share", "python-wheels"))
+    dirs_to_be_deleted = []
+    for root, dirs, files in os.walk(folder):
+        for basename in dirs[:]:
+            if basename == "__pycache__":
+                dirs.remove(basename)
+                dirs_to_be_deleted.append(os.path.join(root, basename))
+
+        for basename in files:
+            if basename.lower().endswith(".pyc"):
+                deleted += delete_file(os.path.join(root, basename))
+
+    for path in dirs_to_be_deleted:
+        deleted += delete_file(path)
+
+    if deleted:
+        logging.debug("Deleted %s compiled artifacts", deleted)
