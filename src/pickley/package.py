@@ -159,7 +159,7 @@ class PythonVenv(object):
             abort(message)
 
         if "--compile" in args:
-            self.run_python("-mcompileall")
+            self.run_python("-mcompileall", self.folder)
 
         return r
 
@@ -266,9 +266,9 @@ class VenvPackager(Packager):
         runez.ensure_folder(dist_folder, clean=True)
         venv = PythonVenv(dist_folder, pspec.python, pspec.index)
         venv.pip_install("--compile" if compile else "--no-compile", *requirements)
-        if not compile:
+        if not runez.DRYRUN and not compile:
             # Remove share/python-wheels/ folder, not sure where it's coming from
-            runez.delete(os.path.join(venv.folder, "share"))
+            clean_compiled_artifacts(venv.folder)
 
         entry_points = venv.find_entry_points(pspec)
         if entry_points:
@@ -277,3 +277,32 @@ class VenvPackager(Packager):
                 result.append(venv.bin_path(name))
 
             return result
+
+
+def delete_file(path):
+    if runez.delete(path, fatal=False, logger=None) > 0:
+        return 1
+
+    return 0
+
+
+def clean_compiled_artifacts(folder):
+    """Remove usual byte-code compiled artifacts from `folder`"""
+    # See https://www.debian.org/doc/packaging-manuals/python-policy/ch-module_packages.html
+    deleted = delete_file(os.path.join(folder, "share", "python-wheels"))
+    dirs_to_be_deleted = []
+    for root, dirs, files in os.walk(folder):
+        for basename in dirs[:]:
+            if basename == "__pycache__":
+                dirs.remove(basename)
+                dirs_to_be_deleted.append(os.path.join(root, basename))
+
+        for basename in files:
+            if basename.lower().endswith(".pyc"):
+                deleted += delete_file(os.path.join(root, basename))
+
+    for path in dirs_to_be_deleted:
+        deleted += delete_file(path)
+
+    if deleted:
+        logging.debug("Deleted %s compiled artifacts", deleted)

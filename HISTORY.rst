@@ -2,6 +2,12 @@
 History
 =======
 
+2.0.12 (2020-10-13)
+-------------------
+
+* Remove any left-over byte-compile artifacts when ``--no-compile`` is used
+
+
 2.0.11 (2020-10-13)
 -------------------
 

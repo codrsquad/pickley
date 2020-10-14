@@ -300,7 +300,7 @@ def test_package_pex(cli):
 def test_package_venv(cli):
     # Using --no-sanity-check for code coverage
     runez.delete("/tmp/pickley")
-    cli.run("package", project_folder(), "-droot/tmp", "--no-sanity-check", "-sroot:root/usr/local/bin")
+    cli.run("package", project_folder(), "-droot/tmp", "--no-compile", "--no-sanity-check", "-sroot:root/usr/local/bin")
     assert cli.succeeded
     assert runez.is_executable("/tmp/pickley/bin/pickley")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
