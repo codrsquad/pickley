@@ -4,7 +4,6 @@ See https://github.com/zsimic/pickley
 
 import logging
 import os
-import platform
 import sys
 import time
 
@@ -14,7 +13,7 @@ from runez.render import PrettyTable
 
 from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, specced, validate_pypi_name
 from pickley.delivery import DeliveryMethod, PICKLEY
-from pickley.package import PexPackager, PythonVenv, VenvPackager
+from pickley.package import PexPackager, PLATFORM, PythonVenv, VenvPackager
 from pickley.v1upgrade import V1Status
 
 
@@ -228,7 +227,7 @@ def main(ctx, debug, config, index, python, delivery, packager):
         # See https://github.com/python/cpython/pull/9516
         del os.environ["__PYVENV_LAUNCHER__"]
 
-    if platform.system().lower() == "darwin" and "ARCHFLAGS" not in os.environ:
+    if PLATFORM == "darwin" and "ARCHFLAGS" not in os.environ:
         # Avoid issue on some OSX installations where ARM support seems to have been enabled too early
         os.environ["ARCHFLAGS"] = "-arch x86_64"
 
@@ -644,7 +643,7 @@ class PackageFinalizer(object):
             CFG.set_base(self.build)
             pspec = PackageSpec(CFG, specced(self.package_name, self.package_version))
             dist_folder = runez.resolved_path(self.dist)
-            exes = PACKAGER.package(pspec, self.build, dist_folder, self.requirements, compile=self.compile)
+            exes = PACKAGER.package(pspec, self.build, dist_folder, self.requirements)
             if exes:
                 report = PrettyTable(["Executable", self.sanity_check], border=self.border)
                 report.header.style = "bold"
