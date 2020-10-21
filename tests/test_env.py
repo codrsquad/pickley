@@ -4,7 +4,7 @@ import runez
 from mock import patch
 
 from pickley import PickleyConfig
-from pickley.env import InvokerPython, PythonFromPath, std_python_name
+from pickley.env import InvokerPython, PythonFromPath, std_python_name, UnknownPython
 
 
 def mocked_invoker(**sysattrs):
@@ -105,6 +105,7 @@ def test_searching(temp_folder):
     assert p.major == 2
     assert p.minor == 7
     assert p.patch == 18
+    assert p.needs_virtualenv
 
     mk_python("p1/python", "2.5.0")
     mk_python("p2/python3", "2.9.1")  # picking an unlikely version, for testing
@@ -127,29 +128,43 @@ def test_searching(temp_folder):
     p = PythonFromPath("p1/python", version="3.7.1")  # Simulate 3.7.1
     assert p.needs_virtualenv
 
+    ap = cfg.available_pythons
     with patch.dict(os.environ, {"PATH": "p1:p2"}, clear=True):
-        invoker = cfg.find_python()
-        assert cfg.find_python(None) is invoker
-        assert cfg.find_python("python") is invoker
+        invoker = ap.find_python()
+        assert ap.find_python(None) is invoker
+        assert ap.find_python("python") is invoker
         assert invoker.is_invoker
 
-        p1 = cfg.find_python("/usr/bin/python")
-        p2 = cfg.find_python("/usr/bin/python")  # Python install references are cached
+        p1 = ap.find_python("/usr/bin/python")
+        p2 = ap.find_python("/usr/bin/python")  # Python install references are cached
+        assert p1 != invoker
         assert p1 is p2
-        assert cfg.find_python(p1) is p1
+        assert p1 == p2
+        assert ap.find_python(p1) is p1
         assert str(p1) == "/usr/bin/python"
         assert p1.satisfies("/usr/bin/python")
 
-        p = cfg.find_python("python2.9")
-        assert not p.problem
-        assert p.version == "2.9.2"
-        p.satisfies("py31")
-        p.satisfies("py-2.9.2")
-        assert not p.is_invoker
-        assert cfg.find_python("python2.9") is p  # Now cached
-        assert cfg.find_python("py29") is p  # Standard name is tried too
+        p29 = ap.find_python("python2.9")
+        assert not p29.problem
+        assert p29.version == "2.9.2"
+        p29.satisfies("py31")
+        p29.satisfies("py-2.9.2")
+        assert not p29.is_invoker
+        assert ap.find_python("python2.9") is p29  # Now cached
+        assert ap.find_python("py29") is p29  # Standard name is tried too
 
-        p = cfg.find_python("python2.9.9")
-        assert p.executable == "python2.9.9"
-        assert p.problem == "not available"
-        assert cfg.find_python("python2.9.9") is p  # Now cached, even if problematic
+        p299 = ap.find_python("python2.9.9")
+        assert p299.executable == "python2.9.9"
+        assert p299.problem == "not available"
+        assert ap.find_python("python2.9.9") is p299  # Now cached, even if problematic
+        assert p29 != p299
+
+        # Edge cases
+        pb1 = UnknownPython("b1")
+        pb2 = UnknownPython("b2")
+        assert pb1 != "foo"
+        assert pb1 != pb2
+        pb1.executable = None
+        assert pb1 != pb2
+        pb2.executable = None
+        assert pb1 == pb2

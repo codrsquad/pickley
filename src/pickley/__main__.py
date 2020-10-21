@@ -3,5 +3,5 @@
 from pickley.cli import protected_main
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     protected_main()

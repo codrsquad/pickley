@@ -4,21 +4,15 @@ import pytest
 import runez
 from runez.conftest import cli, logged, temp_folder
 
-from pickley import PickleyConfig
+from pickley import PICKLEY, PickleyConfig
 from pickley.cli import main
 
 
-TESTS = runez.parent_folder(__file__)
-PROJECT = runez.parent_folder(TESTS)
-INEXISTING_FILE = "/dev/null/foo/bar"
-
-
+cli.default_exe = PickleyConfig.pickley_program_path
 cli.default_main = main
 assert logged, temp_folder  # Just making fixtures available, with no complaints about unused imports
 
-
-def sample_path(*relative):
-    return os.path.join(TESTS, "samples", *relative)
+PickleyConfig.pickley_program_path = PickleyConfig.pickley_program_path.replace("pytest", PICKLEY)
 
 
 def verify_abort(func, *args, **kwargs):

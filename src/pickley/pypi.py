@@ -3,13 +3,12 @@ import logging
 import os
 import re
 
-import requests
+import runez
 
 
 LOG = logging.getLogger(__name__)
 RE_BASENAME = re.compile(r'href=".+/([^/#]+)\.(tar\.gz|whl)#', re.IGNORECASE)
 RE_VERSION = re.compile(r"^((\d+)((\.(\d+))+)((a|b|c|rc)(\d+))?(\.(dev|post)(\d+))?).*$")
-REQUESTS_SESSION = requests.sessions.Session()
 
 
 class PepVersion(object):
@@ -63,25 +62,165 @@ class PepVersion(object):
             return self.components < other.components
 
 
-def request_get(url):
-    try:
-        r = REQUESTS_SESSION.get(url, timeout=30)
+class Requestor(object):
+    """
+    Allows to query pypi using different ways, this was done to:
+    - avoid bundling requests (makes pickley deployable ~70% smaller)
+    - work around the fact that some system pythons (example: OSX) have urllib with buggy SSL
+    """
+
+    def __init__(self):
+        self.ready = None
+        self.failed = None
+        self.name = self.__class__.__name__.replace("Requestor", "").lower()
+
+    def __repr__(self):
+        return "%s%s" % (self.name, "*" if self.failed else "")
+
+    def prepare(self):
+        if self.ready is None:
+            try:
+                self._do_prepare()
+                self.ready = True
+
+            except Exception as e:
+                self.ready = False
+                self.failed = e
+
+        return self.ready
+
+    def _do_prepare(self):
+        """Effective implementation"""
+
+    def get(self, url):
+        """
+        Args:
+            url (str): URL to query
+
+        Returns:
+            (str): Body of returned GET query
+        """
+        try:
+            return self._do_get(url)
+
+        except Exception as e:
+            self.ready = False
+            self.failed = e
+
+    def _do_get(self, url):
+        """Effective implementation"""
+
+
+class UrllibRequestor(Requestor):
+    """Query pypi via urllib"""
+
+    def _do_prepare(self):
+        import ssl
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError
+
+        self.Request = Request
+        self.urlopen = urlopen
+        self.HTTPError = HTTPError
+
+        ssl._create_default_https_context = ssl._create_unverified_context
+
+    def _do_get(self, url):
+        try:
+            request = self.Request(url)
+            response = self.urlopen(request).read()
+            return response and runez.decode(response).strip()
+
+        except self.HTTPError as e:
+            if e.code == 404:
+                return None
+
+            raise
+
+
+class CurlRequestor(Requestor):
+    """Query pypi via curl"""
+
+    def _do_get(self, url):
+        result = runez.run("curl", "-s", url, dryrun=False, fatal=False)
+        if result.failed:
+            raise Exception("curl failed: %s" % result.full_output)
+
+        return result.output
+
+
+class RequestsRequestor(Requestor):
+    """Query pypi via https://pypi.org/project/requests/"""
+
+    def _do_prepare(self):
+        import requests
+
+        self.session = requests.sessions.Session()
+
+    def _do_get(self, url):
+        r = self.session.get(url, timeout=30)
         return r.text if r.status_code != 404 else "does not exist"
 
-    except IOError:
-        return None
+
+class RequestorChain(object):
+    """Allows to have multiple ways of querying pypi"""
+
+    def __init__(self, available=None):
+        if available is None:
+            available = [CurlRequestor(), UrllibRequestor(), RequestsRequestor()]
+
+        self.current = None
+        self.initial = available
+        self.available = list(available)
+        self.failed = []
+
+    def __repr__(self):
+        return ", ".join(str(s) for s in self.initial)
+
+    def get_current(self):
+        """
+        Returns:
+            (Requestor): Current requestor to use
+        """
+        if self.current is not None and self.current.ready:
+            return self.current
+
+        while True:
+            if not self.available:
+                return None
+
+            self.current = self.available.pop()
+            self.current.prepare()
+            if self.current.ready:
+                return self.current
+
+            self.failed.append(self.current)
+
+    def get(self, url):
+        while True:
+            current = self.get_current()
+            if current is None:
+                raise Exception("Internal error: can't query %s, all access methods failed" % url)
+
+            r = current.get(url)
+            if current.failed:
+                self.failed.append(self.current)
+                continue
+
+            return r
 
 
 class PypiInfo(object):
 
     latest = None  # type: str
 
-    def __init__(self, index, pspec, include_prereleases=False):
+    def __init__(self, index, pspec, include_prerelease=False, chain=RequestorChain()):
         """
         Args:
             index (str | None): URL to pypi index to use (default: pypi.org)
             pspec (pickley.PackageSpec): Pypi package name to lookup
-            include_prereleases (bool): If True, include latest pre-release
+            include_prerelease (bool): If True, include latest pre-release
+            chain (RequestorChain): Allows to have multiple ways of querying pypi
         """
         self.index = index or pspec.cfg.default_index
         self.pspec = pspec
@@ -93,7 +232,7 @@ class PypiInfo(object):
             # Assume legacy only for now for custom pypi indices
             self.url = "%s/" % os.path.join(self.index, self.pspec.dashed)
 
-        data = request_get(self.url)
+        data = chain.get(self.url)
         if not data:
             self.problem = "no data for %s, check your connection" % self.url
             return
@@ -130,7 +269,7 @@ class PypiInfo(object):
                         else:
                             releases.add(version)
 
-        if include_prereleases or not releases:
+        if include_prerelease or not releases:
             releases = releases | prereleases
 
         if releases:

@@ -1,17 +1,21 @@
 import os
+import subprocess
 import sys
 import time
 
 import pytest
 import runez
-from mock import MagicMock, patch
-from runez.conftest import project_folder
+from mock import patch
 
-from pickley import PackageSpec, PickleyConfig
+from pickley import get_pickley_program_path, PackageSpec, PickleyConfig
 from pickley.cli import find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.env import UnknownPython
 from pickley.package import Packager
+
+
+# Run functional tests with  representative python versions only
+FUNCTIONAL_TEST = runez.python_version() in "2.7 3.8"
 
 
 def test_base(temp_folder):
@@ -22,8 +26,11 @@ def test_base(temp_folder):
         runez.ensure_folder("temp-base")
         assert find_base() == runez.resolved_path("temp-base")
 
+    assert sys.prefix in get_pickley_program_path("foo/bar.py")
+
     original = PickleyConfig.pickley_program_path
-    assert find_base() == os.path.join(runez.log.dev_folder(), "root")
+    PickleyConfig.pickley_program_path = "/foo/.venv/bin/pickley"
+    assert find_base() == "/foo/.venv/root"
 
     PickleyConfig.pickley_program_path = "foo/.pickley/pickley-0.0.0/bin/pickley"
     assert find_base() == "foo"
@@ -38,12 +45,17 @@ def test_bootstrap(temp_folder):
     # Simulate py3 became available
     cfg = PickleyConfig()
     cfg.set_base(".")
-    pspec = PackageSpec(cfg, "pickley==1.0")
-    pspec.python = UnknownPython("py3")
-    pspec.python.major = 3
-    pspec.get_manifest = lambda: MagicMock(version="1.0")
 
-    assert bool(needs_bootstrap(pspec)) == (cfg.available_pythons.invoker.major < 3)
+    assert needs_bootstrap() is False
+
+    pspec = PackageSpec(cfg, "pickley==0.0")
+    pspec.python = cfg.available_pythons.invoker
+    assert needs_bootstrap(pspec) is True  # Due to no manifest
+
+    pspec.python = UnknownPython("py3")
+    pspec.python.problem = None
+    pspec.python.major = cfg.available_pythons.invoker.major + 1
+    assert needs_bootstrap(pspec) is True  # Due to higher version of python available
 
 
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
@@ -91,26 +103,47 @@ def test_debian_mode(temp_folder, logged):
         assert "'foo' failed --version sanity check" in logged.pop()
 
 
-def test_dryrun(cli):
-    cli.expect_success("--help", "Usage:")
+def test_main():
+    r = subprocess.check_output([sys.executable, "-mpickley", "--help"])  # Exercise __main__.py
+    r = runez.decode(r)
+    assert "auto-upgrade" in r
 
-    if sys.version_info[0] > 2:
-        # Bootstrapping out of py2 is tested separately
+
+def test_dryrun(cli):
+    with patch("pickley.cli.needs_bootstrap", return_value=False):
         cli.run("-n auto-upgrade")
         assert cli.succeeded
-        assert "Pass 1 bootstrap done" in cli.logged
-        assert ".ping" not in cli.logged
-        with runez.TempArgv(["-n", "auto-upgrade"], exe="pickley.bootstrap/bin/pickley"):
-            cli.run("-n auto-upgrade")
-            assert cli.succeeded
-            assert "Pass 2 bootstrap done" in cli.logged
-            assert ".ping" not in cli.logged
+        assert not cli.logged
 
+    with patch("pickley.cli._location_grand_parent", return_value=".pex/pickley.whl"):
+        cli.run("-n auto-upgrade")
+        assert cli.failed
+        assert "Internal error" in cli.logged
+        runez.touch("pickley")  # Simulate a wheel present for pex-bootstrap case
+        cli.run("-n auto-upgrade")
+        assert cli.succeeded
+        assert "Bootstrapping pickley" in cli.logged
+
+    cli.run("-n auto-upgrade")
+    assert cli.succeeded
+    assert ".ping" not in cli.logged
+    assert "Pass 1 bootstrap done" in cli.logged
+    if sys.version_info[0] < 3:
+        assert "pickley.bootstrap" in cli.logged
+
+    cli.run("-n auto-upgrade", exe="pickley.bootstrap/bin/pickley")
+    assert cli.succeeded
+    assert "Pass 2 bootstrap done" in cli.logged
+    assert ".ping" not in cli.logged
+
+    if sys.version_info[0] > 2:
         cli.expect_success("-n --debug auto-upgrade mgit", "Would wrap mgit")
         runez.touch(".pickley/mgit.lock")
         cli.expect_success("-n --debug auto-upgrade mgit", "Lock file present, another installation is in progress")
 
-    cli.expect_success("-n base", os.getcwd())
+    with patch.dict(os.environ, {"__PYVENV_LAUNCHER__": "foo"}):
+        cli.expect_success("-n base", os.getcwd())
+
     cli.expect_success("-n check", "No packages installed")
     cli.expect_failure("-n check foo+bar", "'foo+bar' is not a valid pypi package name")
     cli.expect_failure("-n check mgit pickley2-a", "is not installed", "pickley2-a: does not exist")
@@ -124,7 +157,7 @@ def test_dryrun(cli):
     cli.run("-n --color config")
     assert cli.succeeded
 
-    cli.expect_failure("-n -Pfoo install mgit", "Python 'foo' is not usable: not available")
+    cli.expect_failure("-n -Pfoo install mgit", "Can't create virtualenv with python 'foo': not available")
 
     # Simulate an old entry point that was now removed
     runez.write(".pickley/mgit/.manifest.json", '{"entrypoints": ["bogus-mgit"]}')
@@ -151,7 +184,7 @@ def test_dryrun(cli):
     runez.write("setup.py", "import sys\nfrom setuptools import setup\nif sys.argv[1]=='--version': sys.exit(1)\nsetup(name='foo')")
     cli.expect_failure("-n package .", "Could not determine package version")
 
-    cli.expect_success(["-n", "package", project_folder()], "Would run: ... -mpip ... install ...requirements.txt")
+    cli.expect_success(["-n", "package", cli.project_folder], "Would run: ... -mpip ... install ...requirements.txt")
 
     cli.expect_failure("-n uninstall", "Specify packages to uninstall, or --all")
     cli.expect_failure("-n uninstall pickley", "Run 'uninstall --all' if you wish to uninstall pickley itself")
@@ -246,7 +279,7 @@ def check_install(cli, delivery, package, simulate_version=None):
         cli.expect_success("check", "v%s installed, can be upgraded to" % simulate_version)
 
 
-@pytest.mark.skipif(sys.version_info[:2] not in ((2, 7), (3, 8)), reason="Functional test")
+@pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Functional test")
 def test_installation(cli):
     cli.expect_failure("install six", "it is not a CLI")
     assert not os.path.exists(".pickley/six")
@@ -285,10 +318,10 @@ def test_installation(cli):
         assert WRAPPER_MARK in contents
 
 
-@pytest.mark.skipif(sys.version_info[:2] != (3, 8), reason="Long test, testing with most common python version only")
+@pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Long test, testing with most common python version only")
 def test_package_pex(cli):
     expected = "dist/pickley"
-    cli.run("-ppex", "package", project_folder())
+    cli.run("-ppex", "package", cli.project_folder)
     assert cli.succeeded
     assert "--version" in cli.logged
     assert runez.is_executable(expected)
@@ -296,11 +329,11 @@ def test_package_pex(cli):
     assert r.succeeded
 
 
-@pytest.mark.skipif(sys.version_info[:2] not in ((2, 7), (3, 8)), reason="Functional test")
+@pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Functional test")
 def test_package_venv(cli):
     # Using --no-sanity-check for code coverage
     runez.delete("/tmp/pickley")
-    cli.run("package", project_folder(), "-droot/tmp", "--no-compile", "--no-sanity-check", "-sroot:root/usr/local/bin")
+    cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--no-sanity-check", "-sroot:root/usr/local/bin")
     assert cli.succeeded
     assert runez.is_executable("/tmp/pickley/bin/pickley")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")

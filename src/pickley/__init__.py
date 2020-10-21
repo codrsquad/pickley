@@ -1,5 +1,3 @@
-#  -*- encoding: utf-8 -*-
-
 import logging
 import os
 import re
@@ -13,7 +11,8 @@ from pickley.env import AvailablePythons, py_version_components, PythonFromPath
 from pickley.pypi import PepVersion, PypiInfo
 
 
-__version__ = runez.get_version(__name__)
+__version__ = "2.1.0"
+LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
 DOT_META = ".%s" % PICKLEY
 K_CLI = {"delivery", "index", "python"}
@@ -120,12 +119,11 @@ class PackageSpec(object):
     - wheel transforms dashes to underscores
     """
 
-    def __init__(self, cfg, text, preferred_python=None):
+    def __init__(self, cfg, text):
         """
         Args:
             cfg (PickleyConfig): Associated configuration
             text (str): Given package name, with optional version spec
-            preferred_python (str | None): Preferred python to use, when possible
         """
         self.cfg = cfg
         self.original, self.version = despecced(text)
@@ -133,18 +131,7 @@ class PackageSpec(object):
         self.dashed = canonical_pypi_name(self.original)
         self.wheelified = self.original.replace("-", "_").replace(".", "_")
         self.pinned = cfg.pinned_version(self)
-        if preferred_python:
-            python = self.cfg.available_pythons.find_python(preferred_python)
-            if python.problem:
-                msg = "Can't use preferred python %s: %s" % (preferred_python, python.problem)
-                python = self.cfg.available_pythons.invoker
-                msg += "\nUsing invoker python instead: %s" % python
-                logging.warning(msg)
-
-        else:
-            python = self.cfg.available_pythons.find_python(cfg.get_value("python", pspec=self))
-
-        self.python = python
+        self.python = cfg.find_python(self)
         self.settings = TrackedSettings(
             delivery=cfg.delivery_method(self),
             index=cfg.index(self) or cfg.default_index,
@@ -318,6 +305,18 @@ def get_default_index(*paths):
     return None, None
 
 
+def get_pickley_program_path(path=None):
+    if path is None:
+        path = runez.resolved_path(sys.argv[0])
+
+    if path.endswith(".py") or path.endswith(".pyc"):
+        packaged = os.path.join(sys.prefix, "bin", "pickley")
+        if runez.is_executable(packaged):
+            path = packaged  # Convenience when running from debugger
+
+    return path
+
+
 class PickleyConfig(object):
     """Pickley configuration"""
 
@@ -326,7 +325,7 @@ class PickleyConfig(object):
     cache = None  # type: FolderBase # DOT_META/.cache subfolder
     cli = None  # type: TrackedSettings # Tracks any custom command line cfg flags given, such as --index, --python or --delivery
     configs = None  # type: list
-    pickley_program_path = runez.resolved_path(sys.argv[0])  # type: str
+    pickley_program_path = get_pickley_program_path()
 
     def __init__(self):
         self.configs = []
@@ -355,7 +354,7 @@ class PickleyConfig(object):
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
-        defaults = dict(delivery="wrap", install_timeout=30, version_check_delay=5)
+        defaults = dict(delivery="wrap", install_timeout=30, python="/usr/bin/python3, python3, python", version_check_delay=5)
         self.configs.append(RawConfig(self, "defaults", defaults))
 
     def set_cli(self, config_path, delivery, index, python):
@@ -430,15 +429,71 @@ class PickleyConfig(object):
             for name in runez.flattened(names, split=" "):
                 self._expand_bundle(result, seen, name)
 
-    def find_python(self, desired=runez.UNSET):
+    def _auto_installed_virtualenv(self):
+        """TODO: generalize double-checking of any installed package, and re-install it if its base python moved for example"""
+        virtualenv = self.base.full_path("virtualenv")
+        r = runez.run(virtualenv, "--version", dryrun=False, fatal=False, logger=None)
+        if r.failed:
+            env = dict(os.environ)
+            env["PICKLEY_ROOT"] = self.base.path
+            runez.run(self.pickley_program_path, "install", "-f", "virtualenv", env=env)
+
+        return virtualenv
+
+    def create_virtualenv(self, folder, python, force_virtualenv=False):
         """
         Args:
-            desired (str | PythonInstallation | None): Desired python
+            folder (str): Target folder
+            python:
+            force_virtualenv:
 
         Returns:
-            (PythonInstallation): Object representing python installation (may not be usable, see reported .problem)
+
         """
-        return self.available_pythons.find_python(desired)
+        if python.problem:
+            abort("Can't create virtualenv with python '%s': %s" % (runez.bold(python), runez.red(python.problem)))
+
+        runez.ensure_folder(folder, clean=True, logger=False)
+        if force_virtualenv or python.needs_virtualenv:
+            virtualenv = self._auto_installed_virtualenv()
+            runez.run(virtualenv, "-p", python.executable, folder)
+
+        else:
+            python.run("-mvenv", folder)
+            py_path = os.path.join(folder, "bin", "python")
+            r = runez.run(py_path, "-mpip", "--version", dryrun=False, fatal=False, logger=None)
+            if r.failed:
+                runez.run(py_path, "-mensurepip")
+
+    def find_python(self, pspec=None):
+        """
+        Args:
+            pspec (PackageSpec | None): Package spec, when applicable
+
+        Returns:
+            (PythonInstallation): Object representing python installation
+        """
+        desired = self.get_value("python", pspec=pspec)
+        desired = runez.flattened(desired, split=",", sanitized=True)
+        issues = []
+        python = None
+        for d in desired:
+            d = d.strip()
+            if d:
+                python = self.available_pythons.find_python(d)
+                if not python.problem:
+                    return python
+
+                issues.append((d, python.problem))
+
+        for i in issues[:-1]:
+            # Warn for the first N-1 desired pythons (if any) only, the last one will trigger an error in caller
+            LOG.warning("Python '%s' was not usable, skipped: %s" % i)
+
+        if python is None:
+            python = self.available_pythons.invoker
+
+        return python
 
     def package_specs(self, names=None):
         """

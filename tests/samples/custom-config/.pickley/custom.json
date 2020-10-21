@@ -4,5 +4,6 @@
     "include": ["bogus.json", "/dev/null/non-existent-config-file.json"],
     "install_timeout": 2,
     "pyenv": "/dev/null",
+    "python": "/dev/null, /dev/null/foo",
     "version_check_delay": 1
 }

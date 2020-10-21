@@ -54,6 +54,18 @@ class PythonInstallation(object):
     def __repr__(self):
         return runez.short(self.executable)
 
+    def __eq__(self, other):
+        if not isinstance(other, PythonInstallation):
+            return False
+
+        if self.executable:
+            return self.executable == other.executable
+
+        return not other.executable and (self.version, self.problem) == (other.version, other.problem)
+
+    def __ne__(self, other):
+        return not (self == other)
+
     @property
     def version(self):
         return ".".join(str(c) for c in (self.major, self.minor, self.patch) if c is not None)
@@ -140,13 +152,13 @@ class PythonFromPath(PythonInstallation):
         Args:
             path (str): Path to a python executable
         """
+        self.executable = path
         if not runez.is_executable(path):
             self.problem = "not an executable"
             return
 
-        self.executable = path
         if not version:
-            r = runez.run(self.executable, "--version", dryrun=False, fatal=False)
+            r = runez.run(self.executable, "--version", dryrun=False, fatal=False, logger=None)
             if not r.succeeded:
                 self.problem = "does not respond to --version"
                 return
@@ -192,6 +204,9 @@ class AvailablePythons(object):
         if isinstance(desired, PythonInstallation):
             return desired
 
+        if isinstance(desired, runez.system.string_type):
+            desired = desired.strip()
+
         if not desired or not isinstance(desired, runez.system.string_type):
             # Don't bother scanning/caching anything until a specifically desired python is needed
             # Non-string is for backwards compatibility, older configs may have had a dict
@@ -205,7 +220,7 @@ class AvailablePythons(object):
             desired (str): Desired python
 
         Returns:
-            (PythonInstallation | None): Determined python installation
+            (PythonInstallation): Determined python installation
         """
         if self._cache is None:
             # Seed cache with invoker, this will satisfy some 'desired' lookups

@@ -3,7 +3,6 @@ import os
 import pytest
 import runez
 from mock import MagicMock, patch
-from runez.conftest import resource_path
 
 from pickley import __version__, despecced, get_default_index, inform, PackageSpec
 from pickley import PickleyConfig, pypi_name_problem, specced
@@ -40,20 +39,25 @@ cli:  # empty
     - /dev/null/non-existent-config-file.json
   install_timeout: 2
   pyenv: /dev/null
+  python: /dev/null, /dev/null/foo
   version_check_delay: 1
 
 defaults:
   delivery: wrap
   install_timeout: 30
+  python: /usr/bin/python3, python3, python
   version_check_delay: 5
 """
 
 
-def test_config():
+def test_config(logged):
     cfg = PickleyConfig()
     assert str(cfg) == "<not-configured>"
 
-    sample = resource_path("samples/custom-config")
+    p = cfg.find_python(pspec=None)
+    assert p == cfg.available_pythons.invoker
+
+    sample = runez.log.tests_path("samples/custom-config")
     cfg.set_cli("config.json", None, None, None)
     cfg.set_base(sample)
     assert str(cfg) == runez.short(sample)
@@ -67,6 +71,12 @@ def test_config():
     actual = cfg.represented().strip()
     expected = SAMPLE_CONFIG.strip().format(base=runez.short(cfg.base))
     assert actual == expected
+
+    assert not logged
+    p = cfg.find_python(pspec=None)
+    assert p.executable == "/dev/null/foo"
+    assert p.problem == "not an executable"
+    assert "was not usable, skipped" in logged.pop()
 
 
 def test_default_index(temp_folder, logged):
@@ -87,13 +97,9 @@ def test_edge_cases():
 
 def test_desired_version(temp_folder, logged):
     cfg = PickleyConfig()
-    sample = resource_path("samples/custom-config")
+    sample = runez.log.tests_path("samples/custom-config")
     runez.copy(sample, "temp-base")
     cfg.set_base("temp-base")
-
-    mgit = PackageSpec(cfg, "mgit", preferred_python="/dev/null")
-    assert mgit.python is cfg.available_pythons.invoker
-    assert "Can't use preferred python /dev/null: not an executable" in logged.pop()
 
     mgit = PackageSpec(cfg, "mgit == 1.0.0")
     pickley = PackageSpec(cfg, "pickley")
@@ -102,7 +108,7 @@ def test_desired_version(temp_folder, logged):
     assert str(pickley) == "pickley"
     assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
     assert mgit.cfg.install_timeout(mgit) == 2  # From custom.json
-    assert not logged
+    logged.clear()
 
     with patch("pickley.PypiInfo", return_value=MagicMock(problem=None, latest="0.1.2")):
         d = pickley.get_desired_version_info()
@@ -166,7 +172,7 @@ def test_v1(temp_folder, logged):
     status = V1Status(cfg)
     assert not status.installed
 
-    sample = resource_path("samples/v1")
+    sample = runez.log.tests_path("samples/v1")
     runez.copy(sample, ".pickley")
     status = V1Status(cfg)
     assert len(status.installed) == 2

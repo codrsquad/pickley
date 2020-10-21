@@ -2,6 +2,16 @@
 History
 =======
 
+2.1.1 (2020-10-21)
+------------------
+
+* Much lighter pex package (400K, down from 5MB)
+
+* Install ``virtualenv`` on the fly when needed
+
+* Better bootstrap, multiple fall-back ways to query pypi
+
+
 2.1.0 (2020-10-16)
 ------------------
 

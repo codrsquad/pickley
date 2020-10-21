@@ -24,60 +24,31 @@ def entry_points_from_metadata(path):
     return metadata.get("extensions", {}).get("python.commands", {}).get("wrap_console")
 
 
-def first_line(path):
-    """str: First line of file with 'path', if any"""
-    for line in runez.readlines(path, default=[], errors="ignore"):
-        return line
-
-
 class PythonVenv(object):
 
-    def __init__(self, folder, python, index, force_virtualenv=False):
+    def __init__(self, pspec, folder=None, python=None, index=None, force_virtualenv=None):
         """
         Args:
-            folder (str): Target folder (empty string for testing, venv is not actually created in that case)
-            python (pickley.env.PythonInstallation): Python to use
-            index (str | None): Optional custom pypi index to use
+            pspec (pickley.PackageSpec): Package spec to install
+            folder (str | None): Target folder (default: pspec.install_path)
+            python (pickley.env.PythonInstallation): Python to use (default: pspec.python)
+            index (str | None): Optional custom pypi index to use (default: pspec.index)
             force_virtualenv (bool): If True, use virtualenv instead of built-in `venv` module
         """
-        self.folder = folder
-        self.python = python
-        self.index = index
-        self.py_path = self.bin_path("python")
-        if folder:
-            if python.problem:
-                abort("Python '%s' is not usable: %s" % (runez.bold(python), runez.red(python.problem)))
+        self.folder = folder if folder is not None else pspec.install_path
+        if python is None:
+            python = pspec.python
 
-            runez.ensure_folder(folder, clean=True, logger=False)
-            if force_virtualenv or python.needs_virtualenv:
-                import virtualenv
+        self.index = index or pspec.index
+        if self.folder:
+            if force_virtualenv is None:
+                # https://github.com/tox-dev/tox/issues/1689
+                force_virtualenv = PLATFORM == "darwin" and pspec.dashed == "tox"
 
-                vpath = virtualenv.__file__
-                if vpath.endswith(".pyc"):
-                    vpath = vpath[:-1]
-
-                cmd = [python.executable, vpath]
-                if not python.is_invoker:  # pragma: no cover, only when pickley is installed with py2...
-                    cmd.append("-p")
-                    cmd.append(python.executable)
-
-                cmd.append(folder)
-                with runez.Anchored(os.path.dirname(vpath)):
-                    runez.run(*cmd)
-
-            else:
-                python.run("-mvenv", folder)
-                self.ensure_pip()
+            pspec.cfg.create_virtualenv(self.folder, python, force_virtualenv=force_virtualenv)
 
     def __repr__(self):
         return runez.short(self.folder)
-
-    def ensure_pip(self):
-        for name in ("pip", "pip3"):
-            if os.path.exists(self.bin_path(name)):
-                return
-
-        self.run_python("-mensurepip")
 
     def bin_path(self, name):
         """
@@ -88,6 +59,20 @@ class PythonVenv(object):
             (str): Full path to this <venv>/bin/<name>
         """
         return os.path.join(self.folder, "bin", name)
+
+    def _is_venv_exe(self, path):
+        """
+        Args:
+            path (str): Path to file to examine
+
+        Returns:
+            (bool): True if 'path' points to a python executable part of this venv
+        """
+        if runez.is_executable(path):
+            lines = runez.readlines(path, default=None, first=2, errors="ignore")
+            if lines and len(lines) > 1 and lines[0].startswith("#!"):
+                if self.folder in lines[0] or self.folder in lines[1]:  # 2 variants: "#!<folder>/bin/python" or 'exec "<folder>/bin/..."'
+                    return True
 
     def find_entry_points(self, pspec):
         """
@@ -105,7 +90,6 @@ class PythonVenv(object):
 
         r = self.run_python("-mpip", "show", "-f", pspec.dashed, fatal=False, logger=False)
         if r.succeeded:
-            expected_shebang = "#!%s" % runez.quoted(os.path.dirname(self.py_path), adapter=None)
             location = None
             in_files = False
             bin_scripts = None
@@ -120,13 +104,11 @@ class PythonVenv(object):
                         name = m.group(1)
                         if "_completer" not in name:
                             path = os.path.abspath(os.path.join(location, line))
-                            if runez.is_executable(path):
-                                shebang = first_line(path)
-                                if shebang.startswith(expected_shebang):
-                                    if bin_scripts is None:
-                                        bin_scripts = {}
+                            if self._is_venv_exe(path):
+                                if bin_scripts is None:
+                                    bin_scripts = {}
 
-                                    bin_scripts[name] = path
+                                bin_scripts[name] = path
 
                     elif line.endswith("entry_points.txt"):
                         ep = entry_points_from_txt(os.path.join(location, line))
@@ -146,14 +128,6 @@ class PythonVenv(object):
 
             return bin_scripts
 
-    def get_shebang(self, wheels):
-        """For pex: determine most general shebang to use"""
-        shebang = "/usr/bin/env python"
-        if any(n.endswith(".whl") and not n.endswith("-py2.py3-none-any.whl") for n in os.listdir(wheels)):
-            shebang += str(self.python.major)
-
-        return shebang
-
     def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""
         r = self._run_pip("install", "-i", self.index, *args, fatal=False)
@@ -169,7 +143,7 @@ class PythonVenv(object):
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
-        return runez.run(self.py_path, *args, **kwargs)
+        return runez.run(self.bin_path("python"), *args, **kwargs)
 
     def _run_pip(self, *args, **kwargs):
         return self.run_python("-mpip", "-v", *args, **kwargs)
@@ -183,7 +157,7 @@ def simplified_pip_error(error, output):
             yield line
 
 
-class Packager:
+class Packager(object):
     """Ancestor to package/install implementations"""
 
     @staticmethod
@@ -218,7 +192,7 @@ class PexPackager(Packager):
         runez.delete("~/.pex", fatal=False, logger=False)
         wheels = os.path.join(build_folder, "wheels")
         runez.ensure_folder(build_folder, clean=True)
-        pex_venv = PythonVenv(os.path.join(build_folder, "pex-venv"), pspec.python, pspec.index)
+        pex_venv = PythonVenv(pspec, folder=os.path.join(build_folder, "pex-venv"))
         pex_venv.pip_install("wheel", "pex==1.6.7", *requirements)
         pex_venv.pip_wheel("-v", "--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
         entry_points = pex_venv.find_entry_points(pspec)
@@ -228,9 +202,9 @@ class PexPackager(Packager):
                 target = os.path.join(dist_folder, name)
                 runez.delete(target, logger=False)
                 pex_venv.run_python(
-                    "-mpex", "-v", "--no-pypi", "--pre", "--cache-dir", wheels, "-f", wheels,
+                    "-mpex", "-v", "--no-compile", "--no-pypi", "--pre", "--cache-dir", wheels, "-f", wheels,
                     "-c%s" % name, "-o%s" % target, name,
-                    "--python-shebang", pex_venv.get_shebang(wheels),
+                    "--python-shebang", "/usr/bin/env python%s" % pspec.python.major,
                 )
                 result.append(target)
 
@@ -242,18 +216,14 @@ class VenvPackager(Packager):
 
     @staticmethod
     def install(pspec, ping=True):
-        assert pspec.version
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
         delivery.ping = ping
-        target = pspec.install_path
         args = [pspec.specced]
         if pspec.dashed == PICKLEY and runez.log.dev_folder():
             project_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
             args = ["-e", project_path]
 
-        # https://github.com/tox-dev/tox/issues/1689
-        force_virtualenv = PLATFORM == "darwin" and pspec.dashed == "tox"
-        venv = PythonVenv(target, pspec.python, pspec.index, force_virtualenv=force_virtualenv)
+        venv = PythonVenv(pspec)
         venv.pip_install(*args)
         entry_points = venv.find_entry_points(pspec)
         if not entry_points:
@@ -265,7 +235,7 @@ class VenvPackager(Packager):
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements):
         runez.ensure_folder(dist_folder, clean=True)
-        venv = PythonVenv(dist_folder, pspec.python, pspec.index)
+        venv = PythonVenv(pspec, folder=dist_folder)
         venv.pip_install(*requirements)
         venv.run_python("-mcompileall", dist_folder)
         entry_points = venv.find_entry_points(pspec)

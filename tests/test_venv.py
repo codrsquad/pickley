@@ -1,5 +1,4 @@
 import os
-import sys
 
 import pytest
 import runez
@@ -30,11 +29,10 @@ MGIT_PIP_METADATA = """
 
 def test_shebang(temp_folder, logged):
     # Exercise shebang
-    venv = PythonVenv("", CFG.find_python(), None)
+    pspec = PackageSpec(CFG, "foo")
+    venv = PythonVenv(pspec, folder="", python=CFG.find_python())
     assert str(venv) == ""
     runez.touch("dummy.whl")
-    shebang = venv.get_shebang(".")
-    assert shebang.endswith("python%s" % sys.version_info[0])
     runez.ensure_folder(".", clean=True)
     assert "Cleaned 1 file from" in logged.pop()
     assert not os.path.exists("dummy.whl")
@@ -52,16 +50,17 @@ def test_entry_points(temp_folder):
     runez.write("mgit/metadata.json", MGIT_PIP_METADATA)
     with patch("runez.run", side_effect=simulated_run):
         pspec = PackageSpec(CFG, "mgit")
-        venv = PythonVenv("", CFG.find_python(), None)
+        venv = PythonVenv(pspec, folder="")
         assert venv.find_entry_points(pspec) == ["mgit"]
 
         pspec = PackageSpec(CFG, "bogus")
-        venv = PythonVenv("", CFG.find_python(), None)
+        venv = PythonVenv(pspec, folder="")
         assert venv.find_entry_points(pspec) is None
 
 
 def test_pip_fail(logged):
-    venv = PythonVenv("", CFG.available_pythons.invoker, None)
+    pspec = PackageSpec(CFG, "bogus")
+    venv = PythonVenv(pspec, folder="", python=CFG.available_pythons.invoker)
     with patch("pickley.package.PythonVenv._run_pip", return_value=runez.program.RunResult("", "some\nerror", code=1)):
         with pytest.raises(SystemExit):
             venv.pip_install("foo")
