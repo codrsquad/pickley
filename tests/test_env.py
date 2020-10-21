@@ -117,6 +117,7 @@ def test_searching(temp_folder):
     assert p.executable == "dummy/python"
     assert p.problem == "--version did not yield major version component"
     assert p.version == "0.1.2"
+    assert p.has_ensurepip is False
 
     runez.write("dummy/python2", "#!/bin/bash\nexit 1\n")
     runez.make_executable("dummy/python2")

@@ -50,6 +50,7 @@ class PythonInstallation(object):
     minor = None  # type: int # Minor version
     patch = None  # type: int # Patch revision
     problem = None  # type: str # String describing a problem with this installation, if there is one
+    _has_ensurepip = None  # type: bool # Pythons with module ensurepip are needed in order to create venvs
 
     def __repr__(self):
         return runez.short(self.executable)
@@ -69,6 +70,17 @@ class PythonInstallation(object):
     @property
     def version(self):
         return ".".join(str(c) for c in (self.major, self.minor, self.patch) if c is not None)
+
+    @property
+    def has_ensurepip(self):
+        if self.problem:
+            return False
+
+        if self._has_ensurepip is None:
+            r = runez.run(self.executable, "-mensurepip", "--help", dryrun=False, fatal=False, logger=None)
+            self._has_ensurepip = r.succeeded
+
+        return self._has_ensurepip
 
     @property
     def is_invoker(self):

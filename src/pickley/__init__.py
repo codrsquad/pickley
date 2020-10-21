@@ -14,6 +14,7 @@ from pickley.pypi import PepVersion, PypiInfo
 __version__ = "2.1.0"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
+VIRTUALENV = "virtualenv"
 DOT_META = ".%s" % PICKLEY
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
@@ -431,12 +432,12 @@ class PickleyConfig(object):
 
     def _auto_installed_virtualenv(self):
         """TODO: generalize double-checking of any installed package, and re-install it if its base python moved for example"""
-        virtualenv = self.base.full_path("virtualenv")
+        virtualenv = self.base.full_path(VIRTUALENV)
         r = runez.run(virtualenv, "--version", dryrun=False, fatal=False, logger=None)
         if r.failed:
             env = dict(os.environ)
             env["PICKLEY_ROOT"] = self.base.path
-            runez.run(self.pickley_program_path, "install", "-f", "virtualenv", env=env)
+            runez.run(self.pickley_program_path, "install", "-f", VIRTUALENV, env=env)
 
         return virtualenv
 
@@ -465,7 +466,7 @@ class PickleyConfig(object):
             if r.failed:
                 runez.run(py_path, "-mensurepip")
 
-    def find_python(self, pspec=None):
+    def find_python(self, pspec=None, needs_ensurepip=None):
         """
         Args:
             pspec (PackageSpec | None): Package spec, when applicable
@@ -477,11 +478,14 @@ class PickleyConfig(object):
         desired = runez.flattened(desired, split=",", sanitized=True)
         issues = []
         python = None
+        if needs_ensurepip is None and pspec:
+            needs_ensurepip = pspec.dashed in (PICKLEY, VIRTUALENV)
+
         for d in desired:
             d = d.strip()
             if d:
                 python = self.available_pythons.find_python(d)
-                if not python.problem:
+                if not python.problem and (not needs_ensurepip or python.has_ensurepip):
                     return python
 
                 issues.append((d, python.problem))
