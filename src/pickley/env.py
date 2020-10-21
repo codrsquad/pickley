@@ -88,11 +88,11 @@ class PythonInstallation(object):
 
     @property
     def needs_virtualenv(self):
-        if self.major < 3:
+        if self.major < 3 or (self.major == 3 and self.minor <= 7 and self.patch < 2):
+            # 3.7.1 possibly has a non-functional -mvenv (travis has that old version and fails)
             return True
 
-        # 3.7.1 possibly has a non-functional -mvenv (travis has that old version and fails)
-        return self.major == 3 and self.minor <= 7 and self.patch < 2
+        return not self.has_ensurepip
 
     def satisfies(self, desired):
         """
