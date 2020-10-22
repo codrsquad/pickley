@@ -7,7 +7,7 @@ from datetime import datetime
 
 import runez
 
-from pickley.env import AvailablePythons, py_version_components, PythonFromPath
+from pickley.env import AvailablePythons, py_version_components, PythonFromPath, valid_exe
 from pickley.pypi import PepVersion, PypiInfo
 
 
@@ -184,6 +184,11 @@ class PackageSpec(object):
 
     def exe_path(self, exe):
         return self.cfg.base.full_path(exe)
+
+    def is_healthily_installed(self):
+        """Double-check that current venv is still usable"""
+        py_path = os.path.join(self.install_path, "bin", "python")
+        return valid_exe(py_path)
 
     def get_manifest(self):
         """TrackedManifest: Manifest of the current installation of this package"""
@@ -631,6 +636,9 @@ class TrackedVersion(object):
         self.source = source
         self.version = version
 
+    def __repr__(self):
+        return "%s (%s) %s" % (self.version, self.source, self.problem or "")
+
     @classmethod
     def from_file(cls, path):
         data = runez.read_json(path, default=None)
@@ -667,6 +675,9 @@ class TrackedManifest(object):
         self.pickley = pickley
         self.pinned = pinned
         self.version = version
+
+    def __repr__(self):
+        return "%s [p: %s]" % (self.version, self.python)
 
     @classmethod
     def from_file(cls, path):

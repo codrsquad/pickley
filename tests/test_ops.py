@@ -11,7 +11,7 @@ from pickley import get_pickley_program_path, PackageSpec, PickleyConfig
 from pickley.cli import CFG, find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.env import UnknownPython
-from pickley.package import bootstrapped_virtualenv, download_command, Packager
+from pickley.package import bootstrapped_virtualenv, bundled_virtualenv, download_command, Packager
 
 
 # Run functional tests with  representative python versions only
@@ -116,6 +116,11 @@ def test_main():
 
 
 def test_dryrun(cli):
+    with patch("pickley.package.valid_exe", return_value=False):
+        with pytest.raises(Exception):
+            # pex edge case: virtualenv is not available in currently running venv
+            bundled_virtualenv(CFG, "", CFG.available_pythons.invoker)
+
     with runez.CaptureOutput(dryrun=True) as logged:
         # Exercise bootstrap venv code in dryrun mode, this code will ever be exercise from pex-ed pickley runs
         bootstrapped_virtualenv(CFG, "", CFG.available_pythons.invoker)

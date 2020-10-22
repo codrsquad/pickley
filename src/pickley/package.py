@@ -28,7 +28,7 @@ def entry_points_from_metadata(path):
 def bundled_virtualenv(cfg, folder, python):
     bin = os.path.dirname(cfg.pickley_program_path)
     virtualenv = os.path.join(bin, VIRTUALENV)
-    if not valid_exe(virtualenv):  # pragma: no cover, exercised only when running as pex
+    if not valid_exe(virtualenv):
         raise Exception()
 
     runez.run(virtualenv, "-p", python.executable, folder)

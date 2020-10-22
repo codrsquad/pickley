@@ -41,6 +41,9 @@ def check_version(cfg, data, name, expected_version, index="https://mycompany.ne
         assert str(i) == "%s %s" % (name, expected_version)
         d = pspec.get_desired_version_info()
         assert d.version == expected_version
+        assert str(d)
+        m = pspec.get_manifest()
+        assert str(m)
 
 
 def test_pypi(temp_cfg, logged):

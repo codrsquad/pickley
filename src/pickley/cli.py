@@ -158,7 +158,7 @@ def perform_install(pspec, give_up=5, is_upgrade=False, force=False, quiet=False
 
             pspec.version = desired.version
 
-        if not force and manifest and manifest.version == pspec.version:
+        if not force and manifest and manifest.version == pspec.version and pspec.is_healthily_installed():
             if not quiet:
                 status = "up-to-date" if is_upgrade else "installed"
                 inform("%s v%s is already %s" % (pspec.dashed, runez.bold(pspec.version), status))
