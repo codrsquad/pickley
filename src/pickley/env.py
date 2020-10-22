@@ -8,6 +8,14 @@ import runez
 RE_PYTHON_LOOSE_VERSION = re.compile(r"(py(thon *)?)?([0-9]+)?\.?([0-9]+)?\.?([0-9]*)", re.IGNORECASE)
 
 
+def valid_exe(path, *args):
+    if not args:
+        args = ["--version"]
+
+    r = runez.run(path, *args, dryrun=False, fatal=False, logger=None)
+    return r.succeeded
+
+
 def py_version_components(text, loose=True):
     m = RE_PYTHON_LOOSE_VERSION.match(text)
     if m and m.group(0) == text:
@@ -50,7 +58,6 @@ class PythonInstallation(object):
     minor = None  # type: int # Minor version
     patch = None  # type: int # Patch revision
     problem = None  # type: str # String describing a problem with this installation, if there is one
-    _has_ensurepip = None  # type: bool # Pythons with module ensurepip are needed in order to create venvs
 
     def __repr__(self):
         return runez.short(self.executable)
@@ -72,27 +79,15 @@ class PythonInstallation(object):
         return ".".join(str(c) for c in (self.major, self.minor, self.patch) if c is not None)
 
     @property
-    def has_ensurepip(self):
-        if self.problem:
-            return False
-
-        if self._has_ensurepip is None:
-            r = runez.run(self.executable, "-mensurepip", "--help", dryrun=False, fatal=False, logger=None)
-            self._has_ensurepip = r.succeeded
-
-        return self._has_ensurepip
-
-    @property
     def is_invoker(self):
         return False
 
     @property
     def needs_virtualenv(self):
         if self.major < 3 or (self.major == 3 and self.minor <= 7 and self.patch < 2):
-            # 3.7.1 possibly has a non-functional -mvenv (travis has that old version and fails)
             return True
 
-        return not self.has_ensurepip
+        return not valid_exe(self.executable, "-mensurepip", "--help")
 
     def satisfies(self, desired):
         """

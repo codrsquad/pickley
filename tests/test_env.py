@@ -5,6 +5,7 @@ from mock import patch
 
 from pickley import PickleyConfig
 from pickley.env import InvokerPython, PythonFromPath, std_python_name, UnknownPython
+from pickley.package import virtualenv_zipapp
 
 
 def mocked_invoker(**sysattrs):
@@ -25,12 +26,14 @@ def test_invoker():
         p = mocked_invoker(base_prefix="/usr")
         assert p.executable == "/usr/bin/python3"
         assert p.major == 3
+        assert "2.7" not in virtualenv_zipapp(p)
 
     # Linux case without py3
     with patch("runez.is_executable", return_value=True):
         p = mocked_invoker(major=2, real_prefix="/usr")
         assert p.executable == "/usr/bin/python2"
         assert p.major == 2
+        assert "2.7" in virtualenv_zipapp(p)
 
     # Linux case without py3 or py2 (but only /usr/bin/python)
     with patch("runez.is_executable", side_effect=lambda x: "python2" not in x):
@@ -117,7 +120,6 @@ def test_searching(temp_folder):
     assert p.executable == "dummy/python"
     assert p.problem == "--version did not yield major version component"
     assert p.version == "0.1.2"
-    assert p.has_ensurepip is False
 
     runez.write("dummy/python2", "#!/bin/bash\nexit 1\n")
     runez.make_executable("dummy/python2")

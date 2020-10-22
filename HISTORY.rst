@@ -2,7 +2,7 @@
 History
 =======
 
-2.1.1 (2020-10-21)
+2.1.1 (2020-10-22)
 ------------------
 
 * Much lighter pex package (400K, down from 5MB)
@@ -57,7 +57,6 @@ History
 
 * Show why sanity check failed in ``package`` command
 
-* Call ``-mensurepip`` if pip is not available
 
 * Publish with 3.8
 

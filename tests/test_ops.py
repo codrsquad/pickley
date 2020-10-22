@@ -8,10 +8,10 @@ import runez
 from mock import patch
 
 from pickley import get_pickley_program_path, PackageSpec, PickleyConfig
-from pickley.cli import find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
+from pickley.cli import CFG, find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.env import UnknownPython
-from pickley.package import Packager
+from pickley.package import bootstrapped_virtualenv, download_command, Packager
 
 
 # Run functional tests with  representative python versions only
@@ -56,6 +56,12 @@ def test_bootstrap(temp_folder):
     pspec.python.problem = None
     pspec.python.major = cfg.available_pythons.invoker.major + 1
     assert needs_bootstrap(pspec) is True  # Due to higher version of python available
+
+    with patch("runez.which", return_value="wget"):
+        assert "wget" == download_command("", "")[0]
+
+    with patch("runez.which", return_value=None):
+        assert "curl" == download_command("", "")[0]
 
 
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
@@ -110,6 +116,11 @@ def test_main():
 
 
 def test_dryrun(cli):
+    with runez.CaptureOutput(dryrun=True) as logged:
+        # Exercise bootstrap venv code in dryrun mode, this code will ever be exercise from pex-ed pickley runs
+        bootstrapped_virtualenv(CFG, "", CFG.available_pythons.invoker)
+        assert "virtualenv.pyz" in logged
+
     with patch("pickley.cli.needs_bootstrap", return_value=False):
         cli.run("-n auto-upgrade")
         assert cli.succeeded

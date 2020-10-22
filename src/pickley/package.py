@@ -5,8 +5,9 @@ import re
 
 import runez
 
-from pickley import abort, PICKLEY
+from pickley import abort, PICKLEY, VIRTUALENV
 from pickley.delivery import DeliveryMethod
+from pickley.env import valid_exe
 
 
 LOG = logging.getLogger(__name__)
@@ -22,6 +23,43 @@ def entry_points_from_txt(path):
 def entry_points_from_metadata(path):
     metadata = runez.read_json(path, default={})
     return metadata.get("extensions", {}).get("python.commands", {}).get("wrap_console")
+
+
+def bundled_virtualenv(cfg, folder, python):
+    bin = os.path.dirname(cfg.pickley_program_path)
+    virtualenv = os.path.join(bin, VIRTUALENV)
+    if not valid_exe(virtualenv):  # pragma: no cover, exercised only when running as pex
+        raise Exception()
+
+    runez.run(virtualenv, "-p", python.executable, folder)
+
+
+def virtualenv_zipapp(python):
+    if python.major < 3:
+        return "https://bootstrap.pypa.io/virtualenv/%s.%s/virtualenv.pyz" % (python.major, python.minor)
+
+    return "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz"
+
+
+def download_command(virtualenv, url):
+    wget = runez.which("wget")
+    if wget:
+        return [wget, "-O%s" % virtualenv, url]
+
+    return ["curl", "-s", "-o", virtualenv, url]
+
+
+def bootstrapped_virtualenv(cfg, folder, python):
+    virtualenv = os.path.realpath(os.path.join(folder, "virtualenv.pyz"))
+
+    url = virtualenv_zipapp(python)
+    args = download_command(virtualenv, url)
+    runez.run(*args)
+    runez.run(python.executable, virtualenv, folder)
+    runez.delete(virtualenv)
+
+
+VIRTUALENV_CHAIN = runez.FallbackChain(bundled_virtualenv, bootstrapped_virtualenv)
 
 
 class PythonVenv(object):
@@ -45,7 +83,15 @@ class PythonVenv(object):
                 # https://github.com/tox-dev/tox/issues/1689
                 force_virtualenv = PLATFORM == "darwin" and pspec.dashed == "tox"
 
-            pspec.cfg.create_virtualenv(self.folder, python, force_virtualenv=force_virtualenv)
+            if python.problem:
+                abort("Can't create virtualenv with python '%s': %s" % (runez.bold(python), runez.red(python.problem)))
+
+            runez.ensure_folder(self.folder, clean=True, logger=False)
+            if force_virtualenv or python.needs_virtualenv:
+                VIRTUALENV_CHAIN(pspec.cfg, self.folder, python)
+
+            else:
+                python.run("-mvenv", self.folder)
 
     def __repr__(self):
         return runez.short(self.folder)
@@ -88,7 +134,7 @@ class PythonVenv(object):
         if pspec.dashed == PICKLEY:
             return {PICKLEY: pspec.cfg.pickley_program_path}
 
-        r = self.run_python("-mpip", "show", "-f", pspec.dashed, fatal=False, logger=False)
+        r = self.run_python("-mpip", "show", "-f", pspec.dashed, fatal=False)
         if r.succeeded:
             location = None
             in_files = False
@@ -218,10 +264,18 @@ class VenvPackager(Packager):
     def install(pspec, ping=True):
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
         delivery.ping = ping
-        args = [pspec.specced]
-        if pspec.dashed == PICKLEY and runez.log.dev_folder():
-            project_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            args = ["-e", project_path]
+        if pspec.dashed == PICKLEY:
+            args = ["requests", "virtualenv"]  # Inject extra packages for pickley, to help bootstrap
+            project_path = runez.log.project_path()
+            if project_path:
+                args.append("-e")
+                args.append(project_path)
+
+            else:  # pragma: no cover, not exercised in tests
+                args.append(pspec.specced)
+
+        else:
+            args = [pspec.specced]
 
         venv = PythonVenv(pspec)
         venv.pip_install(*args)

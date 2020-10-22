@@ -3,7 +3,7 @@ import runez
 from mock import MagicMock, patch
 
 from pickley import PackageSpec, TrackedManifest
-from pickley.pypi import CurlRequestor, PepVersion, PypiInfo, RequestorChain, RequestsRequestor, UrllibRequestor
+from pickley.pypi import curl_get, PepVersion, PypiInfo, UrllibRequestor
 
 
 LEGACY_SAMPLE = """
@@ -35,7 +35,7 @@ FUNKY_SAMPLE = """
 
 
 def check_version(cfg, data, name, expected_version, index="https://mycompany.net/pypi/"):
-    with patch("pickley.pypi.RequestorChain.get", return_value=data):
+    with patch("runez.FallbackChain.__call__", return_value=data):
         pspec = PackageSpec(cfg, name)
         i = PypiInfo(index, pspec)
         assert str(i) == "%s %s" % (name, expected_version)
@@ -51,21 +51,21 @@ def test_pypi(temp_cfg, logged):
     check_version(temp_cfg, PRERELEASE_SAMPLE, "black", "18.3a1")
 
     logged.clear()
-    with patch("pickley.pypi.RequestorChain.get", return_value='{"info": {"version": "1.0"}}'):
+    with patch("runez.FallbackChain.__call__", return_value='{"info": {"version": "1.0"}}'):
         assert str(PypiInfo(None, PackageSpec(temp_cfg, "foo"))) == "foo 1.0"
 
     assert not logged
-    with patch("pickley.pypi.RequestorChain.get", return_value=FUNKY_SAMPLE):
+    with patch("runez.FallbackChain.__call__", return_value=FUNKY_SAMPLE):
         i = PypiInfo(None, PackageSpec(temp_cfg, "some.proj"))
         assert str(i) == "some-proj 1.3.0"
         assert "not pypi canonical" in logged.pop()
 
-    with patch("pickley.pypi.RequestorChain.get", return_value="{foo"):
+    with patch("runez.FallbackChain.__call__", return_value="{foo"):
         i = PypiInfo(None, PackageSpec(temp_cfg, "foo"))
         assert "invalid json" in i.problem
         assert "Failed to parse pypi json" in logged.pop()
 
-    with patch("pickley.pypi.RequestorChain.get", return_value="empty"):
+    with patch("runez.FallbackChain.__call__", return_value="empty"):
         i = PypiInfo(None, PackageSpec(temp_cfg, "foo"))
         assert "no versions published" in i.problem
         assert not logged
@@ -76,63 +76,27 @@ def test_pypi_chain(temp_cfg):
         # Simulate urllib querying
         from urllib.error import HTTPError
 
-        chain = RequestorChain([UrllibRequestor()])
         mocked_response = MagicMock()
         mocked_response.read.return_value = "empty"
         with patch("urllib.request.urlopen", return_value=mocked_response):
-            i = PypiInfo(None, PackageSpec(temp_cfg, "foo"), chain=chain)
+            i = PypiInfo(None, PackageSpec(temp_cfg, "foo"), pypi_get=runez.FallbackChain(UrllibRequestor()))
             assert "no versions published" in i.problem
 
-        chain = RequestorChain([UrllibRequestor()])
         with patch("urllib.request.urlopen", side_effect=HTTPError("", 404, None, None, None)):
-            i = PypiInfo(None, PackageSpec(temp_cfg, "foo"), chain=chain)
+            i = PypiInfo(None, PackageSpec(temp_cfg, "foo"), pypi_get=runez.FallbackChain(UrllibRequestor()))
             assert "no data" in i.problem
-        assert not chain.failed
 
-        chain = RequestorChain([UrllibRequestor()])
         with patch("urllib.request.urlopen", side_effect=HTTPError("", 500, None, None, None)):
             with pytest.raises(Exception):
-                PypiInfo(None, PackageSpec(temp_cfg, "foo"), chain=chain)
-        assert chain.failed
+                PypiInfo(None, PackageSpec(temp_cfg, "foo"), pypi_get=runez.FallbackChain(UrllibRequestor()))
 
-    # Simulate pypi querying via requests fail cases
-    with patch("pickley.pypi.RequestsRequestor._do_prepare", side_effect=Exception):
-        chain = RequestorChain([RequestsRequestor()])
-        assert str(chain) == "requests"
-        with pytest.raises(Exception):
-            PypiInfo(None, PackageSpec(temp_cfg, "foo"), chain=chain)
-
-        assert str(chain) == "requests*"
-
-    with patch("requests.sessions.Session.get", side_effect=Exception):
-        chain = RequestorChain([RequestsRequestor()])
-        assert str(chain) == "requests"
-        with pytest.raises(Exception):
-            PypiInfo(None, PackageSpec(temp_cfg, "foo"), chain=chain)
-
-        assert str(chain) == "requests*"
-
-    # Simulate pypi querying via curl fail cases
+    # Exercise curl_get code path
     with patch("runez.run", return_value=runez.program.RunResult("empty", code=0)):
-        chain = RequestorChain([CurlRequestor()])
-        i = PypiInfo(None, PackageSpec(temp_cfg, "foo"), chain=chain)
-        assert "no versions published" in i.problem
-        assert not chain.failed
+        assert curl_get("") == "empty"
 
     with patch("runez.run", return_value=runez.program.RunResult("failed")):
-        chain = RequestorChain([CurlRequestor()])
         with pytest.raises(Exception):
-            PypiInfo(None, PackageSpec(temp_cfg, "foo"), chain=chain)
-        assert chain.failed
-
-        # 2nd attempt also fails
-        with pytest.raises(Exception):
-            PypiInfo(None, PackageSpec(temp_cfg, "foo"), chain=chain)
-
-    if runez.PY2:
-        # No urllib with py2
-        with pytest.raises(Exception):
-            PypiInfo(None, PackageSpec(temp_cfg, "foo"), chain=RequestorChain([UrllibRequestor()]))
+            curl_get("")
 
 
 def test_version():

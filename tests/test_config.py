@@ -4,7 +4,7 @@ import pytest
 import runez
 from mock import MagicMock, patch
 
-from pickley import __version__, despecced, get_default_index, inform, PackageSpec
+from pickley import __version__, DEFAULT_PYTHONS, despecced, get_default_index, inform, PackageSpec
 from pickley import PickleyConfig, pypi_name_problem, specced
 from pickley.cli import auto_upgrade_v1
 from pickley.v1upgrade import V1Status
@@ -45,7 +45,7 @@ cli:  # empty
 defaults:
   delivery: wrap
   install_timeout: 30
-  python: /usr/bin/python3, python3, python
+  python: {DEFAULT_PYTHONS}
   version_check_delay: 5
 """
 
@@ -69,7 +69,7 @@ def test_config(logged):
     assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit"]
     assert cfg.resolved_bundle("bundle:dev2") == ["tox", "mgit", "pipenv"]
     actual = cfg.represented().strip()
-    expected = SAMPLE_CONFIG.strip().format(base=runez.short(cfg.base))
+    expected = SAMPLE_CONFIG.strip().format(base=runez.short(cfg.base), DEFAULT_PYTHONS=DEFAULT_PYTHONS)
     assert actual == expected
 
     assert not logged
