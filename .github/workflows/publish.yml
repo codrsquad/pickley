@@ -1,9 +1,9 @@
-name: Publish to pypi
+name: Publish
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]*'
 
 jobs:
   publish:
@@ -17,7 +17,7 @@ jobs:
         python-version: '3.8'
 
     - run: pip install -U pip setuptools wheel tox
-    - run: tox -e py,docs,style,security
+    - run: tox -e py,docs,style
     - run: python setup.py sdist bdist_wheel --universal
     - run: tox -e package
 
@@ -28,12 +28,11 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.ref }}
-        release_name: Pickley ${{ github.ref }}
+        release_name: v${{ github.ref }}
         draft: false
         prerelease: false
 
     - name: Upload pex
-      id: upload-pex
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,4 +1,4 @@
-name: Run tests and linter
+name: Validate
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ master ]
 
 jobs:
-  run-tests:
+  test:
 
     runs-on: ubuntu-latest
 
@@ -24,7 +24,7 @@ jobs:
     - run: pip install -U pip tox
     - run: tox -e py
 
-  check-code-style:
+  linter:
 
     runs-on: ubuntu-latest
 
