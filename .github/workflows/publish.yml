@@ -16,7 +16,7 @@ jobs:
       with:
         python-version: '3.8'
 
-    - run: pip install -U pip setuptools wheel tox
+    - run: pip install -U pip setuptools wheel twine tox
     - run: tox -e py,docs,style
     - run: python setup.py sdist bdist_wheel --universal
     - run: tox -e package
