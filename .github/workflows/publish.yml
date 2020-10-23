@@ -1,0 +1,50 @@
+name: Publish to pypi
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+
+    - run: pip install -U pip setuptools wheel tox
+    - run: tox -e py,docs,style,security
+    - run: python setup.py sdist bdist_wheel --universal
+    - run: tox -e package
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Pickley ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    - name: Upload pex
+      id: upload-pex
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: .tox/package/dist/pickley
+        asset_name: pickley
+        asset_content_type: application/zip
+
+    - name: Publish sdist and wheel
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_PICKLEY }}
+      run: twine upload --non-interactive dist/*

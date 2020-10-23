@@ -5,14 +5,6 @@ Automate installation of standalone python CLIs
     :target: https://pypi.org/project/pickley/
     :alt: Version on pypi
 
-.. image:: https://travis-ci.org/zsimic/pickley.svg?branch=master
-    :target: https://travis-ci.org/zsimic/pickley
-    :alt: Travis CI
-
-.. image:: https://codecov.io/gh/zsimic/pickley/branch/master/graph/badge.svg
-    :target: https://codecov.io/gh/zsimic/pickley
-    :alt: codecov
-
 .. image:: https://img.shields.io/pypi/pyversions/pickley.svg
     :target: https://github.com/zsimic/pickley
     :alt: Python versions tested (link to github project)

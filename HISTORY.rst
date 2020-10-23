@@ -2,7 +2,7 @@
 History
 =======
 
-2.1.1 (2020-10-22)
+2.1.1 (2020-10-23)
 ------------------
 
 * Much lighter pex package (400K, down from 5MB)
