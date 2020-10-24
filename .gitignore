@@ -2,22 +2,20 @@
 *~
 \#*#
 .\#*
+.*cache
+.DS_Store*
 *.lock
 .*version
+.idea/
+.vscode/
 
 # Build artifacts
 __pycache__/
 *.py[cod]
 *.egg*
 .tox/
-.venv/
+.venv*/
 build/
 dist/
 root/
-venv/
-
-# Caches
-.DS_Store
-.cache/
-.idea/
-.vscode/
+venv*/

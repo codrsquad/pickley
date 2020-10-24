@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/bin/bash -e
 
 target=$1
 if [[ -z $target ]]; then
-    target=/usr/local/bin
+    target=~/.local/bin
 fi
 if [[ ! -d $target ]]; then
     echo "Folder $target does not exist"

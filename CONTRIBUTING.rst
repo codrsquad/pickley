@@ -11,6 +11,7 @@ To get going locally, simply do this::
     cd pickley
 
     tox -e venv
+    .venv/bin/pickley --help
 
     # You have a venv now in ./.venv, use it, open it with pycharm etc
     source .venv/bin/activate
@@ -30,7 +31,7 @@ You can use pyenv_ for example to get python installations.
 
 Run:
 
-* ``tox -e py38`` (for example) to limit test run to only one python version.
+* ``tox -e py39`` (for example) to limit test run to only one python version.
 
 * ``tox -e style`` to run style checks only
 
@@ -40,7 +41,7 @@ Run:
 Test coverage
 =============
 
-Run ``tox ; tox -e coverage``, then open ``.tox/_reports/coverage/index.html``
+Run ``tox``, then ``open .tox/test-reports/htmlcov/index.html``
 
 
 .. _pyenv: https://github.com/pyenv/pyenv
