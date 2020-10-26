@@ -92,8 +92,6 @@ class PythonVenv(object):
 
             else:
                 python.run("-mvenv", self.folder)
-
-            if pspec.dashed == "tox":
                 self.pip_install("-U", "pip", "setuptools", "wheel")
 
     def __repr__(self):

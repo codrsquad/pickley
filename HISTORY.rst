@@ -2,6 +2,12 @@
 History
 =======
 
+2.1.4 (2020-10-26)
+------------------
+
+* Ensure latest pip, setuptools, wheel when using built-in venv module
+
+
 2.1.3 (2020-10-26)
 ------------------
 
