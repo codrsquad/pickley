@@ -11,7 +11,7 @@ from pickley.env import AvailablePythons, py_version_components, PythonFromPath,
 from pickley.pypi import PepVersion, PypiInfo
 
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
 VIRTUALENV = "virtualenv"
