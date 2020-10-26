@@ -63,8 +63,8 @@ Configuration files are json as their name implies, here's an example::
       "index": "https://pypi-mirror.mycompany.net/pypi",
       "delivery": "wrap",
       "pyenv": "~/.pyenv",
-      "install_timeout": 30,
-      "version_check_delay": 10
+      "install_timeout": 1800,
+      "version_check_delay": 300
     }
 
 
@@ -83,6 +83,6 @@ The above means:
 
 - Look for pyenv installations in ``~/.pyenv``
 
-- ``install_timeout`` is in minutes, how long to wait before considering an installation as failed
+- ``install_timeout``how long to wait (in seconds) before considering an installation as failed
 
-- ``version_check_delay`` is in minutes, how frequently to check for new latest versions on pypi
+- ``version_check_delay`` how frequently to check (in seconds) for new latest versions on pypi

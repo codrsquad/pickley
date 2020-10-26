@@ -2,6 +2,12 @@
 History
 =======
 
+2.1.3 (2020-10-26)
+------------------
+
+* Simplified to using seconds for ``install_timeout`` and ``version_check_delay``
+
+
 2.1.2 (2020-10-26)
 ------------------
 

@@ -245,13 +245,13 @@ def test_edge_cases(temp_folder, logged):
         Packager.package(None, None, None, None)
 
 
-def test_lock(temp_folder):
-    with SoftLock("foo", 600, 600) as lock:
+def test_lock(temp_folder, logged):
+    with SoftLock("foo", give_up=600) as lock:
         assert str(lock) == "foo"
         assert os.path.exists("foo")
         try:
             # Try to grab same lock a seconds time, give up after 1 second
-            with SoftLock("foo", 1, 600):
+            with SoftLock("foo", give_up=1, invalid=600):
                 assert False, "Should not grab same lock twice!"
 
         except SoftLockException as e:
@@ -261,7 +261,7 @@ def test_lock(temp_folder):
 
     # Check that lock detects bogus (or dead) PID
     runez.write("foo", "0\nbar\n")
-    with SoftLock("foo", 600, 600):
+    with SoftLock("foo", give_up=600):
         lines = runez.readlines("foo")
         assert lines[0] == str(os.getpid())  # File "foo" replaced with correct stuff
 

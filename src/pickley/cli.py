@@ -61,16 +61,16 @@ class SoftLock(object):
     A 'lock' is a simple file containing 2 lines: process id of the logfetch holding it, and the CLI args it was invoked with.
     """
 
-    def __init__(self, lock, give_up, invalid):
+    def __init__(self, lock, give_up=None, invalid=None):
         """
         Args:
             lock (str): Path to lock file
-            give_up (int): Timeout in seconds after which to give up (raise SoftLockException) if lock could not be acquired
-            invalid (int): Age in seconds after which to consider existing lock as invalid
+            give_up (int | None): Timeout in seconds after which to give up (raise SoftLockException) if lock could not be acquired
+            invalid (int | None): Age in seconds after which to consider existing lock as invalid
         """
         self.lock = lock
-        self.give_up = give_up
-        self.invalid = invalid
+        self.give_up = give_up or 120
+        self.invalid = invalid or self.give_up * 2
 
     def __repr__(self):
         return self.lock
@@ -80,7 +80,7 @@ class SoftLock(object):
         Returns:
             (str): CLI args of process holding the lock, if any
         """
-        if not runez.file.is_younger(self.lock, self.invalid):
+        if self.invalid and self.invalid > 0 and not runez.file.is_younger(self.lock, self.invalid):
             return None  # Lock file does not exist or invalidation age reached
 
         pid = None
@@ -132,11 +132,10 @@ class SoftLock(object):
         runez.delete(self.lock, logger=False)
 
 
-def perform_install(pspec, give_up=5, is_upgrade=False, force=False, quiet=False):
+def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
     """
     Args:
         pspec (PackageSpec): Package spec to install
-        give_up (int): Timeout in minutes after which to give up (raise SoftLockException) if lock could not be acquired
         is_upgrade (bool): If True, intent is an upgrade (not a new install)
         force (bool): If True, check latest version even if recently checked
         quiet (bool): If True, don't chatter
@@ -144,7 +143,7 @@ def perform_install(pspec, give_up=5, is_upgrade=False, force=False, quiet=False
     Returns:
         (pickley.TrackedManifest): Manifest is successfully installed (or was already up-to-date)
     """
-    with SoftLock(pspec.lock_path, give_up=give_up * 60, invalid=pspec.cfg.install_timeout(pspec) * 60):
+    with SoftLock(pspec.lock_path, give_up=pspec.cfg.install_timeout(pspec)):
         started = time.time()
         manifest = pspec.get_manifest()
         if is_upgrade and not manifest and not quiet:
@@ -197,12 +196,12 @@ def _find_base_from_program_path(path):
 
 
 def find_base():
-    base = os.environ.get("PICKLEY_ROOT")
-    if base:
-        if not os.path.isdir(base):
-            abort("PICKLEY_ROOT points to non-existing directory %s" % runez.red(base))
+    base_path = os.environ.get("PICKLEY_ROOT")
+    if base_path:
+        if not os.path.isdir(base_path):
+            abort("PICKLEY_ROOT points to non-existing directory %s" % runez.red(base_path))
 
-        return runez.resolved_path(base)
+        return runez.resolved_path(base_path)
 
     program_path = PickleyConfig.pickley_program_path
     return _find_base_from_program_path(program_path) or os.path.dirname(program_path)
@@ -235,8 +234,8 @@ def main(ctx, debug, config, index, python, delivery, packager):
     if runez.PY2:
         import codecs
 
-        UTF8Writer = codecs.getwriter("utf8")
-        sys.stdout = UTF8Writer(sys.stdout)
+        writer = codecs.getwriter("utf8")
+        sys.stdout = writer(sys.stdout)
 
     if ctx.invoked_subcommand == "package" and python is None:
         python = "python"  # Use invoker python by default when packaging
@@ -328,7 +327,7 @@ def bootstrap():
     if "pickley.bootstrap" in sys.argv[0]:
         # We're running from pass1 bootstrap
         setup_audit_log()
-        with SoftLock(pickleyspec.lock_path, give_up=60, invalid=60):
+        with SoftLock(pickleyspec.lock_path):
             VenvPackager.install(pickleyspec, ping=False)
 
         LOG.debug("Pass 2 bootstrap done")
@@ -337,7 +336,7 @@ def bootstrap():
 
     if needs_bootstrap(pickleyspec):
         setup_audit_log()
-        with SoftLock(pickleyspec.lock_path, give_up=60, invalid=60):
+        with SoftLock(pickleyspec.lock_path):
             delivery = DeliveryMethod.delivery_method_by_name(pickleyspec.settings.delivery)
             delivery.ping = False
             venv = PythonVenv(pickleyspec, folder=pickleyspec.cfg.meta.full_path(PICKLEY, "pickley.bootstrap"))
@@ -365,12 +364,12 @@ def auto_upgrade(force, package):
 
     pspec = PackageSpec(CFG, package)
     ping = pspec.ping_path
-    if not force and runez.file.is_younger(ping, CFG.version_check_delay(pspec) * 60):
+    if not force and runez.file.is_younger(ping, 5):  # 5 seconds cool down on version check to avoid bursts
         LOG.debug("Skipping auto-upgrade, checked recently")
         sys.exit(0)
 
     runez.touch(ping)
-    if runez.file.is_younger(pspec.lock_path, CFG.install_timeout(pspec) * 60):
+    if runez.file.is_younger(pspec.lock_path, CFG.install_timeout(pspec)):
         LOG.debug("Lock file present, another installation is in progress")
         sys.exit(0)
 

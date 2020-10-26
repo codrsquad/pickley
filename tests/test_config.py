@@ -37,16 +37,16 @@ cli:  # empty
   include:
     - bogus.json
     - /dev/null/non-existent-config-file.json
-  install_timeout: 2
+  install_timeout: 250
   pyenv: /dev/null
   python: /dev/null, /dev/null/foo
-  version_check_delay: 1
+  version_check_delay: 15
 
 defaults:
   delivery: wrap
-  install_timeout: 30
+  install_timeout: 1800
   python: {DEFAULT_PYTHONS}
-  version_check_delay: 5
+  version_check_delay: 300
 """
 
 
@@ -107,7 +107,7 @@ def test_desired_version(temp_folder, logged):
     assert str(mgit) == "mgit==1.0.0"
     assert str(pickley) == "pickley"
     assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
-    assert mgit.cfg.install_timeout(mgit) == 2  # From custom.json
+    assert mgit.cfg.install_timeout(mgit) == 250  # From custom.json
     logged.clear()
 
     with patch("pickley.PypiInfo", return_value=MagicMock(problem=None, latest="0.1.2")):

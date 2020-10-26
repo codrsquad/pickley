@@ -287,7 +287,7 @@ class PackageSpec(object):
         """Tracked in .pickley/.cache/<package>.latest"""
         path = self.cfg.cache.full_path("%s.latest" % self.dashed)
         age = self.cfg.version_check_delay(self)
-        if not force and age and runez.file.is_younger(path, age * 60):
+        if not force and age and runez.file.is_younger(path, age):
             latest = TrackedVersion.from_file(path)
             if latest:
                 return latest
@@ -361,7 +361,7 @@ class PickleyConfig(object):
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
-        defaults = dict(delivery="wrap", install_timeout=30, python=DEFAULT_PYTHONS, version_check_delay=5)
+        defaults = dict(delivery="wrap", install_timeout=1800, python=DEFAULT_PYTHONS, version_check_delay=300)
         self.configs.append(RawConfig(self, "defaults", defaults))
 
     def set_cli(self, config_path, delivery, index, python):
@@ -544,7 +544,7 @@ class PickleyConfig(object):
             pspec (PackageSpec | None): Package spec, when applicable
 
         Returns:
-            (int): How many minutes to give an installation to complete before assuming it failed
+            (int): How many seconds to give an installation to complete before assuming it failed
         """
         return self.get_value("install_timeout", pspec=pspec, validator=runez.to_int)
 
@@ -589,7 +589,7 @@ class PickleyConfig(object):
             pspec (PackageSpec | None): Package spec, when applicable
 
         Returns:
-            (int): How many minutes to wait before checking latest version again
+            (int): How many seconds to wait before checking latest version again
         """
         return self.get_value("version_check_delay", pspec=pspec, validator=runez.to_int)
 
