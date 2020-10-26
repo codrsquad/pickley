@@ -314,6 +314,7 @@ def bootstrap():
             names = os.listdir(".")
             if len(names) == 1:
                 venv.pip_install(names[0])
+                venv.run_python("-mpip", "install", "requests", "virtualenv", fatal=False)  # Inject extra packages to help bootstrap
 
             else:
                 abort("Internal error: wheel pack %s" % grand_parent)

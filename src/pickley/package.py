@@ -264,21 +264,20 @@ class VenvPackager(Packager):
     def install(pspec, ping=True):
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
         delivery.ping = ping
+        args = [pspec.specced]
+        extras = None
         if pspec.dashed == PICKLEY:
-            args = ["requests", "virtualenv"]  # Inject extra packages for pickley, to help bootstrap
+            # Inject extra packages for pickley, to help bootstrap
+            extras = ["virtualenv", "requests"]
             project_path = runez.log.project_path()
             if project_path:
-                args.append("-e")
-                args.append(project_path)
-
-            else:  # pragma: no cover, not exercised in tests
-                args.append(pspec.specced)
-
-        else:
-            args = [pspec.specced]
+                args = ["-e", project_path]  # Development mode (running from source checkout)
 
         venv = PythonVenv(pspec)
         venv.pip_install(*args)
+        if extras:
+            venv.run_python("-mpip", "install", *extras, fatal=False)
+
         entry_points = venv.find_entry_points(pspec)
         if not entry_points:
             runez.delete(pspec.meta_path)
