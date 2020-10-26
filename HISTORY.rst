@@ -2,14 +2,18 @@
 History
 =======
 
-2.1.1 (2020-10-23)
+2.1.1 (2020-10-26)
 ------------------
 
 * Much lighter pex package (400K, down from 5MB)
 
-* Install ``virtualenv`` on the fly when needed
+* Dynamically install/bootstrap ``virtualenv`` from its standalone zipapp
 
 * Better bootstrap, multiple fall-back ways to query pypi
+
+* Automatically "heal" installed venvs (when underlying python is moved for example)
+
+* Moved to Github Actions instead of Travis
 
 
 2.1.0 (2020-10-16)
