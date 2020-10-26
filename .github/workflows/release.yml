@@ -45,4 +45,4 @@ jobs:
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_PICKLEY }}
-      run: twine upload --non-interactive dist/*
+      run: twine upload dist/*
