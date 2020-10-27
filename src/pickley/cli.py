@@ -709,6 +709,10 @@ def delete_file(path):
     return 0
 
 
+def should_clean(basename):
+    return basename == "__pycache__" or (basename.endswith(".pyc") or basename.endswith(".pyo"))
+
+
 def clean_compiled_artifacts(folder):
     """Remove usual byte-code compiled artifacts from `folder`"""
     # See https://www.debian.org/doc/packaging-manuals/python-policy/ch-module_packages.html
@@ -716,12 +720,12 @@ def clean_compiled_artifacts(folder):
     dirs_to_be_deleted = []
     for root, dirs, files in os.walk(folder):
         for basename in dirs[:]:
-            if basename == "__pycache__":
+            if should_clean(basename):
                 dirs.remove(basename)
                 dirs_to_be_deleted.append(os.path.join(root, basename))
 
         for basename in files:
-            if basename.lower().endswith(".pyc"):
+            if should_clean(basename.lower()):
                 deleted += delete_file(os.path.join(root, basename))
 
     for path in dirs_to_be_deleted:
