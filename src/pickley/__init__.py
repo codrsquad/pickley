@@ -190,6 +190,19 @@ class PackageSpec(object):
         py_path = os.path.join(self.install_path, "bin", "python")
         return valid_exe(py_path)
 
+    def find_wheel(self, folder, fatal=True):
+        """list[str]: Wheel for this package found in 'folder', if any"""
+        result = []
+        prefix = "%s-" % self.wheelified
+        for fname in os.listdir(folder):
+            if fname.startswith(prefix):
+                result.append(os.path.join(folder, fname))
+
+        if len(result) == 1:
+            return result[0]
+
+        return runez.abort("Expecting 1 wheel, found: %s" % (result or "None"), fatal=fatal, return_value=None)
+
     def get_manifest(self):
         """TrackedManifest: Manifest of the current installation of this package"""
         manifest = TrackedManifest.from_file(self.manifest_path)

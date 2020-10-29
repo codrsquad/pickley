@@ -15,7 +15,7 @@ from pickley.package import bootstrapped_virtualenv, bundled_virtualenv, downloa
 
 
 # Run functional tests with  representative python versions only
-FUNCTIONAL_TEST = runez.python_version() in "2.7 3.8"
+FUNCTIONAL_TEST = runez.python_version() in "2.7 3.8" or "PYCHARM_HOSTED" in os.environ
 
 
 def test_base(temp_folder):
@@ -222,6 +222,9 @@ def test_dryrun(cli):
 def test_edge_cases(temp_folder, logged):
     import pickley.__main__  # noqa, just verify it imports
 
+    assert PackageSpec(CFG, "mgit").find_wheel(".", fatal=False) is None
+    assert "Expecting 1 wheel" in logged.pop()
+
     # Exercise protected_main()
     with patch("pickley.cli.main", side_effect=KeyboardInterrupt):
         with pytest.raises(SystemExit):
@@ -336,13 +339,14 @@ def test_installation(cli):
 
 @pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Long test, testing with most common python version only")
 def test_package_pex(cli):
-    expected = "dist/pickley"
-    cli.run("-ppex", "package", cli.project_folder)
-    assert cli.succeeded
-    assert "--version" in cli.logged
-    assert runez.is_executable(expected)
-    r = runez.run(expected, "--version")
-    assert r.succeeded
+    with patch.dict(os.environ, {"PEX_ROOT": os.getcwd()}):
+        expected = "dist/pickley"
+        cli.run("-ppex", "package", cli.project_folder)
+        assert cli.succeeded
+        assert "--version" in cli.logged
+        assert runez.is_executable(expected)
+        r = runez.run(expected, "--version")
+        assert r.succeeded
 
 
 @pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Functional test")
