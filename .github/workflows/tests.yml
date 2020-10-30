@@ -27,7 +27,7 @@ jobs:
       with:
         file: .tox/test-reports/coverage.xml
 
-  linter:
+  linters:
 
     runs-on: ubuntu-latest
 
