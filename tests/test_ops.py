@@ -8,10 +8,10 @@ import runez
 from mock import patch
 
 from pickley import get_pickley_program_path, PackageSpec, PickleyConfig
-from pickley.cli import CFG, find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
+from pickley.cli import find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.env import UnknownPython
-from pickley.package import bootstrapped_virtualenv, bundled_virtualenv, download_command, Packager
+from pickley.package import download_command, Packager
 
 
 # Run functional tests with  representative python versions only
@@ -41,20 +41,16 @@ def test_base(temp_folder):
     PickleyConfig.pickley_program_path = original
 
 
-def test_bootstrap(temp_folder):
-    # Simulate py3 became available
-    cfg = PickleyConfig()
-    cfg.set_base(".")
-
+def test_bootstrap(temp_cfg):
     assert needs_bootstrap() is False
 
-    pspec = PackageSpec(cfg, "pickley==0.0")
-    pspec.python = cfg.available_pythons.invoker
+    pspec = PackageSpec(temp_cfg, "pickley==0.0")
+    pspec.python = temp_cfg.available_pythons.invoker
     assert needs_bootstrap(pspec) is True  # Due to no manifest
 
     pspec.python = UnknownPython("py3")
     pspec.python.problem = None
-    pspec.python.major = cfg.available_pythons.invoker.major + 1
+    pspec.python.major = temp_cfg.available_pythons.invoker.major + 1
     assert needs_bootstrap(pspec) is True  # Due to higher version of python available
 
     with patch("runez.which", return_value="wget"):
@@ -116,16 +112,6 @@ def test_main():
 
 
 def test_dryrun(cli):
-    with patch("pickley.package.valid_exe", return_value=False):
-        with pytest.raises(Exception):
-            # pex edge case: virtualenv is not available in currently running venv
-            bundled_virtualenv(CFG, "", CFG.available_pythons.invoker)
-
-    with runez.CaptureOutput(dryrun=True) as logged:
-        # Exercise bootstrap venv code in dryrun mode, this code will ever be exercise from pex-ed pickley runs
-        bootstrapped_virtualenv(CFG, "", CFG.available_pythons.invoker)
-        assert "virtualenv.pyz" in logged
-
     with patch("pickley.cli.needs_bootstrap", return_value=False):
         cli.run("-n auto-upgrade")
         assert cli.succeeded
@@ -219,10 +205,10 @@ def test_dryrun(cli):
     cli.expect_success("-n list", "mgit")
 
 
-def test_edge_cases(temp_folder, logged):
+def test_edge_cases(temp_cfg, logged):
     import pickley.__main__  # noqa, just verify it imports
 
-    assert PackageSpec(CFG, "mgit").find_wheel(".", fatal=False) is None
+    assert PackageSpec(temp_cfg, "mgit").find_wheel(".", fatal=False) is None
     assert "Expecting 1 wheel" in logged.pop()
 
     # Exercise protected_main()
@@ -339,19 +325,31 @@ def test_installation(cli):
 
 @pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Long test, testing with most common python version only")
 def test_package_pex(cli):
-    with patch.dict(os.environ, {"PEX_ROOT": os.getcwd()}):
+    with patch.dict(os.environ, {"PEX_ROOT": os.path.join(os.getcwd(), ".pex")}):
         expected = "dist/pickley"
         cli.run("-ppex", "package", cli.project_folder)
         assert cli.succeeded
-        assert "--version" in cli.logged
         assert runez.is_executable(expected)
+
         r = runez.run(expected, "--version")
+        version = r.output
         assert r.succeeded
+
+        assert runez.run(expected, "diagnostics").succeeded
+
+        r = runez.run(expected, "--debug", "auto-upgrade")
+        assert r.succeeded
+        assert "Bootstrapping pickley" in r.full_output
+
+        assert runez.run(expected, "diagnostics").succeeded
+
+        manifest = runez.read_json(".pickley/pickley/.manifest.json")
+        assert manifest["version"] == version
 
 
 @pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Functional test")
 def test_package_venv(cli):
-    # Using --no-sanity-check for code coverage
+    # Using --no-sanity-check for code coverage + verify that "debian mode" works as expected
     runez.delete("/tmp/pickley")
     cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--no-sanity-check", "-sroot:root/usr/local/bin")
     assert cli.succeeded

@@ -2,8 +2,10 @@
 History
 =======
 
-2.1.6 (2020-11-)
+2.1.6 (2020-10-30)
 ------------------
+
+* Always use ``virtualenv`` instead of the builtin ``venv`` module
 
 * Upgraded to pex 2.1.20 when running with python3
 

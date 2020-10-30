@@ -1,5 +1,6 @@
 import logging
 import os
+import platform
 import re
 import sys
 import time
@@ -7,19 +8,19 @@ from datetime import datetime
 
 import runez
 
-from pickley.env import AvailablePythons, py_version_components, PythonFromPath, valid_exe
+from pickley.env import AvailablePythons, py_version_components, python_exe_path, PythonFromPath
 from pickley.pypi import PepVersion, PypiInfo
 
 
 __version__ = "2.1.5"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
-VIRTUALENV = "virtualenv"
 DOT_META = ".%s" % PICKLEY
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
 K_LEAVES = {"install_timeout", "pyenv", "version", "version_check_delay"}
+PLATFORM = platform.system().lower()
 
 DEFAULT_PYPI = "https://pypi.org/simple"
 DEFAULT_PYTHONS = "/usr/bin/python3, python3, python"
@@ -187,8 +188,8 @@ class PackageSpec(object):
 
     def is_healthily_installed(self):
         """Double-check that current venv is still usable"""
-        py_path = os.path.join(self.install_path, "bin", "python")
-        return valid_exe(py_path)
+        py_path = python_exe_path(self.install_path)
+        return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=None).succeeded
 
     def find_wheel(self, folder, fatal=True):
         """list[str]: Wheel for this package found in 'folder', if any"""
@@ -354,9 +355,19 @@ class PickleyConfig(object):
         self.pip_conf, self.pip_conf_index = get_default_index("~/.config/pip/pip.conf", "/etc/pip.conf")
         self.default_index = self.pip_conf_index or DEFAULT_PYPI
         self._explored = set()
+        self._bundled_virtualenv_path = runez.UNSET
 
     def __repr__(self):
         return "<not-configured>" if self.base is None else runez.short(self.base)
+
+    @property
+    def bundled_virtualenv_path(self):
+        """str: Path to bundled virtualenv executable, if present"""
+        if self._bundled_virtualenv_path is runez.UNSET:
+            virtualenv = os.path.join(os.path.dirname(self.pickley_program_path), "virtualenv")
+            self._bundled_virtualenv_path = virtualenv if runez.is_executable(virtualenv) else None
+
+        return self._bundled_virtualenv_path
 
     def set_base(self, base_path):
         """

@@ -11,9 +11,9 @@ import click
 import runez
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, specced, validate_pypi_name
+from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, PLATFORM, specced, validate_pypi_name
 from pickley.delivery import DeliveryMethod, PICKLEY
-from pickley.package import PexPackager, PLATFORM, PythonVenv, VenvPackager
+from pickley.package import PexPackager, PythonVenv, VenvPackager
 from pickley.v1upgrade import V1Status
 
 
@@ -307,7 +307,6 @@ def bootstrap():
         setup_audit_log()
         LOG.debug("Bootstrapping pickley %s with %s" % (pickleyspec.version, pickleyspec.python))
         venv = PythonVenv(pickleyspec)
-        venv.pip_install("wheel")
         with runez.TempFolder():
             venv.run_python("-mwheel", "pack", grand_parent)
             names = os.listdir(".")
@@ -618,13 +617,13 @@ class PackageFinalizer(object):
             if not os.path.exists("setup.py"):
                 return "No setup.py in %s" % self.folder
 
-            r = runez.run(sys.executable, "setup.py", "--name", dryrun=False, fatal=False, logger=None)
+            r = runez.run(sys.executable, "setup.py", "--name", dryrun=False, fatal=False, logger=False)
             self.package_name = r.output
             if r.failed or not self.package_name:
                 return "Could not determine package name from setup.py"
 
             validate_pypi_name(self.package_name)
-            r = runez.run(sys.executable, "setup.py", "--version", dryrun=False, fatal=False, logger=None)
+            r = runez.run(sys.executable, "setup.py", "--version", dryrun=False, fatal=False, logger=False)
             self.package_version = r.output
             if r.failed or not self.package_version:
                 return "Could not determine package version from setup.py"
@@ -636,15 +635,14 @@ class PackageFinalizer(object):
         if not exe or not sanity_check:
             return None
 
-        r = runez.run(exe, sanity_check, fatal=False, logger=None)
-        exe_info = r.output or r.error
+        r = runez.run(exe, sanity_check, fatal=False, logger=False)
         if r.failed:
             if does_not_implement_cli_flag(r.output, r.error):
                 return "does not respond to %s" % sanity_check
 
             abort("'%s' failed %s sanity check: %s" % (exe, sanity_check, r.full_output))
 
-        return runez.first_line(exe_info)
+        return runez.first_line(r.output or r.error)
 
     def finalize(self):
         """Run sanity check and/or symlinks, and return a report"""
@@ -703,7 +701,7 @@ class Symlinker(object):
 
 
 def delete_file(path):
-    if runez.delete(path, fatal=False, logger=None) > 0:
+    if runez.delete(path, fatal=False, logger=False) > 0:
         return 1
 
     return 0

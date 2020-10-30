@@ -1,18 +1,16 @@
 import logging
 import os
-import platform
 import re
 
 import runez
 
-from pickley import abort, PICKLEY, VIRTUALENV
+from pickley import abort, PICKLEY
 from pickley.delivery import DeliveryMethod
-from pickley.env import valid_exe
+from pickley.env import python_exe_path
 
 
 LOG = logging.getLogger(__name__)
 RE_BIN_SCRIPT = re.compile(r"^[./]+/bin/([-a-z0-9_.]+)$", re.IGNORECASE)
-PLATFORM = platform.system().lower()
 
 
 def entry_points_from_txt(path):
@@ -25,74 +23,46 @@ def entry_points_from_metadata(path):
     return metadata.get("extensions", {}).get("python.commands", {}).get("wrap_console")
 
 
-def bundled_virtualenv(cfg, folder, python):
-    bin = os.path.dirname(cfg.pickley_program_path)
-    virtualenv = os.path.join(bin, VIRTUALENV)
-    if not valid_exe(virtualenv):
-        raise Exception()
-
-    runez.run(virtualenv, "-p", python.executable, folder)
-
-
-def virtualenv_zipapp(python):
-    if python.major < 3:
-        return "https://bootstrap.pypa.io/virtualenv/%s.%s/virtualenv.pyz" % (python.major, python.minor)
-
-    return "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz"
-
-
-def download_command(virtualenv, url):
+def download_command(target, url):
     wget = runez.which("wget")
     if wget:
-        return [wget, "-O%s" % virtualenv, url]
+        return [wget, "-q", "-O%s" % target, url]
 
-    return ["curl", "-s", "-o", virtualenv, url]
-
-
-def bootstrapped_virtualenv(cfg, folder, python):
-    virtualenv = os.path.realpath(os.path.join(folder, "virtualenv.pyz"))
-
-    url = virtualenv_zipapp(python)
-    args = download_command(virtualenv, url)
-    runez.run(*args)
-    runez.run(python.executable, virtualenv, folder)
-    runez.delete(virtualenv)
-
-
-VIRTUALENV_CHAIN = runez.FallbackChain(bundled_virtualenv, bootstrapped_virtualenv)
+    return ["curl", "-s", "-o", target, url]
 
 
 class PythonVenv(object):
 
-    def __init__(self, pspec, folder=None, python=None, index=None, force_virtualenv=None):
+    def __init__(self, pspec, folder=None, python=None, index=None):
         """
         Args:
             pspec (pickley.PackageSpec): Package spec to install
             folder (str | None): Target folder (default: pspec.install_path)
             python (pickley.env.PythonInstallation): Python to use (default: pspec.python)
             index (str | None): Optional custom pypi index to use (default: pspec.index)
-            force_virtualenv (bool): If True, use virtualenv instead of built-in `venv` module
         """
-        self.folder = folder if folder is not None else pspec.install_path
+        if folder is None:
+            folder = pspec.install_path
+
         if python is None:
             python = pspec.python
 
+        self.folder = folder
         self.index = index or pspec.index
-        if self.folder:
-            if force_virtualenv is None:
-                # https://github.com/tox-dev/tox/issues/1689
-                force_virtualenv = PLATFORM == "darwin" and pspec.dashed == "tox"
-
+        if folder:
             if python.problem:
                 abort("Can't create virtualenv with python '%s': %s" % (runez.bold(python), runez.red(python.problem)))
 
-            runez.ensure_folder(self.folder, clean=True, logger=False)
-            if force_virtualenv or python.needs_virtualenv:
-                VIRTUALENV_CHAIN(pspec.cfg, self.folder, python)
+            runez.ensure_folder(folder, clean=True, logger=False)
+            if pspec.cfg.bundled_virtualenv_path:
+                runez.run(pspec.cfg.bundled_virtualenv_path, "-p", python.executable, folder)
+                return
 
-            else:
-                python.run("-mvenv", self.folder)
-                self.pip_install("-U", "pip", "setuptools", "wheel")
+            with runez.TempFolder():
+                zipapp = "virtualenv.pyz"
+                args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
+                runez.run(*args)
+                runez.run(python.executable, zipapp, folder)
 
     def __repr__(self):
         return runez.short(self.folder)
@@ -187,7 +157,7 @@ class PythonVenv(object):
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
-        return runez.run(self.bin_path("python"), *args, **kwargs)
+        return runez.run(python_exe_path(self.folder), *args, **kwargs)
 
     def _run_pip(self, *args, **kwargs):
         return self.run_python("-mpip", "-v", *args, **kwargs)
@@ -240,10 +210,10 @@ class PexPackager(Packager):
         pex_root = os.path.join(build_folder, "pex-root")
         tmp = os.path.join(build_folder, "pex-tmp")
         wheels = os.path.join(build_folder, "wheels")
-        runez.ensure_folder(tmp, logger=None)
-        runez.ensure_folder(wheels, logger=None)
+        runez.ensure_folder(tmp, logger=False)
+        runez.ensure_folder(wheels, logger=False)
         pex_venv = PythonVenv(pspec, folder=os.path.join(build_folder, "pex-venv"))
-        pex_venv.pip_install("wheel", "pex==2.1.20", *requirements)
+        pex_venv.pip_install("pex==2.1.20", *requirements)
         pex_venv.pip_wheel("-v", "--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
         entry_points = pex_venv.find_entry_points(pspec)
         if entry_points:
@@ -256,7 +226,6 @@ class PexPackager(Packager):
                     "-mpex", "-v", "-o%s" % target, "--pex-root", pex_root, "--tmpdir", tmp,
                     "--no-index", "--find-links", wheels,  # resolver options
                     "--no-compile",  # output options
-                    "--python-shebang", "/usr/bin/env python%s" % pspec.python.major,  # environment options
                     "-c%s" % name,  # entry point options
                     wheel_path,
                 )

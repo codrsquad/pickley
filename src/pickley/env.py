@@ -8,14 +8,6 @@ import runez
 RE_PYTHON_LOOSE_VERSION = re.compile(r"(py(thon *)?)?([0-9]+)?\.?([0-9]+)?\.?([0-9]*)", re.IGNORECASE)
 
 
-def valid_exe(path, *args):
-    if not args:
-        args = ["--version"]
-
-    r = runez.run(path, *args, dryrun=False, fatal=False, logger=None)
-    return r.succeeded
-
-
 def py_version_components(text, loose=True):
     m = RE_PYTHON_LOOSE_VERSION.match(text)
     if m and m.group(0) == text:
@@ -82,13 +74,6 @@ class PythonInstallation(object):
     def is_invoker(self):
         return False
 
-    @property
-    def needs_virtualenv(self):
-        if self.major < 3 or (self.major == 3 and self.minor <= 7 and self.patch < 2):
-            return True
-
-        return not valid_exe(self.executable, "-mensurepip", "--help")
-
     def satisfies(self, desired):
         """
         Args:
@@ -107,9 +92,19 @@ class PythonInstallation(object):
         if this.startswith(desired):
             return True
 
-    def run(self, *args, **kwargs):
-        """Invoke python from this installation with given args"""
-        return runez.run(self.executable, *args, **kwargs)
+
+def python_exe_path(venv, major=None):
+    if venv:
+        if major:
+            names = ("python%s" % major, "python")
+
+        else:
+            names = ("python", "python3", "python2")
+
+        for name in names:
+            path = os.path.join(venv, "bin", name)
+            if runez.is_executable(path):
+                return path
 
 
 class InvokerPython(PythonInstallation):
@@ -140,12 +135,8 @@ class InvokerPython(PythonInstallation):
             elif "Python.framework" in prefix and "Versions/2" in prefix:
                 return "/usr/bin/python"
 
-            path = os.path.join(prefix, "bin", "python%s" % major)
-            if runez.is_executable(path):
-                return path
-
-            path = os.path.join(prefix, "bin", "python")
-            if runez.is_executable(path):
+            path = python_exe_path(prefix, major=major)
+            if path:
                 return path
 
         return sys.executable  # Running from pex (NOT a venv)
@@ -167,7 +158,7 @@ class PythonFromPath(PythonInstallation):
         if not version:
             r = runez.run(self.executable, "--version", dryrun=False, fatal=False, logger=None)
             if not r.succeeded:
-                self.problem = "does not respond to --version"
+                self.problem = "does not respond to --version: %s" % runez.short(r.full_output)
                 return
 
             version = r.full_output

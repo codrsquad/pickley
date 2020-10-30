@@ -3,9 +3,7 @@ import os
 import runez
 from mock import patch
 
-from pickley import PickleyConfig
 from pickley.env import InvokerPython, PythonFromPath, std_python_name, UnknownPython
-from pickley.package import virtualenv_zipapp
 
 
 def mocked_invoker(**sysattrs):
@@ -26,14 +24,12 @@ def test_invoker():
         p = mocked_invoker(base_prefix="/usr")
         assert p.executable == "/usr/bin/python3"
         assert p.major == 3
-        assert "2.7" not in virtualenv_zipapp(p)
 
     # Linux case without py3
     with patch("runez.is_executable", return_value=True):
         p = mocked_invoker(major=2, real_prefix="/usr")
         assert p.executable == "/usr/bin/python2"
         assert p.major == 2
-        assert "2.7" in virtualenv_zipapp(p)
 
     # Linux case without py3 or py2 (but only /usr/bin/python)
     with patch("runez.is_executable", side_effect=lambda x: "python2" not in x):
@@ -97,10 +93,8 @@ def mk_python(path, version, executable=True):
         runez.make_executable(path)
 
 
-def test_searching(temp_folder):
-    cfg = PickleyConfig()
-    cfg.set_base(".")
-    cfg.configs[0].values["pyenv"] = "pyenv-folder"
+def test_searching(temp_cfg):
+    temp_cfg.configs[0].values["pyenv"] = "pyenv-folder"
 
     # Simulate a few dummy python installations
     mk_python("pythonrc", "Python 2.7.18rc1")
@@ -108,7 +102,6 @@ def test_searching(temp_folder):
     assert p.major == 2
     assert p.minor == 7
     assert p.patch == 18
-    assert p.needs_virtualenv
 
     mk_python("p1/python", "2.5.0")
     mk_python("p2/python3", "2.9.1")  # picking an unlikely version, for testing
@@ -121,17 +114,14 @@ def test_searching(temp_folder):
     assert p.problem == "--version did not yield major version component"
     assert p.version == "0.1.2"
 
-    runez.write("dummy/python2", "#!/bin/bash\nexit 1\n")
+    runez.write("dummy/python2", "#!/bin/bash\necho oops\nexit 1\n")
     runez.make_executable("dummy/python2")
     p = PythonFromPath("dummy/python2")
     assert p.executable == "dummy/python2"
-    assert p.problem == "does not respond to --version"
+    assert p.problem == "does not respond to --version: oops"
     assert not p.version
 
-    p = PythonFromPath("p1/python", version="3.7.1")  # Simulate 3.7.1
-    assert p.needs_virtualenv
-
-    ap = cfg.available_pythons
+    ap = temp_cfg.available_pythons
     with patch.dict(os.environ, {"PATH": "p1:p2"}, clear=True):
         invoker = ap.find_python()
         assert ap.find_python(None) is invoker

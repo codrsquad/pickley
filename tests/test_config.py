@@ -83,7 +83,7 @@ def test_default_index(temp_folder, logged):
     assert get_default_index() == (None, None)
 
     # Verify that we try 'a' (no such file), then find a configured index in 'b'
-    runez.write("b", "[global]\nindex-url = https://example.com/pypi", logger=None)
+    runez.write("b", "[global]\nindex-url = https://example.com/pypi", logger=False)
     assert get_default_index("a", "b") == ("b", "https://example.com/pypi")
 
     # Not logging, since default is pypi, and which index is used can be configured and seen via diagnostics command
