@@ -178,7 +178,7 @@ def test_dryrun(cli):
     cli.expect_success("-n list", "No packages installed")
 
     cli.expect_failure("-n package foo", "Folder ... does not exist")
-    cli.expect_failure("-n package . --no-sanity-check -sfoo", "Invalid symlink specification")
+    cli.expect_failure("-n package . -sfoo", "Invalid symlink specification")
     cli.expect_failure("-n package . -sroot:root/usr/local/bin", "No setup.py in ")
 
     runez.touch("setup.py")
@@ -349,10 +349,11 @@ def test_package_pex(cli):
 
 @pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Functional test")
 def test_package_venv(cli):
-    # Using --no-sanity-check for code coverage + verify that "debian mode" works as expected
+    # Verify that "debian mode" works as expected, with -droot/tmp <-> /tmp
     runez.delete("/tmp/pickley")
-    cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--no-sanity-check", "-sroot:root/usr/local/bin")
+    cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--sanity-check=--version", "-sroot:root/usr/local/bin")
     assert cli.succeeded
+    assert "--version" in cli.logged
     assert runez.is_executable("/tmp/pickley/bin/pickley")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
     assert r.succeeded

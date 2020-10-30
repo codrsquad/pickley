@@ -5,6 +5,8 @@ Release notes
 2.1.6 (2020-10-30)
 ------------------
 
+* Removed default sanity check, use ``pickley package --sanity-check=--version`` to enable it explicitly
+
 * Always use ``virtualenv`` instead of the builtin ``venv`` module
 
 * Upgraded to pex 2.1.20 when running with python3

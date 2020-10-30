@@ -532,8 +532,8 @@ def uninstall(all, packages):
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
 @click.option("--symlink", "-s", help="Create symlinks for debian-style packaging, example: root:root/usr/local/bin")
 @click.option("--no-compile", is_flag=True, help="Don't byte-compile packaged venv")
-@click.option("--no-sanity-check", is_flag=True, help="Disable sanity check")
-@click.option("--sanity-check", default="--version", show_default=True, help="Args to invoke produced package for sanity check")
+@click.option("--no-sanity-check", is_flag=True, hidden=True, help="Disable sanity check")
+@click.option("--sanity-check", default=None, show_default=True, help="Args to invoke produced package as a sanity check")
 @click.option("--requirement", "-r", multiple=True, help="Install from the given requirements file (can be used multiple times)")
 @click.argument("folder", required=True)
 def package(build, dist, symlink, no_compile, no_sanity_check, sanity_check, folder, requirement):
@@ -541,9 +541,6 @@ def package(build, dist, symlink, no_compile, no_sanity_check, sanity_check, fol
     folder = runez.resolved_path(folder)
     if not os.path.isdir(folder):
         abort("Folder %s does not exist" % runez.red(runez.short(folder)))
-
-    if no_sanity_check:
-        sanity_check = None
 
     finalizer = PackageFinalizer(folder, build, dist, symlink, sanity_check, requirement, compile=not no_compile)
     problem = finalizer.resolve()
@@ -635,7 +632,7 @@ class PackageFinalizer(object):
         if not exe or not sanity_check:
             return None
 
-        r = runez.run(exe, sanity_check, fatal=False, logger=False)
+        r = runez.run(exe, sanity_check, fatal=False)
         if r.failed:
             if does_not_implement_cli_flag(r.output, r.error):
                 return "does not respond to %s" % sanity_check
