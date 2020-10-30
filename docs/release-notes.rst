@@ -7,6 +7,8 @@ Release notes
 
 * Removed default sanity check, use ``pickley package --sanity-check=--version`` to enable it explicitly
 
+* Use logging level INFO by default for ``pickley package``
+
 * Always use ``virtualenv`` instead of the builtin ``venv`` module
 
 * Upgraded to pex 2.1.20 when running with python3

@@ -113,7 +113,7 @@ class SoftLock(object):
             print("Would acquire %s" % runez.short(self.lock))
 
         else:
-            logging.debug("Acquired %s" % runez.short(self.lock))
+            LOG.debug("Acquired %s" % runez.short(self.lock))
 
         runez.write(self.lock, "%s\n%s\n" % (os.getpid(), runez.quoted(sys.argv[1:])), logger=False)
         return self
@@ -124,7 +124,7 @@ class SoftLock(object):
             print("Would release %s" % runez.short(self.lock))
 
         else:
-            logging.debug("Released %s" % runez.short(self.lock))
+            LOG.debug("Released %s" % runez.short(self.lock))
 
         if CFG.base:
             runez.Anchored.pop(CFG.base.path)
@@ -237,8 +237,11 @@ def main(ctx, debug, config, index, python, delivery, packager):
         writer = codecs.getwriter("utf8")
         sys.stdout = writer(sys.stdout)
 
-    if ctx.invoked_subcommand == "package" and python is None:
-        python = "python"  # Use invoker python by default when packaging
+    level = logging.WARNING
+    if ctx.invoked_subcommand == "package":
+        level = logging.INFO
+        if python is None:
+            python = "python"  # Use invoker python by default when packaging
 
     CFG.set_cli(config, delivery, index, python)
     if ctx.invoked_subcommand != "package":
@@ -247,7 +250,7 @@ def main(ctx, debug, config, index, python, delivery, packager):
     runez.log.setup(
         debug=debug,
         console_format="%(levelname)s %(message)s" if debug else "%(message)s",
-        console_level=logging.WARNING,
+        console_level=level,
         console_stream=sys.stderr,
         locations=None,
     )
@@ -538,6 +541,8 @@ def uninstall(all, packages):
 @click.argument("folder", required=True)
 def package(build, dist, symlink, no_compile, no_sanity_check, sanity_check, folder, requirement):
     """Package a project from source checkout"""
+    started = time.time()
+    runez.log.spec.default_logger = LOG.info
     folder = runez.resolved_path(folder)
     if not os.path.isdir(folder):
         abort("Folder %s does not exist" % runez.red(runez.short(folder)))
@@ -553,7 +558,8 @@ def package(build, dist, symlink, no_compile, no_sanity_check, sanity_check, fol
         inform(report)
         inform("")
 
-    inform("Packaged %s successfully" % runez.bold(runez.short(folder)))
+    elapsed = "in %s" % runez.represented_duration(time.time() - started)
+    inform("Packaged %s successfully %s" % (runez.bold(runez.short(folder)), runez.dim(elapsed)))
 
 
 class PackageFinalizer(object):
@@ -650,7 +656,7 @@ class PackageFinalizer(object):
             dist_folder = runez.resolved_path(self.dist)
             exes = PACKAGER.package(pspec, self.build, dist_folder, self.requirements)
             if exes:
-                report = PrettyTable(["Executable", self.sanity_check], border=self.border)
+                report = PrettyTable(["Packaged executable", self.sanity_check], border=self.border)
                 report.header.style = "bold"
                 if not self.sanity_check:
                     report.header[1].shown = False
@@ -727,4 +733,4 @@ def clean_compiled_artifacts(folder):
         deleted += delete_file(path)
 
     if deleted:
-        logging.debug("Deleted %s compiled artifacts", deleted)
+        LOG.info("Deleted %s compiled artifacts", deleted)
