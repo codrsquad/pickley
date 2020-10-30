@@ -2,6 +2,12 @@
 Release notes
 =============
 
+2.1.8 (2020-10-30)
+------------------
+
+* Resolve path before invoking virtualenv.pyz
+
+
 2.1.7 (2020-10-30)
 ------------------
 

@@ -59,7 +59,7 @@ class PythonVenv(object):
                 return
 
             runez.ensure_folder(pspec.cfg.cache.path, logger=False)
-            zipapp = pspec.cfg.cache.full_path("virtualenv.pyz")
+            zipapp = os.path.realpath(pspec.cfg.cache.full_path("virtualenv.pyz"))
             args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
             runez.run(*args)
             runez.run(python.executable, zipapp, folder)

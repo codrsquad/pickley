@@ -653,6 +653,7 @@ class PackageFinalizer(object):
             runez.ensure_folder(self.build, clean=True)
             CFG.set_base(self.build)
             pspec = PackageSpec(CFG, specced(self.package_name, self.package_version))
+            LOG.info("Using python: %s" % pspec.python)
             dist_folder = runez.resolved_path(self.dist)
             exes = PACKAGER.package(pspec, self.build, dist_folder, self.requirements)
             if exes:
