@@ -228,6 +228,7 @@ class PexPackager(Packager):
                     "--no-index", "--find-links", wheels,  # resolver options
                     "--no-compile",  # output options
                     "-c%s" % name,  # entry point options
+                    "--python-shebang", "/usr/bin/env python%s" % pspec.python.major,
                     wheel_path,
                 )
                 result.append(target)
