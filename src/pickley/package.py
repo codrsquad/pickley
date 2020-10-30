@@ -58,11 +58,12 @@ class PythonVenv(object):
                 runez.run(pspec.cfg.bundled_virtualenv_path, "-p", python.executable, folder)
                 return
 
-            with runez.TempFolder():
-                zipapp = "virtualenv.pyz"
-                args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
-                runez.run(*args)
-                runez.run(python.executable, zipapp, folder)
+            runez.ensure_folder(pspec.cfg.cache.path, logger=False)
+            zipapp = pspec.cfg.cache.full_path("virtualenv.pyz")
+            args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
+            runez.run(*args)
+            runez.run(python.executable, zipapp, folder)
+            runez.delete(zipapp, fatal=False)
 
     def __repr__(self):
         return runez.short(self.folder)
