@@ -10,17 +10,27 @@ To get going locally, simply do this::
     git clone https://github.com/zsimic/pickley.git
     cd pickley
 
-    tox -e venv
+    # Conveniently create the .venv via tox
+    tox -re venv
     .venv/bin/pickley --help
 
-    # You have a venv now in ./.venv, use it, open it with pycharm etc
+    # ./.venv/ is a regular venv, you can use it with PyCharm etc
     source .venv/bin/activate
-    which python
     which pickley
-    pickley install tox
-    pickley list
-
     deactivate
+
+    # You can use pickley directly from the dev .venv/
+    .venv/bin/pickley --help
+    .venv/bin/pickley install mgit
+    .venv/bin/pickley list
+    .venv/bin/pickley config
+
+    # Base is .venv/root/ when running in dev mode
+    .venv/root/mgit --version
+
+    # Package it up as a pex
+    tox -e package
+    head -1 .tox/package/dist/pickley
 
 
 Running the tests
@@ -35,13 +45,8 @@ Run:
 
 * ``tox -e style`` to run style checks only
 
-* etc
-
-
-Test coverage
-=============
-
-Run ``tox``, then ``open .tox/test-reports/htmlcov/index.html``
+* After running ``tox``,
+  you can see test coverage report: ``open .tox/test-reports/htmlcov/index.html``
 
 
 .. _pyenv: https://github.com/pyenv/pyenv
