@@ -75,62 +75,23 @@ Release notes
 
 * Workaround for https://github.com/tox-dev/tox/issues/1689
 
-
-2.0.13 (2020-10-13)
--------------------
-
-* Clean byte-compile artifacts after ``--version`` sanity check was called
-
-
-2.0.12 (2020-10-13)
--------------------
-
-* Remove any left-over byte-compile artifacts when ``--no-compile`` is used
-
-
-2.0.11 (2020-10-13)
--------------------
-
 * ``compileall`` packaged venvs by default (can be turned off via ``--no-compile``)
 
 * Disable OSX ARM explicitly for now
 
-
-2.0.10 (2020-10-12)
--------------------
-
 * Respect ``--python`` CLI flag in ``package`` command
-
-
-2.0.9 (2020-10-07)
-------------------
 
 * Prevent OSX framework python from polluting created venvs
 
 * Show why sanity check failed in ``package`` command
 
-
-* Publish with 3.8
-
-
-2.0.7 (2020-09-02)
-------------------
+* Publish with python 3.8
 
 * Properly compare versions when auto-determining desired version
-
-
-2.0.6 (2020-06-18)
-------------------
 
 * Corrected determination of invoker python on Linux
 
 * Corrected bootstrap case when py3 becomes available after initial install
-
-* Corrected ``package --symlink``
-
-
-2.0.1 (2020-06-11)
-------------------
 
 * Default to using ``/usr/bin/python3`` when possible (was sticking to system python before)
 
