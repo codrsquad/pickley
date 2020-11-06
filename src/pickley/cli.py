@@ -143,6 +143,11 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
     Returns:
         (pickley.TrackedManifest): Manifest is successfully installed (or was already up-to-date)
     """
+    skip_reason = pspec.skip_reason(force)
+    if skip_reason:
+        inform("Skipping installation of %s: %s" % (pspec.dashed, runez.bold(skip_reason)))
+        return None
+
     with SoftLock(pspec.lock_path, give_up=pspec.cfg.install_timeout(pspec)):
         started = time.time()
         manifest = pspec.get_manifest()
@@ -397,6 +402,11 @@ def check(force, verbose, packages):
         sys.exit(0)
 
     for pspec in packages:
+        skip_reason = pspec.skip_reason(force)
+        if skip_reason:
+            print("%s: %s, %s" % (pspec.dashed, runez.bold("skipped"), runez.dim(skip_reason)))
+            continue
+
         desired = pspec.get_desired_version_info(force=force)
         dv = runez.bold(desired and desired.version)
         manifest = pspec.get_manifest()

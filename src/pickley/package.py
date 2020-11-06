@@ -205,8 +205,8 @@ class PexPackager(Packager):
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements):
         runez.ensure_folder(build_folder, clean=True)
-        if runez.PY2:
-            return PexPackager.package_v2(pspec, build_folder, dist_folder, requirements)
+        if pspec.python.major < 3:
+            abort("Packaging with pex is not supported any more with python2")
 
         pex_root = os.path.join(build_folder, "pex-root")
         tmp = os.path.join(build_folder, "pex-tmp")
@@ -230,28 +230,6 @@ class PexPackager(Packager):
                     "-c%s" % name,  # entry point options
                     "--python-shebang", "/usr/bin/env python%s" % pspec.python.major,
                     wheel_path,
-                )
-                result.append(target)
-
-            return result
-
-    @staticmethod
-    def package_v2(pspec, build_folder, dist_folder, requirements):
-        """Old python2-compatible implementation, will be retired in the future, uses old pex 1.6.7 which works with py2"""
-        wheels = os.path.join(build_folder, "wheels")
-        pex_venv = PythonVenv(pspec, folder=os.path.join(build_folder, "pex-venv"))
-        pex_venv.pip_install("wheel", "pex==1.6.7", *requirements)
-        pex_venv.pip_wheel("-v", "--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
-        entry_points = pex_venv.find_entry_points(pspec)
-        if entry_points:
-            result = []
-            for name in entry_points:
-                target = os.path.join(dist_folder, name)
-                runez.delete(target, logger=False)
-                pex_venv.run_python(
-                    "-mpex", "-v", "--no-compile", "--no-pypi", "--pre", "--cache-dir", wheels, "-f", wheels,
-                    "-c%s" % name, "-o%s" % target, name,
-                    "--python-shebang", "/usr/bin/env python%s" % pspec.python.major,
                 )
                 result.append(target)
 

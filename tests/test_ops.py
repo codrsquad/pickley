@@ -105,6 +105,34 @@ def test_debian_mode(temp_folder, logged):
         assert "'foo' failed --version sanity check" in logged.pop()
 
 
+def test_facultative(cli):
+    runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, ".pickley/config.json")
+
+    # Empty file -> proceed with install as if it wasn't there
+    runez.touch("virtualenv")
+    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
+
+    # Simulate pickley wrapper
+    runez.write("virtualenv", "echo installed by pickley")
+    runez.make_executable("virtualenv")
+    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
+
+    # Unknown executable -> skip pickley installation (since facultative)
+    runez.write("virtualenv", "echo foo")
+    runez.make_executable("virtualenv")
+    cli.expect_success("-n install virtualenv", "Skipping installation of virtualenv: not installed by pickley")
+    cli.expect_success("-n check virtualenv", "skipped, not installed by pickley")
+
+    # --force ignores 'facultative' setting
+    cli.expect_failure("-n install --force virtualenv", "Can't automatically uninstall virtualenv")
+
+    # Simulate pickley symlink delivery
+    runez.touch(".pickley/foo")
+    runez.delete("virtualenv")
+    runez.symlink(".pickley/foo", "virtualenv")
+    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
+
+
 def test_main():
     r = subprocess.check_output([sys.executable, "-mpickley", "--help"])  # Exercise __main__.py
     r = runez.decode(r)
@@ -328,6 +356,11 @@ def test_package_pex(cli):
     with patch.dict(os.environ, {"PEX_ROOT": os.path.join(os.getcwd(), ".pex")}):
         expected = "dist/pickley"
         cli.run("-ppex", "package", cli.project_folder)
+        if runez.PY2:
+            assert cli.failed
+            assert "not supported any more with python2" in cli.logged
+            return
+
         assert cli.succeeded
         assert runez.is_executable(expected)
 
