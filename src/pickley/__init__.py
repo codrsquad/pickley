@@ -19,7 +19,7 @@ DOT_META = ".%s" % PICKLEY
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
-K_LEAVES = {"install_timeout", "pyenv", "version", "version_check_delay"}
+K_LEAVES = {"facultative", "install_timeout", "pyenv", "version", "version_check_delay"}
 PLATFORM = platform.system().lower()
 
 DEFAULT_PYPI = "https://pypi.org/simple"
@@ -182,6 +182,41 @@ class PackageSpec(object):
     def ping_path(self):
         """Path to .ping file (for throttle auto-upgrade checks)"""
         return self.cfg.cache.full_path("%s.ping" % self.dashed)
+
+    @property
+    def is_already_installed_by_pickley(self):
+        """bool: True if this package was already installed by pickley once"""
+        return self.dashed == PICKLEY or os.path.exists(self.manifest_path)
+
+    def skip_reason(self, force=False):
+        """str: Reason for skipping installation, when applicable"""
+        if not force and self.cfg.facultative(pspec=self):
+            if not self.is_clear_for_installation():
+                return "not installed by pickley"
+
+    def is_clear_for_installation(self):
+        """
+        Returns:
+            (bool): True if we can proceed with installation without needing to uninstall anything
+        """
+        if self.is_already_installed_by_pickley:
+            return True
+
+        target = self.exe_path(self.dashed)
+        if not target or not os.path.exists(target):
+            return True
+
+        path = os.path.realpath(target)
+        if path.startswith(self.cfg.meta.path):
+            return True  # Pickley symlink
+
+        if os.path.isfile(target):
+            if os.path.getsize(target) == 0 or not runez.is_executable(target):
+                return True  # Empty file or not executable
+
+        for line in runez.readlines(target, default=[], first=5, errors="ignore"):
+            if PICKLEY in line:
+                return True  # Pickley wrapper
 
     def exe_path(self, exe):
         return self.cfg.base.full_path(exe)
@@ -551,6 +586,16 @@ class PickleyConfig(object):
             (str): Configured delivery method for 'pspec'
         """
         return self.get_value("delivery", pspec=pspec)
+
+    def facultative(self, pspec):
+        """
+        Args:
+            pspec (PackageSpec | None): Associated package spec
+
+        Returns:
+            (bool): Is installation facultative for 'pspec'? (if it is: pre-existing non-pickley installs remain as-is)
+        """
+        return self.get_value("facultative", pspec=pspec, validator=runez.to_boolean)
 
     def index(self, pspec=None):
         """

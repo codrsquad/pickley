@@ -84,11 +84,8 @@ class DeliveryMethod(object):
             venv (pickley.package.PythonVenv): Virtual env where executables reside (.pickley/<package>/...)
             entry_points (dict | list): Full path of executable to deliver (<base>/<entry_point>)
         """
-        if pspec.dashed != PICKLEY:
-            # No need to double-check pickley itself
-            for name in entry_points:
-                # First, ensure every entry point is either coming from pickley, or can be auto-uninstalled
-                ensure_safe_to_replace(pspec.cfg, pspec.exe_path(name))
+        if not pspec.is_clear_for_installation():
+            auto_uninstall(pspec.exe_path(pspec.dashed))
 
         try:
             prev_manifest = pspec.get_manifest()
@@ -177,37 +174,25 @@ class DeliveryMethodWrap(DeliveryMethod):
         runez.make_executable(target, logger=False)
 
 
-def ensure_safe_to_replace(cfg, target):
+def auto_uninstall(target):
     """
     Args:
         target (str): Path to executable to auto-uninstall if needed
 
     Returns:
-        (int): 1 if successfully uninstalled, 0 if nothing to do, -1 if failed
+        Aborts if uninstallation was not possible
     """
-    if target and os.path.exists(target):
-        path = os.path.realpath(target)
-        if path.startswith(cfg.meta.path):
-            return  # Pickley symlink
+    brew, name = find_brew_name(target)
+    if brew and name:
+        result = runez.run(brew, "uninstall", "-f", name, fatal=False, logger=LOG.info)
+        if result.succeeded:
+            LOG.info("Auto-uninstalled brew formula '%s'" % name)
+            return  #
 
-        if os.path.isfile(target) and os.path.getsize(target) == 0:
-            return  # Empty file
+        command = "%s uninstall %s" % (brew, name)
+        abort("'%s' failed, please check" % runez.bold(command))
 
-        for line in runez.readlines(target, default=[], first=5, errors="ignore"):
-            if PICKLEY in line:
-                return  # Pickley wrapper
-
-        brew, name = find_brew_name(target)
-        if brew and name:
-            result = runez.run(brew, "uninstall", "-f", name, fatal=False, logger=LOG.info)
-            if result.succeeded:
-                LOG.info("Auto-uninstalled brew formula '%s'" % name)
-                return  #
-
-            command = "%s uninstall %s" % (brew, name)
-            abort("'%s' failed, please check" % runez.bold(command))
-
-        abort("Can't automatically uninstall %s" % runez.short(target))
+    abort("Can't automatically uninstall %s" % runez.short(target))
 
 
 def find_brew_name(target):

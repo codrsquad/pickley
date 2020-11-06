@@ -2,6 +2,14 @@
 Release notes
 =============
 
+2.1.9 (2020-11-06)
+------------------
+
+* Added ``facultative`` setting, allowing to optionally install packages (if not there already)
+
+* Removed python2 support for packaging via ``pex``
+
+
 2.1.8 (2020-10-30)
 ------------------
 
