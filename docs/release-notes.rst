@@ -2,6 +2,12 @@
 Release notes
 =============
 
+2.2.0 (2020-11-09)
+------------------
+
+* Error out early if an unusable python is requested, explicitly accept ``invoker`` to represent python pickley was packaged with
+
+
 2.1.9 (2020-11-06)
 ------------------
 

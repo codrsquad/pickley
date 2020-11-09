@@ -53,25 +53,25 @@ def test_bootstrap(temp_cfg):
     pspec.python.major = temp_cfg.available_pythons.invoker.major + 1
     assert needs_bootstrap(pspec) is True  # Due to higher version of python available
 
-    with patch("runez.which", return_value="wget"):
-        assert "wget" == download_command("", "")[0]
+    with patch("runez.which", return_value="curl"):
+        assert "curl" == download_command("", "")[0]
 
     with patch("runez.which", return_value=None):
-        assert "curl" == download_command("", "")[0]
+        assert "wget" == download_command("", "")[0]
 
 
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
-    p = PackageFinalizer(".", "build", dist, symlink, None, None)
-    p.package_name = "foo"
+    p = PackageFinalizer("foo", "build", dist, symlink, None, None)
+    assert p.pspec.dashed == "foo"
     return p
 
 
 def test_debian_mode(temp_folder, logged):
+    runez.write("foo/setup.py", "import setuptools\nsetuptools.setup(name='foo', version='1.0')")
     p = dummy_finalizer("root/apps")
-    p.resolve_dist()
     assert p.dist == "root/apps/foo"
-    assert p.requirements == ["."]
-    assert not logged
+    assert p.requirements == ["foo"]
+    assert "Using python:" in logged.pop()
 
     # Symlink not created unless source effectively exists
     p.symlink.apply("root/foo")
@@ -88,12 +88,10 @@ def test_debian_mode(temp_folder, logged):
     assert os.path.isdir("root/usr/local/bin")
     assert os.path.islink("root/usr/local/bin/foo")
 
-    p = dummy_finalizer("root/apps")
     with patch("os.path.isdir", return_value=True):  # pretend /apps exists
-        p.resolve_dist()
-
-    assert "debian mode" in logged.pop()
-    assert p.dist == "/apps/foo"
+        p = dummy_finalizer("root/apps")
+        assert "debian mode" in logged.pop()
+        assert p.dist == "/apps/foo"
 
     with patch("runez.run", return_value=runez.program.RunResult("usage: ...")):
         assert p.validate_sanity_check("foo", "--version") == "does not respond to --version"
@@ -187,7 +185,7 @@ def test_dryrun(cli):
     cli.run("-n --color config")
     assert cli.succeeded
 
-    cli.expect_failure("-n -Pfoo install mgit", "Can't create virtualenv with python 'foo': not available")
+    cli.expect_failure("-n -Pfoo install mgit", "Python 'foo' is not usable: not available")
 
     # Simulate an old entry point that was now removed
     runez.write(".pickley/mgit/.manifest.json", '{"entrypoints": ["bogus-mgit"]}')
@@ -355,7 +353,7 @@ def test_installation(cli):
 def test_package_pex(cli):
     with patch.dict(os.environ, {"PEX_ROOT": os.path.join(os.getcwd(), ".pex")}):
         expected = "dist/pickley"
-        cli.run("-ppex", "package", cli.project_folder)
+        cli.run("-ppex", "-Pinvoker", "package", cli.project_folder)
         if runez.PY2:
             assert cli.failed
             assert "not supported any more with python2" in cli.logged

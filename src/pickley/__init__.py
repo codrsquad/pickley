@@ -495,10 +495,11 @@ class PickleyConfig(object):
             for name in runez.flattened(names, split=" "):
                 self._expand_bundle(result, seen, name)
 
-    def find_python(self, pspec=None):
+    def find_python(self, pspec=None, fatal=True):
         """
         Args:
             pspec (PackageSpec | None): Package spec, when applicable
+            fatal (bool): If True, abort execution is no valid python could be found
 
         Returns:
             (PythonInstallation): Object representing python installation
@@ -522,6 +523,9 @@ class PickleyConfig(object):
 
         if python is None:
             python = self.available_pythons.invoker
+
+        if fatal and python.problem:
+            abort("Python '%s' is not usable: %s" % (runez.bold(python), runez.red(python.problem)))
 
         return python
 

@@ -557,11 +557,9 @@ def package(build, dist, symlink, no_compile, no_sanity_check, sanity_check, fol
     if not os.path.isdir(folder):
         abort("Folder %s does not exist" % runez.red(runez.short(folder)))
 
+    build = runez.resolved_path(build)
+    CFG.set_base(build)
     finalizer = PackageFinalizer(folder, build, dist, symlink, sanity_check, requirement, compile=not no_compile)
-    problem = finalizer.resolve()
-    if problem:
-        abort(problem)
-
     report = finalizer.finalize()
     if report:
         inform("")
@@ -577,9 +575,6 @@ class PackageFinalizer(object):
     This class allows to have an early check on provided settings, and wrap them up
     """
 
-    package_name = None  # type: str # Name from associated setup.py (after call to resolve())
-    package_version = None  # type: str # Version from associated setup.py (after call to resolve())
-
     def __init__(self, folder, build, dist, symlink, sanity_check, requirement, compile=True, border="reddit"):
         """
         Args:
@@ -593,7 +588,7 @@ class PackageFinalizer(object):
             border (str): Border to use for PrettyTable overview
         """
         self.folder = folder
-        self.build = runez.resolved_path(build)
+        self.build = build
         self.dist = dist
         self.symlink = Symlinker(symlink) if symlink else None
         self.sanity_check = sanity_check
@@ -609,39 +604,35 @@ class PackageFinalizer(object):
         requirement = runez.flattened(requirement, shellify=True)
         requirement.append(folder)
         self.requirements = requirement
-
-    def resolve_dist(self):
-        """Resolve 'dist' folder, taking into account possible debian mode"""
-        if self.dist.startswith("root/"):
-            # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
-            target = self.dist[4:]
-            if os.path.isdir(target):
-                LOG.debug("debian mode: %s -> %s", self.dist, target)
-                self.dist = target
-
-            parts = self.dist.split("/")
-            if len(parts) <= 2:
-                # Auto-add package name to targets of the form root/subfolder (most typical case)
-                self.dist = os.path.join(self.dist, self.package_name)
-
-    def resolve(self):
         with runez.CurrentFolder(self.folder, anchor=True):
             # Some setup.py's assume current folder is the one with their setup.py
             if not os.path.exists("setup.py"):
-                return "No setup.py in %s" % self.folder
+                abort("No setup.py in %s" % self.folder)
 
             r = runez.run(sys.executable, "setup.py", "--name", dryrun=False, fatal=False, logger=False)
-            self.package_name = r.output
-            if r.failed or not self.package_name:
-                return "Could not determine package name from setup.py"
+            package_name = r.output
+            if r.failed or not package_name:
+                abort("Could not determine package name from setup.py")
 
-            validate_pypi_name(self.package_name)
+            validate_pypi_name(package_name)
             r = runez.run(sys.executable, "setup.py", "--version", dryrun=False, fatal=False, logger=False)
-            self.package_version = r.output
-            if r.failed or not self.package_version:
-                return "Could not determine package version from setup.py"
+            package_version = r.output
+            if r.failed or not package_version:
+                abort("Could not determine package version from setup.py")
 
-            self.resolve_dist()
+            self.pspec = PackageSpec(CFG, specced(package_name, package_version))
+            LOG.info("Using python: %s" % self.pspec.python)
+            if self.dist.startswith("root/"):
+                # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
+                target = self.dist[4:]
+                if os.path.isdir(target):
+                    LOG.debug("debian mode: %s -> %s", self.dist, target)
+                    self.dist = target
+
+                parts = self.dist.split("/")
+                if len(parts) <= 2:
+                    # Auto-add package name to targets of the form root/subfolder (most typical case)
+                    self.dist = os.path.join(self.dist, self.pspec.dashed)
 
     @staticmethod
     def validate_sanity_check(exe, sanity_check):
@@ -659,13 +650,10 @@ class PackageFinalizer(object):
 
     def finalize(self):
         """Run sanity check and/or symlinks, and return a report"""
-        with runez.Anchored(self.folder):
-            runez.ensure_folder(self.build, clean=True)
-            CFG.set_base(self.build)
-            pspec = PackageSpec(CFG, specced(self.package_name, self.package_version))
-            LOG.info("Using python: %s" % pspec.python)
+        with runez.Anchored(self.folder, self.build):
+            runez.ensure_folder(self.build, clean=True, logger=False)
             dist_folder = runez.resolved_path(self.dist)
-            exes = PACKAGER.package(pspec, self.build, dist_folder, self.requirements)
+            exes = PACKAGER.package(self.pspec, self.build, dist_folder, self.requirements)
             if exes:
                 report = PrettyTable(["Packaged executable", self.sanity_check], border=self.border)
                 report.header.style = "bold"

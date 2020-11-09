@@ -225,6 +225,7 @@ class AvailablePythons(object):
             self._cache = {}
             self._register(self.invoker)
             self._register_python_install(self.invoker, "python")
+            self._register_python_install(self.invoker, "invoker")
 
         python = self._cache.get(desired)
         if python:

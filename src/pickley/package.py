@@ -24,11 +24,11 @@ def entry_points_from_metadata(path):
 
 
 def download_command(target, url):
-    wget = runez.which("wget")
-    if wget:
-        return [wget, "-q", "-O%s" % target, url]
+    curl = runez.which("curl")
+    if curl:
+        return [curl, "-s", "-o", target, url]
 
-    return ["curl", "-s", "-o", target, url]
+    return ["wget", "-q", "-O%s" % target, url]
 
 
 class PythonVenv(object):
@@ -50,9 +50,6 @@ class PythonVenv(object):
         self.folder = folder
         self.index = index or pspec.index
         if folder:
-            if python.problem:
-                abort("Can't create virtualenv with python '%s': %s" % (runez.bold(python), runez.red(python.problem)))
-
             runez.ensure_folder(folder, clean=True, logger=False)
             if pspec.cfg.bundled_virtualenv_path:
                 runez.run(pspec.cfg.bundled_virtualenv_path, "-p", python.executable, folder)
@@ -63,7 +60,7 @@ class PythonVenv(object):
             args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
             runez.run(*args)
             runez.run(python.executable, zipapp, folder)
-            runez.delete(zipapp, fatal=False)
+            runez.delete(zipapp, fatal=False, logger=False)
 
     def __repr__(self):
         return runez.short(self.folder)
@@ -266,7 +263,7 @@ class VenvPackager(Packager):
 
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements):
-        runez.ensure_folder(dist_folder, clean=True)
+        runez.ensure_folder(dist_folder, clean=True, logger=False)
         venv = PythonVenv(pspec, folder=dist_folder)
         venv.pip_install(*requirements)
         venv.run_python("-mcompileall", dist_folder)

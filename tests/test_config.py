@@ -50,14 +50,14 @@ defaults:
 """
 
 
-def test_config(logged):
+def test_bogus_config(logged):
     cfg = PickleyConfig()
     assert str(cfg) == "<not-configured>"
 
     p = cfg.find_python(pspec=None)
     assert p == cfg.available_pythons.invoker
 
-    sample = runez.log.tests_path("samples/custom-config")
+    sample = runez.log.tests_path("samples/bogus-config")
     cfg.set_cli("config.json", None, None, None)
     cfg.set_base(sample)
     assert str(cfg) == runez.short(sample)
@@ -72,11 +72,16 @@ def test_config(logged):
     expected = SAMPLE_CONFIG.strip().format(base=runez.short(cfg.base), DEFAULT_PYTHONS=DEFAULT_PYTHONS)
     assert actual == expected
 
-    assert not logged
-    p = cfg.find_python(pspec=None)
+    p = cfg.find_python(pspec=None, fatal=False)
     assert p.executable == "/dev/null/foo"
     assert p.problem == "not an executable"
     assert "was not usable, skipped" in logged.pop()
+
+    assert not logged
+    with pytest.raises(SystemExit):
+        _ = PackageSpec(cfg, "mgit == 1.0.0")
+
+    assert "Python '/dev/null' was not usable, skipped: not an executable" in logged.pop()
 
 
 def test_default_index(temp_folder, logged):
@@ -95,9 +100,9 @@ def test_edge_cases():
     assert pypi_name_problem("mgit") is None
 
 
-def test_desired_version(temp_folder, logged):
+def test_good_config(temp_folder, logged):
     cfg = PickleyConfig()
-    sample = runez.log.tests_path("samples/custom-config")
+    sample = runez.log.tests_path("samples/good-config")
     runez.copy(sample, "temp-base")
     cfg.set_base("temp-base")
 
@@ -107,7 +112,6 @@ def test_desired_version(temp_folder, logged):
     assert str(mgit) == "mgit==1.0.0"
     assert str(pickley) == "pickley"
     assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
-    assert mgit.cfg.install_timeout(mgit) == 250  # From custom.json
     logged.clear()
 
     with patch("pickley.PypiInfo", return_value=MagicMock(problem=None, latest="0.1.2")):
@@ -130,15 +134,6 @@ def test_desired_version(temp_folder, logged):
         d = p.get_desired_version_info()
         assert d.version == "1.2.1"
         assert d.source == "pinned"
-
-        p = PackageSpec(cfg, "tox")
-        d = p.get_desired_version_info()
-        assert d.version == "3.2.1"
-        assert d.source == "pinned"
-        assert p.settings.delivery == "custom-delivery"
-        assert p.settings.index == "custom-index"
-        assert p.settings.python == "2.8.1"
-        assert p.cfg.install_timeout(p) == 42  # From tox specific pin in samples/.../config.json
 
 
 def test_speccing():
