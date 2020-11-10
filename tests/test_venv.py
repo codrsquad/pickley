@@ -28,12 +28,17 @@ MGIT_PIP_METADATA = """
 
 def test_edge_cases(temp_cfg):
     pspec = PackageSpec(temp_cfg, "foo")
+    pspec.python = temp_cfg.available_pythons.invoker
     with runez.CaptureOutput(dryrun=True) as logged:
         pspec.cfg._bundled_virtualenv_path = None
         venv = PythonVenv(pspec, "myvenv")
         assert str(venv) == "myvenv"
         assert not pspec.is_healthily_installed()
-        assert "virtualenv.pyz myvenv" in logged
+        if runez.PY2:
+            assert "virtualenv.pyz myvenv" in logged
+
+        else:
+            assert "-mvenv myvenv" in logged
 
     with runez.CaptureOutput() as logged:
         runez.touch("dummy.whl")

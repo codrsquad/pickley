@@ -55,6 +55,12 @@ class PythonVenv(object):
                 runez.run(pspec.cfg.bundled_virtualenv_path, "-p", python.executable, folder)
                 return
 
+            if python.major > 2 and pspec.dashed != "tox":
+                # See https://github.com/tox-dev/tox/issues/1689
+                runez.run(python.executable, "-mvenv", self.folder)
+                self.pip_install("-U", "pip", "setuptools", "wheel")
+                return
+
             runez.ensure_folder(pspec.cfg.cache.path, logger=False)
             zipapp = os.path.realpath(pspec.cfg.cache.full_path("virtualenv.pyz"))
             args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")

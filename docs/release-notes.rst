@@ -2,6 +2,12 @@
 Release notes
 =============
 
+2.2.1 (2020-11-10)
+------------------
+
+* Use bundled virtualenv only when running from a venv (not from a pex)
+
+
 2.2.0 (2020-11-09)
 ------------------
 
