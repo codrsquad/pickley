@@ -7,15 +7,11 @@ import pytest
 import runez
 from mock import patch
 
-from pickley import get_program_path, PackageSpec, PickleyConfig
+from pickley import __version__, get_program_path, PackageSpec, PickleyConfig, TrackedManifest
 from pickley.cli import find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.env import UnknownPython
 from pickley.package import download_command, Packager
-
-
-# Run functional tests with  representative python versions only
-FUNCTIONAL_TEST = runez.python_version() in "2.7 3.8" or "PYCHARM_HOSTED" in os.environ
 
 
 def test_base(temp_folder):
@@ -286,11 +282,14 @@ def test_lock(temp_folder, logged):
 def check_install(cli, delivery, package, simulate_version=None):
     cli.expect_success("-d%s install %s" % (delivery, package), "Installed %s" % package)
     assert runez.is_executable(package)
-    m = runez.read_json(".pickley/%s/.manifest.json" % package)
-    assert m["settings"]
-    assert package in m["entrypoints"]
-    assert "command" in m["pickley"]
-    assert m["version"]
+    m = TrackedManifest.from_file(".pickley/%s/.manifest.json" % package)
+    assert m.entrypoints[package]
+    assert m.install_info.args == runez.quoted(cli.args)
+    assert m.install_info.pickley_version == __version__
+    assert m.install_info.timestamp
+    assert m.settings.delivery == delivery
+    assert m.settings.python
+    assert m.version
 
     r = runez.run(package, "--version")
     assert r.succeeded
@@ -305,12 +304,11 @@ def check_install(cli, delivery, package, simulate_version=None):
     cli.expect_success("upgrade", "is already up-to-date")
 
     if simulate_version:
-        m["version"] = simulate_version
-        runez.save_json(m, ".pickley/%s/.manifest.json" % package)
+        m.version = simulate_version
+        runez.save_json(m.to_dict(), ".pickley/%s/.manifest.json" % package)
         cli.expect_success("check", "v%s installed, can be upgraded to" % simulate_version)
 
 
-@pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Functional test")
 def test_installation(cli):
     cli.expect_failure("install six", "it is not a CLI")
     assert not os.path.exists(".pickley/six")
@@ -349,7 +347,6 @@ def test_installation(cli):
         assert WRAPPER_MARK in contents
 
 
-@pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Long test, testing with most common python version only")
 def test_package_pex(cli):
     with patch.dict(os.environ, {"PEX_ROOT": os.path.join(os.getcwd(), ".pex")}):
         expected = "dist/pickley"
@@ -378,7 +375,6 @@ def test_package_pex(cli):
         assert manifest["version"] == version
 
 
-@pytest.mark.skipif(not FUNCTIONAL_TEST, reason="Functional test")
 def test_package_venv(cli):
     # Verify that "debian mode" works as expected, with -droot/tmp <-> /tmp
     runez.delete("/tmp/pickley")

@@ -118,7 +118,7 @@ class PackageSpec(object):
     Formalizes a pypi package specification
 
     - accepted chars are: alpha numeric, or "-" and "."
-    - pypi assumes names are lowercased and dash-separated
+    - pypi assumes names are lower-cased and dash-separated
     - wheel transforms dashes to underscores
     """
 
@@ -263,7 +263,7 @@ class PackageSpec(object):
             now = time.time()
             candidates = []
             for fname in os.listdir(meta_path):
-                if fname.startswith("."):  # Pickley's meta files start with '.'
+                if fname.startswith("."):  # Pickley meta files start with '.'
                     continue
 
                 fpath = os.path.join(meta_path, fname)
@@ -320,7 +320,7 @@ class PackageSpec(object):
         candidates = []
         manifest = self.get_manifest()
         if manifest and manifest.version:
-            candidates.append(TrackedVersion(index=manifest.index, pickley=manifest.pickley, source="installed", version=manifest.version))
+            candidates.append(TrackedVersion.from_manifest(manifest))
 
         if self.dashed == PICKLEY:
             candidates.append(TrackedVersion(source="current", version=__version__))
@@ -379,7 +379,7 @@ class PickleyConfig(object):
     base = None  # type: FolderBase # Installation folder
     meta = None  # type: FolderBase # DOT_META subfolder
     cache = None  # type: FolderBase # DOT_META/.cache subfolder
-    cli = None  # type: TrackedSettings # Tracks any custom command line cfg flags given, such as --index, --python or --delivery
+    cli = None  # type: TrackedSettings # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
     configs = None  # type: list
     program_path = get_program_path()
 
@@ -670,7 +670,8 @@ class PickleyConfig(object):
         """
         return self.get_value("version_check_delay", pspec=pspec, validator=runez.to_int)
 
-    def colored_key(self, key, indent):
+    @staticmethod
+    def colored_key(key, indent):
         if (key in K_CLI or key in K_LEAVES) and indent in (1, 3):
             return runez.teal(key)
 
@@ -698,17 +699,14 @@ class TrackedVersion(object):
     """Object tracking a version, and the source it was obtained from"""
 
     index = None  # type: str # Associated pypi url, if any
-    pickley = None  # type: TrackedPickley # pickley that recorded this info
+    install_info = None  # type: TrackedInstallInfo
     problem = None  # type: str # Problem that occurred during pypi lookup, if any
     source = None  # type: str # How 'version' was determined (can be: latest, pinned, ...)
     version = None  # type: str
 
-    def __init__(self, index=None, pickley=None, problem=None, source=None, version=None):
-        if pickley is None:
-            pickley = TrackedPickley.current()
-
+    def __init__(self, index=None, install_info=None, problem=None, source=None, version=None):
         self.index = index
-        self.pickley = pickley
+        self.install_info = install_info or TrackedInstallInfo.current()
         self.problem = problem
         self.source = source
         self.version = version
@@ -717,19 +715,29 @@ class TrackedVersion(object):
         return "%s (%s) %s" % (self.version, self.source, self.problem or "")
 
     @classmethod
+    def from_manifest(cls, manifest, source="installed"):
+        return cls(index=manifest.index, install_info=manifest.install_info, source=source, version=manifest.version)
+
+    @classmethod
     def from_file(cls, path):
         data = runez.read_json(path, default=None)
         if data:
             return cls(
                 index=data.get("index"),
-                pickley=TrackedPickley.from_dict(data.get("pickley")),
+                install_info=TrackedInstallInfo.from_manifest_data(data),
                 problem=data.get("problem"),
                 source=data.get("source"),
                 version=data.get("version"),
             )
 
     def to_dict(self):
-        return dict(index=self.index, pickley=self.pickley.to_dict(), problem=self.problem, source=self.source, version=self.version)
+        return dict(
+            index=self.index,
+            install_info=self.install_info.to_dict(),
+            problem=self.problem,
+            source=self.source,
+            version=self.version,
+        )
 
 
 class TrackedManifest(object):
@@ -738,18 +746,15 @@ class TrackedManifest(object):
     path = None  # type: str # Path to this manifest
     settings = None  # type: TrackedSettings
     entrypoints = None  # type: dict
-    pickley = None  # type: TrackedPickley
+    install_info = None  # type: TrackedInstallInfo
     pinned = None  # type: str
     version = None  # type: str
 
-    def __init__(self, path, settings, entrypoints, pickley=None, pinned=None, version=None):
+    def __init__(self, path, settings, entrypoints, install_info=None, pinned=None, version=None):
         self.path = path
-        if pickley is None:
-            pickley = TrackedPickley.current()
-
         self.settings = settings
         self.entrypoints = entrypoints
-        self.pickley = pickley
+        self.install_info = install_info or TrackedInstallInfo.current()
         self.pinned = pinned
         self.version = version
 
@@ -762,9 +767,9 @@ class TrackedManifest(object):
         if data:
             return cls(
                 path,
-                TrackedSettings.from_dict(data.get("settings")),
+                TrackedSettings.from_manifest_data(data),
                 data.get("entrypoints"),
-                pickley=TrackedPickley.from_dict(data.get("pickley")),
+                install_info=TrackedInstallInfo.from_manifest_data(data),
                 pinned=data.get("pinned"),
                 version=data.get("version"),
             )
@@ -788,33 +793,40 @@ class TrackedManifest(object):
         return dict(
             settings=self.settings.to_dict(),
             entrypoints=self.entrypoints,
-            pickley=self.pickley.to_dict(),
+            install_info=self.install_info.to_dict(),
             pinned=self.pinned,
             version=self.version,
         )
 
 
-class TrackedPickley(object):
-    command = None  # type: str # Command with which pickley was invoked
-    timestamp = None  # type: datetime
-    version = None  # type: str # Pickley version
+class TrackedInstallInfo(object):
+    """Info on which pickley run performed the installation"""
 
-    def __init__(self, command, timestamp, version):
-        self.command = command
+    args = None  # type: str # CLI args with which pickley was invoked
+    pickley_version = None  # type: str
+    timestamp = None  # type: datetime
+
+    def __init__(self, args, pickley_version, timestamp):
+        self.args = args
+        self.pickley_version = pickley_version
         self.timestamp = timestamp
-        self.version = version
 
     @classmethod
     def current(cls):
-        return cls(runez.quoted(sys.argv[1:]), datetime.now(), __version__)
+        return cls(runez.quoted(sys.argv[1:]), __version__, datetime.now())
+
+    @classmethod
+    def from_manifest_data(cls, data):
+        if data:
+            return cls.from_dict(data.get("install_info"))
 
     @classmethod
     def from_dict(cls, data):
         if data:
-            return cls(command=data.get("command"), timestamp=runez.to_datetime(data.get("timestamp")), version=data.get("version"))
+            return cls(data.get("args"), data.get("pickley_version"), runez.to_datetime(data.get("timestamp")))
 
     def to_dict(self):
-        return dict(command=self.command, timestamp=self.timestamp.strftime("%Y-%m-%d %H:%M:%S"), version=self.version)
+        return dict(args=self.args, pickley_version=self.pickley_version, timestamp=self.timestamp.strftime("%Y-%m-%d %H:%M:%S"))
 
 
 class TrackedSettings(object):
@@ -826,6 +838,11 @@ class TrackedSettings(object):
         self.delivery = delivery
         self.index = index
         self.python = runez.short(python) if python else None
+
+    @classmethod
+    def from_manifest_data(cls, data):
+        if data:
+            return cls.from_dict(data.get("settings"))
 
     @classmethod
     def from_dict(cls, data):
