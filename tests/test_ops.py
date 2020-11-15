@@ -167,6 +167,10 @@ def test_dryrun(cli):
 
     with patch.dict(os.environ, {"__PYVENV_LAUNCHER__": "foo"}):
         cli.expect_success("-n base", os.getcwd())
+        cli.expect_success("-n base audit", os.path.join(os.getcwd(), ".pickley/audit.log"))
+        cli.expect_success("-n base cache", os.path.join(os.getcwd(), ".pickley/.cache"))
+        cli.expect_success("-n base meta", os.path.join(os.getcwd(), ".pickley"))
+        cli.expect_failure("-n base foo", "Unknown base folder reference")
 
     cli.expect_success("-n check", "No packages installed")
     cli.expect_failure("-n check foo+bar", "'foo+bar' is not a valid pypi package name")

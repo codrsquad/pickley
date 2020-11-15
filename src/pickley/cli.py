@@ -384,9 +384,24 @@ def auto_upgrade(force, package):
 
 
 @main.command()
-def base():
-    """Show pickley's base folder"""
-    print(CFG.base.path)
+@click.argument("what", required=False)
+def base(what):
+    """Show pickley base folder"""
+    path = CFG.base.path
+    if what:
+        if what in ("audit", "audit.log"):
+            path = CFG.meta.full_path("audit.log")
+
+        elif what == "cache":
+            path = CFG.cache.path
+
+        elif what == "meta":
+            path = CFG.meta.path
+
+        else:
+            abort("Unknown base folder reference '%s'" % runez.red(what))
+
+    print(path)
 
 
 @main.command()

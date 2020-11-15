@@ -2,6 +2,12 @@
 Release notes
 =============
 
+2.2.2 (2020-11-16)
+------------------
+
+* ``base`` command can now show path of meta folder and audit.log
+
+
 2.2.1 (2020-11-10)
 ------------------
 
