@@ -803,17 +803,17 @@ class TrackedInstallInfo(object):
     """Info on which pickley run performed the installation"""
 
     args = None  # type: str # CLI args with which pickley was invoked
-    pickley_version = None  # type: str
     timestamp = None  # type: datetime
+    vpickley = None  # type: str # Version of pickley that performed the installation
 
-    def __init__(self, args, pickley_version, timestamp):
+    def __init__(self, args, timestamp, vpickley):
         self.args = args
-        self.pickley_version = pickley_version
         self.timestamp = timestamp
+        self.vpickley = vpickley
 
     @classmethod
     def current(cls):
-        return cls(runez.quoted(sys.argv[1:]), __version__, datetime.now())
+        return cls(runez.quoted(sys.argv[1:]), datetime.now(), __version__)
 
     @classmethod
     def from_manifest_data(cls, data):
@@ -823,10 +823,10 @@ class TrackedInstallInfo(object):
     @classmethod
     def from_dict(cls, data):
         if data:
-            return cls(data.get("args"), data.get("pickley_version"), runez.to_datetime(data.get("timestamp")))
+            return cls(data.get("args"), runez.to_datetime(data.get("timestamp")), data.get("vpickley"))
 
     def to_dict(self):
-        return dict(args=self.args, pickley_version=self.pickley_version, timestamp=self.timestamp.strftime("%Y-%m-%d %H:%M:%S"))
+        return dict(args=self.args, timestamp=self.timestamp.strftime("%Y-%m-%d %H:%M:%S"), vpickley=self.vpickley)
 
 
 class TrackedSettings(object):

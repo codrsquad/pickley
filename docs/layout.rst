@@ -35,8 +35,8 @@ some info about when/how it was installed::
         },
         "install_info": {
             "args": "-P3.8 -dwrap install tox==1.2.3",
-            "pickley_version": "2.3.0",
-            "timestamp": "2020-11-01 12:51:39"
+            "timestamp": "2020-11-01 12:51:39",
+            "vpickley": "2.3.0"
         },
         "pinned": "1.2.3",
         "settings": {
@@ -56,8 +56,8 @@ the latest for a given package, this is used to put a cooldown on query pypi via
         "index": "https://pypi-mirror.mycompany.net/pypi",
         "install_info": {
             "args": "auto-upgrade mgit",
-            "pickley_version": "2.3.0",
-            "timestamp": "2020-11-01 12:51:39"
+            "timestamp": "2020-11-01 12:51:39",
+            "vpickley": "2.3.0"
         },
         "source": "latest",
         "version": "1.2.1"

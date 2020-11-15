@@ -285,8 +285,8 @@ def check_install(cli, delivery, package, simulate_version=None):
     m = TrackedManifest.from_file(".pickley/%s/.manifest.json" % package)
     assert m.entrypoints[package]
     assert m.install_info.args == runez.quoted(cli.args)
-    assert m.install_info.pickley_version == __version__
     assert m.install_info.timestamp
+    assert m.install_info.vpickley == __version__
     assert m.settings.delivery == delivery
     assert m.settings.python
     assert m.version
