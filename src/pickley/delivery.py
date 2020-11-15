@@ -161,7 +161,7 @@ class DeliveryMethodWrap(DeliveryMethod):
             wrapper = GENERIC_WRAPPER
             if not os.path.exists(pickley):
                 # We're running from development venv
-                pickley = pspec.cfg.pickley_program_path
+                pickley = pspec.cfg.program_path
 
         contents = wrapper.lstrip().format(
             hook=self.hook,

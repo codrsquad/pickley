@@ -208,7 +208,7 @@ def find_base():
 
         return runez.resolved_path(base_path)
 
-    program_path = PickleyConfig.pickley_program_path
+    program_path = PickleyConfig.program_path
     return _find_base_from_program_path(program_path) or os.path.dirname(program_path)
 
 

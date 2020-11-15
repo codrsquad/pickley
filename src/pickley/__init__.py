@@ -361,7 +361,7 @@ def get_default_index(*paths):
     return None, None
 
 
-def get_pickley_program_path(path=None):
+def get_program_path(path=None):
     if path is None:
         path = runez.resolved_path(sys.argv[0])
 
@@ -381,7 +381,7 @@ class PickleyConfig(object):
     cache = None  # type: FolderBase # DOT_META/.cache subfolder
     cli = None  # type: TrackedSettings # Tracks any custom command line cfg flags given, such as --index, --python or --delivery
     configs = None  # type: list
-    pickley_program_path = get_pickley_program_path()
+    program_path = get_program_path()
 
     def __init__(self):
         self.configs = []
@@ -402,7 +402,7 @@ class PickleyConfig(object):
             self._bundled_virtualenv_path = None
             if sys.prefix != sys.base_prefix:
                 # We're running from a virtual environment
-                virtualenv = os.path.join(os.path.dirname(self.pickley_program_path), "virtualenv")
+                virtualenv = os.path.join(os.path.dirname(self.program_path), "virtualenv")
                 if runez.is_executable(virtualenv):
                     self._bundled_virtualenv_path = virtualenv
 

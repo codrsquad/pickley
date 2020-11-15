@@ -8,11 +8,11 @@ from pickley import PICKLEY, PickleyConfig
 from pickley.cli import main
 
 
-cli.default_exe = PickleyConfig.pickley_program_path
+cli.default_exe = PickleyConfig.program_path
 cli.default_main = main
 assert logged, temp_folder  # Just making fixtures available, with no complaints about unused imports
 
-PickleyConfig.pickley_program_path = PickleyConfig.pickley_program_path.replace("pytest", PICKLEY)
+PickleyConfig.program_path = PickleyConfig.program_path.replace("pytest", PICKLEY)
 
 
 def verify_abort(func, *args, **kwargs):

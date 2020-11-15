@@ -7,7 +7,7 @@ import pytest
 import runez
 from mock import patch
 
-from pickley import get_pickley_program_path, PackageSpec, PickleyConfig
+from pickley import get_program_path, PackageSpec, PickleyConfig
 from pickley.cli import find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.env import UnknownPython
@@ -26,19 +26,19 @@ def test_base(temp_folder):
         runez.ensure_folder("temp-base")
         assert find_base() == runez.resolved_path("temp-base")
 
-    assert sys.prefix in get_pickley_program_path("foo/bar.py")
+    assert sys.prefix in get_program_path("foo/bar.py")
 
-    original = PickleyConfig.pickley_program_path
-    PickleyConfig.pickley_program_path = "/foo/.venv/bin/pickley"
+    original = PickleyConfig.program_path
+    PickleyConfig.program_path = "/foo/.venv/bin/pickley"
     assert find_base() == "/foo/.venv/root"
 
-    PickleyConfig.pickley_program_path = "foo/.pickley/pickley-0.0.0/bin/pickley"
+    PickleyConfig.program_path = "foo/.pickley/pickley-0.0.0/bin/pickley"
     assert find_base() == "foo"
 
-    PickleyConfig.pickley_program_path = "foo/bar"
+    PickleyConfig.program_path = "foo/bar"
     assert find_base() == "foo"
 
-    PickleyConfig.pickley_program_path = original
+    PickleyConfig.program_path = original
 
 
 def test_bootstrap(temp_cfg):
