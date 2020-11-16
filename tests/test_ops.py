@@ -13,6 +13,8 @@ from pickley.delivery import WRAPPER_MARK
 from pickley.env import UnknownPython
 from pickley.package import download_command, Packager
 
+from .conftest import dot_meta
+
 
 def test_base(temp_folder):
     with patch.dict(os.environ, {"PICKLEY_ROOT": "temp-base"}, clear=True):
@@ -28,7 +30,7 @@ def test_base(temp_folder):
     PickleyConfig.program_path = "/foo/.venv/bin/pickley"
     assert find_base() == "/foo/.venv/root"
 
-    PickleyConfig.program_path = "foo/.pickley/pickley-0.0.0/bin/pickley"
+    PickleyConfig.program_path = dot_meta("pickley-0.0.0/bin/pickley", parent="foo")
     assert find_base() == "foo"
 
     PickleyConfig.program_path = "foo/bar"
@@ -100,7 +102,7 @@ def test_debian_mode(temp_folder, logged):
 
 
 def test_facultative(cli):
-    runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, ".pickley/config.json")
+    runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"))
 
     # Empty file -> proceed with install as if it wasn't there
     runez.touch("virtualenv")
@@ -121,9 +123,10 @@ def test_facultative(cli):
     cli.expect_failure("-n install --force virtualenv", "Can't automatically uninstall virtualenv")
 
     # Simulate pickley symlink delivery
-    runez.touch(".pickley/foo")
+    dummy_target = dot_meta("foo")
+    runez.touch(dummy_target)
     runez.delete("virtualenv")
-    runez.symlink(".pickley/foo", "virtualenv")
+    runez.symlink(dummy_target, "virtualenv")
     cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
 
 
@@ -162,14 +165,15 @@ def test_dryrun(cli):
 
     if sys.version_info[0] > 2:
         cli.expect_success("-n --debug auto-upgrade mgit", "Would wrap mgit")
-        runez.touch(".pickley/mgit.lock")
+        runez.touch(dot_meta("mgit.lock"))
         cli.expect_success("-n --debug auto-upgrade mgit", "Lock file present, another installation is in progress")
 
     with patch.dict(os.environ, {"__PYVENV_LAUNCHER__": "foo"}):
-        cli.expect_success("-n base", os.getcwd())
-        cli.expect_success("-n base audit", os.path.join(os.getcwd(), ".pickley/audit.log"))
-        cli.expect_success("-n base cache", os.path.join(os.getcwd(), ".pickley/.cache"))
-        cli.expect_success("-n base meta", os.path.join(os.getcwd(), ".pickley"))
+        folder = os.getcwd()
+        cli.expect_success("-n base", folder)
+        cli.expect_success("-n base audit", dot_meta("audit.log", parent=folder))
+        cli.expect_success("-n base cache", dot_meta(".cache", parent=folder))
+        cli.expect_success("-n base meta", dot_meta(parent=folder))
         cli.expect_failure("-n base foo", "Unknown base folder reference")
 
     cli.expect_success("-n check", "No packages installed")
@@ -188,15 +192,15 @@ def test_dryrun(cli):
     cli.expect_failure("-n -Pfoo install mgit", "Python 'foo' is not usable: not available")
 
     # Simulate an old entry point that was now removed
-    runez.write(".pickley/mgit/.manifest.json", '{"entrypoints": ["bogus-mgit"]}')
+    runez.write(dot_meta("mgit/.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
     cli.expect_failure("-n install mgit pickley2.a", "Would state: Installed mgit v", "'pickley2.a' is not pypi canonical")
-    runez.delete(".pickley/mgit")
+    runez.delete(dot_meta("mgit"))
 
     cli.expect_success("-n diagnostics -v", "sys.executable")
     cli.run("-n install mgit")
     assert cli.succeeded
-    assert cli.match("Would wrap mgit -> .pickley/mgit/")
-    assert cli.match("Would save .pickley/mgit/.manifest.json")
+    assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
+    assert cli.match("Would save %s" % dot_meta("mgit/.manifest.json"))
     assert cli.match("Would state: Installed mgit v")
 
     cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
@@ -225,8 +229,8 @@ def test_dryrun(cli):
 
     # Simulate old pickley v1 install
     cli.expect_success("-n list", "No packages installed")
-    runez.write(".pickley/mgit/.current.json", '{"version": "0.0.1"}')
-    runez.write(".pickley/mgit/.entry-points.json", '{"mgit": "mgit.cli:main"}')
+    runez.write(dot_meta("mgit/.current.json"), '{"version": "0.0.1"}')
+    runez.write(dot_meta("mgit/.entry-points.json"), '{"mgit": "mgit.cli:main"}')
     cli.expect_success("-n upgrade mgit", "Would state: Upgraded mgit")
     cli.expect_success("-n list", "mgit")
 
@@ -286,7 +290,7 @@ def test_lock(temp_folder, logged):
 def check_install(cli, delivery, package, simulate_version=None):
     cli.expect_success("-d%s install %s" % (delivery, package), "Installed %s" % package)
     assert runez.is_executable(package)
-    m = TrackedManifest.from_file(".pickley/%s/.manifest.json" % package)
+    m = TrackedManifest.from_file(dot_meta("%s/.manifest.json" % package))
     assert m.entrypoints[package]
     assert m.install_info.args == runez.quoted(cli.args)
     assert m.install_info.timestamp
@@ -309,39 +313,39 @@ def check_install(cli, delivery, package, simulate_version=None):
 
     if simulate_version:
         m.version = simulate_version
-        runez.save_json(m.to_dict(), ".pickley/%s/.manifest.json" % package)
+        runez.save_json(m.to_dict(), dot_meta("%s/.manifest.json" % package))
         cli.expect_success("check", "v%s installed, can be upgraded to" % simulate_version)
 
 
 def test_installation(cli):
     cli.expect_failure("install six", "it is not a CLI")
-    assert not os.path.exists(".pickley/six")
+    assert not os.path.exists(dot_meta("six"))
 
     cli.expect_failure("install mgit+foo", "not a valid pypi package name")
 
-    runez.touch(".pickley/mgit/.foo")  # Should stay because name starts with '.'
-    runez.touch(".pickley/mgit/mgit-foo")  # Bogus installation
-    runez.touch(".pickley/mgit/mgit-0.0.1/foo")  # Oldest should be deleted
+    runez.touch(dot_meta("mgit/.foo"))  # Should stay because name starts with '.'
+    runez.touch(dot_meta("mgit/mgit-foo"))  # Bogus installation
+    runez.touch(dot_meta("mgit/mgit-0.0.1/foo"))  # Oldest should be deleted
     time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
-    runez.touch(".pickley/mgit/mgit-0.0.2/foo")  # Youngest should remain for an hour
+    runez.touch(dot_meta("mgit/mgit-0.0.2/foo"))  # Youngest should remain for an hour
     check_install(cli, "symlink", "mgit")
     assert os.path.islink("mgit")
-    assert os.path.exists(".pickley/mgit/.manifest.json")
-    assert os.path.exists(".pickley/mgit/.foo")
-    assert os.path.exists(".pickley/mgit/mgit-0.0.2")
-    assert not os.path.exists(".pickley/mgit/mgit-foo")
-    assert not os.path.exists(".pickley/mgit/mgit-0.0.1")
+    assert os.path.exists(dot_meta("mgit/.manifest.json"))
+    assert os.path.exists(dot_meta("mgit/.foo"))
+    assert os.path.exists(dot_meta("mgit/mgit-0.0.2"))
+    assert not os.path.exists(dot_meta("mgit/mgit-foo"))
+    assert not os.path.exists(dot_meta("mgit/mgit-0.0.1"))
 
     cfg = PickleyConfig()
     cfg.set_base(".")
     pspec = PackageSpec(cfg, "mgit")
     pspec.groom_installation(keep_for=0)
-    assert not os.path.exists(".pickley/mgit/mgit-0.0.2")
+    assert not os.path.exists(dot_meta("mgit/mgit-0.0.2"))
 
     cli.expect_success("uninstall mgit", "Uninstalled mgit")
     assert not runez.is_executable("mgit")
-    assert not os.path.exists(".pickley/mgit")
-    assert os.path.exists(".pickley/audit.log")
+    assert not os.path.exists(dot_meta("mgit"))
+    assert os.path.exists(dot_meta("audit.log"))
 
     if sys.version_info[0] > 2:
         # Bootstrapping out of py2 is tested separately
@@ -375,7 +379,7 @@ def test_package_pex(cli):
 
         assert runez.run(expected, "diagnostics").succeeded
 
-        manifest = runez.read_json(".pickley/pickley/.manifest.json")
+        manifest = runez.read_json(dot_meta("pickley/.manifest.json"))
         assert manifest["version"] == version
 
 

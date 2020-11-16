@@ -1,7 +1,8 @@
 {
     "bundle": {
-        "dev": "tox mgit",
-        "dev2": "bundle:dev pipenv"
+        "dev": "tox mgit bundle:dev2",
+        "dev2": "bundle:dev3 pipenv",
+        "dev3": "poetry"
     },
     "delivery": "wrap",
     "index": "https://pypi-mirror.mycompany.net/pypi",

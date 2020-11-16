@@ -4,10 +4,12 @@ import pytest
 import runez
 from mock import MagicMock, patch
 
-from pickley import __version__, DEFAULT_PYTHONS, despecced, get_default_index, inform, PackageSpec
+from pickley import __version__, DEFAULT_PYTHONS, despecced, DOT_META, get_default_index, inform, PackageSpec
 from pickley import PickleyConfig, pypi_name_problem, specced
 from pickley.cli import auto_upgrade_v1
 from pickley.v1upgrade import V1Status
+
+from .conftest import dot_meta
 
 
 SAMPLE_CONFIG = """
@@ -15,7 +17,7 @@ base: {base}
 
 cli:  # empty
 
-{base}/.pickley/config.json:
+{meta}/config.json:
   bundle:
     dev: tox mgit
     dev2: bundle:dev pipenv
@@ -31,7 +33,7 @@ cli:  # empty
       python: 2.8.1
       version: 3.2.1
 
-{base}/.pickley/custom.json:
+{meta}/custom.json:
   delivery: wrap
   foo: bar
   include:
@@ -50,26 +52,29 @@ defaults:
 """
 
 
-def test_bogus_config(logged):
+def grab_sample(name):
     cfg = PickleyConfig()
-    assert str(cfg) == "<not-configured>"
-
-    p = cfg.find_python(pspec=None)
-    assert p == cfg.available_pythons.invoker
-
-    sample = runez.log.tests_path("samples/bogus-config")
+    path = runez.log.tests_path("samples", name)
+    runez.copy(path, DOT_META)
     cfg.set_cli("config.json", None, None, None)
-    cfg.set_base(sample)
-    assert str(cfg) == runez.short(sample)
+    cfg.set_base(".")
     assert str(cfg.configs[0]) == "cli (0 values)"
-    assert cfg.base.path == sample
+    return cfg
+
+
+def test_bogus_config(temp_folder, logged):
+    cfg = grab_sample("bogus-config")
     assert cfg.pyenv() == "/dev/null"  # from custom.json
     assert cfg.resolved_bundle("") == []
     assert cfg.resolved_bundle("foo") == ["foo"]
     assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit"]
     assert cfg.resolved_bundle("bundle:dev2") == ["tox", "mgit", "pipenv"]
     actual = cfg.represented().strip()
-    expected = SAMPLE_CONFIG.strip().format(base=runez.short(cfg.base), DEFAULT_PYTHONS=DEFAULT_PYTHONS)
+    expected = SAMPLE_CONFIG.strip().format(
+        base=runez.short(cfg.base),
+        meta=runez.short(cfg.meta),
+        DEFAULT_PYTHONS=DEFAULT_PYTHONS,
+    )
     assert actual == expected
 
     p = cfg.find_python(pspec=None, fatal=False)
@@ -99,12 +104,17 @@ def test_edge_cases():
     assert "intentionally" in pypi_name_problem("0-0")
     assert pypi_name_problem("mgit") is None
 
+    cfg = PickleyConfig()
+    assert str(cfg) == "<not-configured>"
+
+    p = cfg.find_python(pspec=None)
+    assert p == cfg.available_pythons.invoker
+
 
 def test_good_config(temp_folder, logged):
-    cfg = PickleyConfig()
-    sample = runez.log.tests_path("samples/good-config")
-    runez.copy(sample, "temp-base")
-    cfg.set_base("temp-base")
+    cfg = grab_sample("good-config")
+
+    assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
 
     mgit = PackageSpec(cfg, "mgit == 1.0.0")
     pickley = PackageSpec(cfg, "pickley")
@@ -168,15 +178,15 @@ def test_v1(temp_folder, logged):
     assert not status.installed
 
     sample = runez.log.tests_path("samples/v1")
-    runez.copy(sample, ".pickley")
+    runez.copy(sample, DOT_META)
     status = V1Status(cfg)
     assert len(status.installed) == 2
     installed = sorted([str(s) for s in status.installed])
     assert installed == ["mgit", "pickley2-a"]
 
     # Add some files that should get cleaned up
-    runez.touch(".pickley/_venvs/_py37/bin/pip")
-    runez.touch(".pickley/foo/.ping")
+    runez.touch(dot_meta("_venvs/_py37/bin/pip"))
+    runez.touch(dot_meta("foo/.ping"))
 
     with patch("pickley.cli.perform_install", side_effect=mock_install):
         with pytest.raises(SystemExit):
@@ -185,11 +195,11 @@ def test_v1(temp_folder, logged):
         assert "Auto-upgrading 2 packages" in logged
         assert "pickley2-a could not be upgraded, please reinstall it" in logged
         assert "Upgraded mgit" in logged
-        assert "Deleted .pickley/_venvs" in logged
+        assert "Deleted %s" % dot_meta("_venvs") in logged
 
-        assert os.path.exists(".pickley/README.md")  # untouched
-        assert os.path.exists(".pickley/mgit/mgit-1.0/.manifest.json")
-        assert os.path.isdir(".pickley/pickley")
-        assert not os.path.exists(".pickley/_venvs")  # cleaned
-        assert not os.path.exists(".pickley/foo")
-        assert not os.path.exists(".pickley/pickley2-a")
+        assert os.path.exists(dot_meta("README.md"))  # untouched
+        assert os.path.exists(dot_meta("mgit/mgit-1.0/.manifest.json"))
+        assert os.path.isdir(dot_meta("pickley"))
+        assert not os.path.exists(dot_meta("_venvs"))  # cleaned
+        assert not os.path.exists(dot_meta("foo"))
+        assert not os.path.exists(dot_meta("pickley2-a"))

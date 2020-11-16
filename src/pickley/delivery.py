@@ -81,7 +81,7 @@ class DeliveryMethod(object):
         """
         Args:
             pspec (pickley.PackageSpec): Package spec this installation is for
-            venv (pickley.package.PythonVenv): Virtual env where executables reside (.pickley/<package>/...)
+            venv (pickley.package.PythonVenv): Virtual env where executables reside (DOT_META/<package>/...)
             entry_points (dict | list): Full path of executable to deliver (<base>/<entry_point>)
         """
         if not pspec.is_clear_for_installation():

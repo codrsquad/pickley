@@ -15,7 +15,7 @@ from pickley.pypi import PepVersion, PypiInfo
 __version__ = "2.2.1"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
-DOT_META = ".%s" % PICKLEY
+DOT_META = ".pickley"
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
@@ -333,7 +333,7 @@ class PackageSpec(object):
         return desired
 
     def get_latest(self, force=False):
-        """Tracked in .pickley/.cache/<package>.latest"""
+        """Tracked in DOT_META/.cache/<package>.latest"""
         path = self.cfg.cache.full_path("%s.latest" % self.dashed)
         age = self.cfg.version_check_delay(self)
         if not force and age and runez.file.is_younger(path, age):
