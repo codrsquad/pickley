@@ -400,7 +400,7 @@ class PickleyConfig(object):
         """str: Path to bundled virtualenv executable, if present"""
         if self._bundled_virtualenv_path is runez.UNSET:
             self._bundled_virtualenv_path = None
-            if sys.prefix != sys.base_prefix:
+            if sys.prefix != getattr(sys, "base_prefix", sys.prefix):
                 # We're running from a virtual environment
                 virtualenv = os.path.join(os.path.dirname(self.program_path), "virtualenv")
                 if runez.is_executable(virtualenv):
