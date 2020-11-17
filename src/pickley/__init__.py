@@ -141,6 +141,36 @@ class PackageSpec(object):
             python=self.python.executable,
         )
 
+    @classmethod
+    def from_folder(cls, cfg, folder):
+        """
+        Args:
+            cfg (PickleyConfig): Associated configuration
+            folder (str): Path to folder to examine
+
+        Returns:
+            (PackageSpec): Extracted package spec
+        """
+        folder = runez.resolved_path(folder)
+        setup_py = os.path.join(folder, "setup.py")
+        if not os.path.exists(setup_py):
+            abort("No setup.py in %s" % folder)
+
+        with runez.CurrentFolder(folder):
+            # Some setup.py's assume current folder is the one with their setup.py
+            r = runez.run(sys.executable, "setup.py", "--name", dryrun=False, fatal=False, logger=False)
+            package_name = r.output
+            if r.failed or not package_name:
+                abort("Could not determine package name from %s" % setup_py)
+
+            validate_pypi_name(package_name)
+            r = runez.run(sys.executable, "setup.py", "--version", dryrun=False, fatal=False, logger=False)
+            package_version = r.output
+            if r.failed or not package_version:
+                abort("Could not determine package version from setup.py")
+
+            return cls(cfg, specced(package_name, package_version))
+
     def __repr__(self):
         return self.specced or self.dashed
 

@@ -11,7 +11,7 @@ import click
 import runez
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, PLATFORM, specced, validate_pypi_name
+from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, PLATFORM
 from pickley.delivery import DeliveryMethod, PICKLEY
 from pickley.package import PexPackager, PythonVenv, VenvPackager
 from pickley.v1upgrade import V1Status
@@ -635,35 +635,19 @@ class PackageFinalizer(object):
         req = runez.flattened(req, shellify=True)
         req.append(self.folder)
         self.requirements = req
-        with runez.CurrentFolder(self.folder, anchor=True):
-            # Some setup.py's assume current folder is the one with their setup.py
-            if not os.path.exists("setup.py"):
-                abort("No setup.py in %s" % self.folder)
+        self.pspec = PackageSpec.from_folder(CFG, self.folder)
+        LOG.info("Using python: %s" % self.pspec.python)
+        if self.dist.startswith("root/"):
+            # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
+            target = self.dist[4:]
+            if os.path.isdir(target):
+                LOG.debug("debian mode: %s -> %s", self.dist, target)
+                self.dist = target
 
-            r = runez.run(sys.executable, "setup.py", "--name", dryrun=False, fatal=False, logger=False)
-            package_name = r.output
-            if r.failed or not package_name:
-                abort("Could not determine package name from setup.py")
-
-            validate_pypi_name(package_name)
-            r = runez.run(sys.executable, "setup.py", "--version", dryrun=False, fatal=False, logger=False)
-            package_version = r.output
-            if r.failed or not package_version:
-                abort("Could not determine package version from setup.py")
-
-            self.pspec = PackageSpec(CFG, specced(package_name, package_version))
-            LOG.info("Using python: %s" % self.pspec.python)
-            if self.dist.startswith("root/"):
-                # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
-                target = self.dist[4:]
-                if os.path.isdir(target):
-                    LOG.debug("debian mode: %s -> %s", self.dist, target)
-                    self.dist = target
-
-                parts = self.dist.split("/")
-                if len(parts) <= 2:
-                    # Auto-add package name to targets of the form root/subfolder (most typical case)
-                    self.dist = os.path.join(self.dist, self.pspec.dashed)
+            parts = self.dist.split("/")
+            if len(parts) <= 2:
+                # Auto-add package name to targets of the form root/subfolder (most typical case)
+                self.dist = os.path.join(self.dist, self.pspec.dashed)
 
     def finalize(self):
         """Run sanity check and/or symlinks, and return a report"""
