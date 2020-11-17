@@ -5,6 +5,8 @@ Release notes
 2.2.3 (2020-11-17)
 ------------------
 
+* Allow installation from git repo url
+
 * Respect --no-compile for all package implementations
 
 * Removed package --no-sanity-check CLI flag

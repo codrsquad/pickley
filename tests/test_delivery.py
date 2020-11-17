@@ -40,7 +40,7 @@ def test_edge_cases(temp_folder, logged):
     entry_points = {"some-source": ""}
     cfg = PickleyConfig()
     cfg.set_base(".")
-    pspec = PackageSpec(cfg, "mgit==1.0.0")
+    pspec = PackageSpec(cfg, "mgit", "1.0.0")
     d = DeliveryMethod()
     with pytest.raises(SystemExit):
         d.install(pspec, venv, entry_points)

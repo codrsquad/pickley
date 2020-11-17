@@ -42,7 +42,7 @@ def test_base(temp_folder):
 def test_bootstrap(temp_cfg):
     assert needs_bootstrap() is False
 
-    pspec = PackageSpec(temp_cfg, "pickley==0.0")
+    pspec = PackageSpec(temp_cfg, "pickley", "0.0")
     pspec.python = temp_cfg.available_pythons.invoker
     assert needs_bootstrap(pspec) is True  # Due to no manifest
 
@@ -102,39 +102,10 @@ def test_debian_mode(temp_folder, logged):
         assert "'foo' failed --version sanity check" in logged.pop()
 
 
-def test_facultative(cli):
-    runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"))
-
-    # Empty file -> proceed with install as if it wasn't there
-    runez.touch("virtualenv")
-    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
-
-    # Simulate pickley wrapper
-    runez.write("virtualenv", "echo installed by pickley")
-    runez.make_executable("virtualenv")
-    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
-
-    # Unknown executable -> skip pickley installation (since facultative)
-    runez.write("virtualenv", "echo foo")
-    runez.make_executable("virtualenv")
-    cli.expect_success("-n install virtualenv", "Skipping installation of virtualenv: not installed by pickley")
-    cli.expect_success("-n check virtualenv", "skipped, not installed by pickley")
-
-    # --force ignores 'facultative' setting
-    cli.expect_failure("-n install --force virtualenv", "Can't automatically uninstall virtualenv")
-
-    # Simulate pickley symlink delivery
-    dummy_target = dot_meta("foo")
-    runez.touch(dummy_target)
-    runez.delete("virtualenv")
-    runez.symlink(dummy_target, "virtualenv")
-    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
-
-
-def test_main():
-    r = subprocess.check_output([sys.executable, "-mpickley", "--help"])  # Exercise __main__.py
-    r = runez.decode(r)
-    assert "auto-upgrade" in r
+def mock_clone(url, folder):
+    setup_py = os.path.join(folder, "setup.py")
+    name = runez.basename(url)
+    runez.write(setup_py, "from setuptools import setup\nsetup(name='%s', version='1.0')\n" % name, dryrun=False)
 
 
 def test_dryrun(cli):
@@ -198,6 +169,16 @@ def test_dryrun(cli):
     runez.delete(dot_meta("mgit"))
 
     cli.expect_success("-n diagnostics -v", "sys.executable")
+    with patch("runez.run", return_value=runez.program.RunResult("failed")):
+        cli.run("-n install git@github.com:zsimic/mgit.git")
+        assert cli.failed
+        assert cli.match("No setup.py")
+
+    with patch("pickley.git_clone", side_effect=mock_clone):
+        cli.run("-n install git@github.com:zsimic/mgit.git")
+        assert cli.succeeded
+        assert cli.match("Would run: ... -mpip ... install .pickley/.cache/checkout/mgit")
+
     cli.run("-n install mgit")
     assert cli.succeeded
     assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
@@ -263,6 +244,35 @@ def test_edge_cases(temp_cfg, logged):
 
     with pytest.raises(NotImplementedError):
         Packager.package(None, None, None, None, False)
+
+
+def test_facultative(cli):
+    runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"))
+
+    # Empty file -> proceed with install as if it wasn't there
+    runez.touch("virtualenv")
+    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
+
+    # Simulate pickley wrapper
+    runez.write("virtualenv", "echo installed by pickley")
+    runez.make_executable("virtualenv")
+    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
+
+    # Unknown executable -> skip pickley installation (since facultative)
+    runez.write("virtualenv", "echo foo")
+    runez.make_executable("virtualenv")
+    cli.expect_success("-n install virtualenv", "Skipping installation of virtualenv: not installed by pickley")
+    cli.expect_success("-n check virtualenv", "skipped, not installed by pickley")
+
+    # --force ignores 'facultative' setting
+    cli.expect_failure("-n install --force virtualenv", "Can't automatically uninstall virtualenv")
+
+    # Simulate pickley symlink delivery
+    dummy_target = dot_meta("foo")
+    runez.touch(dummy_target)
+    runez.delete("virtualenv")
+    runez.symlink(dummy_target, "virtualenv")
+    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
 
 
 def test_lock(temp_folder, logged):
@@ -354,6 +364,12 @@ def test_installation(cli):
         assert not os.path.islink("mgit")
         contents = runez.readlines("mgit")
         assert WRAPPER_MARK in contents
+
+
+def test_main():
+    r = subprocess.check_output([sys.executable, "-mpickley", "--help"])  # Exercise __main__.py
+    r = runez.decode(r)
+    assert "auto-upgrade" in r
 
 
 def test_package_pex(cli):

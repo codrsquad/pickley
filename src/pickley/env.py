@@ -103,7 +103,7 @@ def python_exe_path(venv, major=None):
 
         for name in names:
             path = os.path.join(venv, "bin", name)
-            if runez.is_executable(path):
+            if runez.DRYRUN or runez.is_executable(path):
                 return path
 
 

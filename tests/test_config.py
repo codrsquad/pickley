@@ -84,7 +84,7 @@ def test_bogus_config(temp_folder, logged):
 
     assert not logged
     with pytest.raises(SystemExit):
-        _ = PackageSpec(cfg, "mgit == 1.0.0")
+        _ = PackageSpec.from_text(cfg, "mgit == 1.0.0")
 
     assert "Python '/dev/null' was not usable, skipped: not an executable" in logged.pop()
 
@@ -116,7 +116,7 @@ def test_good_config(temp_folder, logged):
 
     assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
 
-    mgit = PackageSpec(cfg, "mgit == 1.0.0")
+    mgit = PackageSpec(cfg, "mgit", "1.0.0")
     pickley = PackageSpec(cfg, "pickley")
     assert mgit < pickley  # Ordering based on package name, then version
     assert str(mgit) == "mgit==1.0.0"

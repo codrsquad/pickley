@@ -113,6 +113,11 @@ def validate_pypi_name(name):
         logging.warning("'%s' is not pypi canonical, use dashes only, and lowercase" % name)
 
 
+def git_clone(url, folder):
+    runez.ensure_folder(folder, clean=True)
+    runez.run("git", "clone", url, folder, dryrun=False)
+
+
 class PackageSpec(object):
     """
     Formalizes a pypi package specification
@@ -122,14 +127,18 @@ class PackageSpec(object):
     - wheel transforms dashes to underscores
     """
 
-    def __init__(self, cfg, text):
+    def __init__(self, cfg, name, version=None, folder=None):
         """
         Args:
             cfg (PickleyConfig): Associated configuration
-            text (str): Given package name, with optional version spec
+            name (str): Given pypi package name
+            version (str | None): Optional version spec
+            folder (str | None): Folder where a checkout of associated project resides
         """
         self.cfg = cfg
-        self.original, self.version = despecced(text)
+        self.original = name
+        self.version = version
+        self.folder = folder
         validate_pypi_name(self.original)
         self.dashed = canonical_pypi_name(self.original)
         self.wheelified = self.original.replace("-", "_").replace(".", "_")
@@ -140,6 +149,18 @@ class PackageSpec(object):
             index=cfg.index(self) or cfg.default_index,
             python=self.python.executable,
         )
+
+    @classmethod
+    def from_text(cls, cfg, text):
+        if text and ("://" in text or text.endswith(".git")):
+            basename = runez.basename(text)
+            folder = cfg.cache.full_path("checkout", basename)
+            git_clone(text, folder)
+            pspec = PackageSpec.from_folder(cfg, folder)
+            return pspec
+
+        name, version = despecced(text)
+        return PackageSpec(cfg, name, version)
 
     @classmethod
     def from_folder(cls, cfg, folder):
@@ -169,7 +190,7 @@ class PackageSpec(object):
             if r.failed or not package_version:
                 abort("Could not determine package version from setup.py")
 
-            return cls(cfg, specced(package_name, package_version))
+            return cls(cfg, package_name, package_version, folder=folder)
 
     def __repr__(self):
         return self.specced or self.dashed
@@ -287,6 +308,9 @@ class PackageSpec(object):
         Args:
             keep_for (int): Time in seconds for how long to keep the previously installed version
         """
+        if self.cfg.cache.contains(self.folder):
+            runez.delete(self.folder)
+
         current = self.get_manifest()
         meta_path = self.meta_path
         if current and os.path.isdir(meta_path):
@@ -573,7 +597,7 @@ class PickleyConfig(object):
         """
         if names:
             result = [self.resolved_bundle(name) for name in runez.flattened(names, split=" ")]
-            return [PackageSpec(self, name) for name in runez.flattened(result, unique=True)]
+            return [PackageSpec.from_text(self, name) for name in runez.flattened(result, unique=True)]
 
         result = []
         if os.path.isdir(self.meta.path):
@@ -582,7 +606,7 @@ class PickleyConfig(object):
                     fpath = os.path.join(self.meta.path, fname)
                     if os.path.isdir(fpath):
                         if os.path.exists(os.path.join(fpath, ".manifest.json")) or os.path.exists(os.path.join(fpath, ".current.json")):
-                            result.append(PackageSpec(self, fname))
+                            result.append(PackageSpec.from_text(self, fname))
 
         return result
 
@@ -899,6 +923,11 @@ class FolderBase(object):
 
     def __repr__(self):
         return self.path
+
+    def contains(self, path):
+        if path:
+            path = runez.resolved_path(path)
+            return path.startswith(self.path)
 
     def full_path(self, *relative):
         """

@@ -269,7 +269,7 @@ def auto_upgrade_v1(cfg):
         setup_audit_log(cfg)
         inform("Auto-upgrading %s packages with pickley v2" % len(v1.installed))
         for prev in v1.installed:
-            pspec = PackageSpec(cfg, prev.name)
+            pspec = PackageSpec.from_text(cfg, prev.name)
             try:
                 manifest = perform_install(pspec, is_upgrade=False, quiet=False)
                 if manifest and manifest.entrypoints and prev.entrypoints:
@@ -308,7 +308,7 @@ def needs_bootstrap(pickleyspec=None):
 
 def bootstrap():
     """Bootstrap pickley (reinstall with venv instead of downloaded pex package)"""
-    pickleyspec = PackageSpec(CFG, "%s==%s" % (PICKLEY, __version__))
+    pickleyspec = PackageSpec(CFG, PICKLEY, __version__)
     grand_parent = _location_grand_parent()
     if grand_parent and grand_parent.endswith(".whl"):
         # We are running from a pex package
@@ -369,7 +369,7 @@ def auto_upgrade(force, package):
         if not package:
             sys.exit(0)
 
-    pspec = PackageSpec(CFG, package)
+    pspec = PackageSpec.from_text(CFG, package)
     ping = pspec.ping_path
     if not force and runez.file.is_younger(ping, 5):  # 5 seconds cool down on version check to avoid bursts
         LOG.debug("Skipping auto-upgrade, checked recently")

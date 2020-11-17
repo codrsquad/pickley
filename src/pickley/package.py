@@ -256,6 +256,9 @@ class VenvPackager(Packager):
             if project_path:
                 args = ["-e", project_path]  # Development mode (running from source checkout)
 
+        elif pspec.folder:
+            args = [pspec.folder]
+
         venv = PythonVenv(pspec)
         venv.pip_install(*args)
         if extras:
