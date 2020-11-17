@@ -59,7 +59,8 @@ def test_bootstrap(temp_cfg):
 
 
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
-    p = PackageFinalizer("foo", "build", dist, symlink, None, None)
+    p = PackageFinalizer("foo", dist, symlink)
+    p.resolve()
     assert p.pspec.dashed == "foo"
     return p
 
@@ -68,7 +69,7 @@ def test_debian_mode(temp_folder, logged):
     runez.write("foo/setup.py", "import setuptools\nsetuptools.setup(name='foo', version='1.0')")
     p = dummy_finalizer("root/apps")
     assert p.dist == "root/apps/foo"
-    assert p.requirements == ["foo"]
+    assert p.requirements == [runez.resolved_path("foo")]
     assert "Using python:" in logged.pop()
 
     # Symlink not created unless source effectively exists
@@ -261,7 +262,7 @@ def test_edge_cases(temp_cfg, logged):
         Packager.install(None)
 
     with pytest.raises(NotImplementedError):
-        Packager.package(None, None, None, None)
+        Packager.package(None, None, None, None, False)
 
 
 def test_lock(temp_folder, logged):

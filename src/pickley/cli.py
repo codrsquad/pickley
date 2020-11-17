@@ -560,21 +560,19 @@ def uninstall(all, packages):
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
 @click.option("--symlink", "-s", help="Create symlinks for debian-style packaging, example: root:root/usr/local/bin")
 @click.option("--no-compile", is_flag=True, help="Don't byte-compile packaged venv")
-@click.option("--no-sanity-check", is_flag=True, hidden=True, help="Disable sanity check")
 @click.option("--sanity-check", default=None, show_default=True, help="Args to invoke produced package as a sanity check")
 @click.option("--requirement", "-r", multiple=True, help="Install from the given requirements file (can be used multiple times)")
-@click.argument("folder", required=True)
-def package(build, dist, symlink, no_compile, no_sanity_check, sanity_check, folder, requirement):
+@click.argument("project", required=True)
+def package(build, dist, symlink, no_compile, sanity_check, project, requirement):
     """Package a project from source checkout"""
     started = time.time()
     runez.log.spec.default_logger = LOG.info
-    folder = runez.resolved_path(folder)
-    if not os.path.isdir(folder):
-        abort("Folder %s does not exist" % runez.red(runez.short(folder)))
-
-    build = runez.resolved_path(build)
-    CFG.set_base(build)
-    finalizer = PackageFinalizer(folder, build, dist, symlink, sanity_check, requirement, compile=not no_compile)
+    CFG.set_base(runez.resolved_path(build))
+    finalizer = PackageFinalizer(project, dist, symlink)
+    finalizer.sanity_check = sanity_check
+    finalizer.requirements = requirement
+    finalizer.compile = not no_compile
+    finalizer.resolve()
     report = finalizer.finalize()
     if report:
         inform("")
@@ -582,7 +580,7 @@ def package(build, dist, symlink, no_compile, no_sanity_check, sanity_check, fol
         inform("")
 
     elapsed = "in %s" % runez.represented_duration(time.time() - started)
-    inform("Packaged %s successfully %s" % (runez.bold(runez.short(folder)), runez.dim(elapsed)))
+    inform("Packaged %s successfully %s" % (runez.bold(runez.short(project)), runez.dim(elapsed)))
 
 
 class PackageFinalizer(object):
@@ -590,35 +588,53 @@ class PackageFinalizer(object):
     This class allows to have an early check on provided settings, and wrap them up
     """
 
-    def __init__(self, folder, build, dist, symlink, sanity_check, requirement, compile=True, border="reddit"):
+    pspec = None  # type: PackageSpec
+
+    def __init__(self, project, dist, symlink):
         """
         Args:
-            folder (str): Folder where project to be packaged resides (must have a setup.py)
-            build (str): Full path to folder to use as build folder
+            project (str): Folder where project to be packaged resides (must have a setup.py)
             dist (str): Relative path to folder to use as 'dist' (where to deliver package)
             symlink (str | None): Synlink specification, of the form 'root:root/...'
-            sanity_check (str | None): CLI to use as sanity check for packaged exes (default: --version)
-            requirement (list | None): Optional list of requirements files
-            compile (bool): Don't byte-compile pacakged venv
-            border (str): Border to use for PrettyTable overview
         """
-        self.folder = folder
-        self.build = build
+        self.folder = runez.resolved_path(project)
         self.dist = dist
         self.symlink = Symlinker(symlink) if symlink else None
-        self.sanity_check = sanity_check
-        self.compile = compile
-        self.border = border
-        default_req = runez.resolved_path("requirements.txt", base=folder)
-        if not requirement and os.path.exists(default_req):
-            requirement = [default_req]
+        self.sanity_check = None
+        self.requirements = []
+        self.compile = True
+        self.border = "reddit"
 
-        if requirement:
-            requirement = [("-r", runez.resolved_path(r, base=folder)) for r in requirement]
+    @staticmethod
+    def validate_sanity_check(exe, sanity_check):
+        if not exe or not sanity_check:
+            return None
 
-        requirement = runez.flattened(requirement, shellify=True)
-        requirement.append(folder)
-        self.requirements = requirement
+        r = runez.run(exe, sanity_check, fatal=False)
+        if r.failed:
+            if does_not_implement_cli_flag(r.output, r.error):
+                return "does not respond to %s" % sanity_check
+
+            abort("'%s' failed %s sanity check: %s" % (exe, sanity_check, r.full_output))
+
+        return runez.first_line(r.output or r.error)
+
+    def resolve(self):
+        if not os.path.isdir(self.folder):
+            abort("Folder %s does not exist" % runez.red(runez.short(self.folder)))
+
+        req = self.requirements
+        if not req:
+            default_req = runez.resolved_path("requirements.txt", base=self.folder)
+            if os.path.exists(default_req):
+                req = [default_req]
+
+        if req:
+            req = [("-r", runez.resolved_path(r, base=self.folder)) for r in req]
+
+        req = runez.flattened(req, shellify=True)
+        req.append(self.folder)
+        self.requirements = req
         with runez.CurrentFolder(self.folder, anchor=True):
             # Some setup.py's assume current folder is the one with their setup.py
             if not os.path.exists("setup.py"):
@@ -649,26 +665,12 @@ class PackageFinalizer(object):
                     # Auto-add package name to targets of the form root/subfolder (most typical case)
                     self.dist = os.path.join(self.dist, self.pspec.dashed)
 
-    @staticmethod
-    def validate_sanity_check(exe, sanity_check):
-        if not exe or not sanity_check:
-            return None
-
-        r = runez.run(exe, sanity_check, fatal=False)
-        if r.failed:
-            if does_not_implement_cli_flag(r.output, r.error):
-                return "does not respond to %s" % sanity_check
-
-            abort("'%s' failed %s sanity check: %s" % (exe, sanity_check, r.full_output))
-
-        return runez.first_line(r.output or r.error)
-
     def finalize(self):
         """Run sanity check and/or symlinks, and return a report"""
-        with runez.Anchored(self.folder, self.build):
-            runez.ensure_folder(self.build, clean=True, logger=False)
+        with runez.Anchored(self.folder, CFG.base.path):
+            runez.ensure_folder(CFG.base.path, clean=True, logger=False)
             dist_folder = runez.resolved_path(self.dist)
-            exes = PACKAGER.package(self.pspec, self.build, dist_folder, self.requirements)
+            exes = PACKAGER.package(self.pspec, CFG.base.path, dist_folder, self.requirements, self.compile)
             if exes:
                 report = PrettyTable(["Packaged executable", self.sanity_check], border=self.border)
                 report.header.style = "bold"

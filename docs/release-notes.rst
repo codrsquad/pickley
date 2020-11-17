@@ -2,6 +2,14 @@
 Release notes
 =============
 
+2.2.3 (2020-11-17)
+------------------
+
+* Respect --no-compile for all package implementations
+
+* Removed package --no-sanity-check CLI flag
+
+
 2.2.2 (2020-11-16)
 ------------------
 

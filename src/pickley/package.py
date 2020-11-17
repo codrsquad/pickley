@@ -187,7 +187,7 @@ class Packager(object):
         raise NotImplementedError("Installation with packager '{packager}' is not supported")
 
     @staticmethod
-    def package(pspec, build_folder, dist_folder, requirements):
+    def package(pspec, build_folder, dist_folder, requirements, compile):
         """Package current folder
 
         Args:
@@ -195,6 +195,7 @@ class Packager(object):
             build_folder (str): Folder to use as build cache
             dist_folder (str): Folder where to produce package
             requirements (list): Additional requirements (same convention as pip, can be package names or package specs)
+            compile (bool): Call 'compileall' on generated package?
 
         Returns:
             (list | None): List of packaged executables
@@ -206,7 +207,7 @@ class PexPackager(Packager):
     """Package via pex (https://pypi.org/project/pex/)"""
 
     @staticmethod
-    def package(pspec, build_folder, dist_folder, requirements):
+    def package(pspec, build_folder, dist_folder, requirements, compile):
         runez.ensure_folder(build_folder, clean=True)
         if pspec.python.major < 3:
             abort("Packaging with pex is not supported any more with python2")
@@ -229,7 +230,7 @@ class PexPackager(Packager):
                 pex_venv.run_python(
                     "-mpex", "-v", "-o%s" % target, "--pex-root", pex_root, "--tmpdir", tmp,
                     "--no-index", "--find-links", wheels,  # resolver options
-                    "--no-compile",  # output options
+                    None if compile else "--no-compile",  # output options
                     "-c%s" % name,  # entry point options
                     "--python-shebang", "/usr/bin/env python%s" % pspec.python.major,
                     wheel_path,
@@ -268,11 +269,13 @@ class VenvPackager(Packager):
         return delivery.install(pspec, venv, entry_points)
 
     @staticmethod
-    def package(pspec, build_folder, dist_folder, requirements):
+    def package(pspec, build_folder, dist_folder, requirements, compile):
         runez.ensure_folder(dist_folder, clean=True, logger=False)
         venv = PythonVenv(pspec, folder=dist_folder)
         venv.pip_install(*requirements)
-        venv.run_python("-mcompileall", dist_folder)
+        if compile:
+            venv.run_python("-mcompileall", dist_folder)
+
         entry_points = venv.find_entry_points(pspec)
         if entry_points:
             result = []
