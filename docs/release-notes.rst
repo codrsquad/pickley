@@ -2,10 +2,12 @@
 Release notes
 =============
 
-2.2.4 (2020-11-00)
+2.2.4 (2020-11-17)
 ------------------
 
 * Added ``config`` path output to ``base`` sub-command
+
+* Allow to install from folder as well (in addition to git url)
 
 
 2.2.3 (2020-11-17)

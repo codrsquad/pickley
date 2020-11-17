@@ -103,7 +103,7 @@ class DeliveryMethod(object):
                 self._install(pspec, dest, src)
 
             manifest = pspec.save_manifest(entry_points)
-            if prev_manifest and prev_manifest.entrypoints:
+            if not runez.DRYRUN and prev_manifest and prev_manifest.entrypoints:
                 for old_ep in prev_manifest.entrypoints:
                     if old_ep and old_ep not in entry_points:
                         # Remove old entry points that are not in new manifest any more

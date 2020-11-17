@@ -298,8 +298,17 @@ def test_lock(temp_folder, logged):
     assert not os.path.exists("foo")  # Lock released
 
 
-def check_install(cli, delivery, package, simulate_version=None):
-    cli.expect_success("-d%s install %s" % (delivery, package), "Installed %s" % package)
+def test_install_folder(cli):
+    project = runez.log.project_path()
+    cli.run("--debug", "-dsymlink", "install", project)
+    assert cli.succeeded
+    assert os.path.islink("pickley")
+
+
+def check_install_from_pypi(cli, delivery, package, simulate_version=None):
+    cli.run("--debug", "-d%s" % delivery, "install", package)
+    assert cli.succeeded
+    assert cli.match("Installed %s" % package)
     assert runez.is_executable(package)
     m = TrackedManifest.from_file(dot_meta("%s/.manifest.json" % package))
     assert m.entrypoints[package]
@@ -328,7 +337,7 @@ def check_install(cli, delivery, package, simulate_version=None):
         cli.expect_success("check", "v%s installed, can be upgraded to" % simulate_version)
 
 
-def test_installation(cli):
+def test_install_pypi(cli):
     cli.expect_failure("install six", "it is not a CLI")
     assert not os.path.exists(dot_meta("six"))
 
@@ -337,9 +346,17 @@ def test_installation(cli):
     runez.touch(dot_meta("mgit/.foo"))  # Should stay because name starts with '.'
     runez.touch(dot_meta("mgit/mgit-foo"))  # Bogus installation
     runez.touch(dot_meta("mgit/mgit-0.0.1/foo"))  # Oldest should be deleted
+
+    # Simulate the presence of an old entry point
+    manifest_path = dot_meta("mgit/.manifest.json")
+    runez.save_json(dict(entrypoints=["mgit", "old-mgit-entrypoint"]), manifest_path)
+    runez.touch("old-mgit-entrypoint")
+    assert os.path.exists("old-mgit-entrypoint")
+
     time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
     runez.touch(dot_meta("mgit/mgit-0.0.2/foo"))  # Youngest should remain for an hour
-    check_install(cli, "symlink", "mgit")
+    check_install_from_pypi(cli, "symlink", "mgit")
+    assert not os.path.exists("old-mgit-entrypoint")
     assert os.path.islink("mgit")
     assert os.path.exists(dot_meta("mgit/.manifest.json"))
     assert os.path.exists(dot_meta("mgit/.foo"))
@@ -360,7 +377,7 @@ def test_installation(cli):
 
     if sys.version_info[0] > 2:
         # Bootstrapping out of py2 is tested separately
-        check_install(cli, "wrap", "mgit", simulate_version="0.0.0")
+        check_install_from_pypi(cli, "wrap", "mgit", simulate_version="0.0.0")
         assert not os.path.islink("mgit")
         contents = runez.readlines("mgit")
         assert WRAPPER_MARK in contents
@@ -396,8 +413,8 @@ def test_package_pex(cli):
 
         assert runez.run(expected, "diagnostics").succeeded
 
-        manifest = runez.read_json(dot_meta("pickley/.manifest.json"))
-        assert manifest["version"] == version
+        manifest = TrackedManifest.from_file(dot_meta("pickley/.manifest.json"))
+        assert manifest.version == version
 
 
 def test_package_venv(cli):

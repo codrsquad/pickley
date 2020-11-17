@@ -39,7 +39,13 @@ def protected_main():
 
 def setup_audit_log(cfg=CFG):
     """Setup audit.log log file handler"""
-    if not runez.DRYRUN and not runez.log.file_handler:
+    if runez.DRYRUN:
+        if not runez.log.console_handler or runez.log.spec.console_level > logging.INFO:
+            runez.log.setup(console_level=logging.INFO)
+
+        return
+
+    if not runez.log.file_handler:
         runez.ensure_folder(cfg.meta.path)
         runez.log.setup(
             file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",

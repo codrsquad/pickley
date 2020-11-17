@@ -114,8 +114,9 @@ def validate_pypi_name(name):
 
 
 def git_clone(url, folder):
-    runez.ensure_folder(folder, clean=True)
-    runez.run("git", "clone", url, folder, dryrun=False)
+    runez.ensure_folder(folder, clean=True, dryrun=False)
+    logger = LOG.info if runez.DRYRUN else runez.UNSET
+    runez.run("git", "clone", url, folder, dryrun=False, logger=logger)
 
 
 class PackageSpec(object):
@@ -152,12 +153,19 @@ class PackageSpec(object):
 
     @classmethod
     def from_text(cls, cfg, text):
-        if text and ("://" in text or text.endswith(".git")):
-            basename = runez.basename(text)
-            folder = cfg.cache.full_path("checkout", basename)
-            git_clone(text, folder)
-            pspec = PackageSpec.from_folder(cfg, folder)
-            return pspec
+        if text:
+            if "://" in text or text.endswith(".git"):
+                basename = runez.basename(text)
+                folder = cfg.cache.full_path("checkout", basename)
+                git_clone(text, folder)
+                pspec = PackageSpec.from_folder(cfg, folder)
+                return pspec
+
+            if "/" in text:
+                folder = runez.resolved_path(text)
+                if os.path.isdir(folder):
+                    pspec = PackageSpec.from_folder(cfg, folder)
+                    return pspec
 
         name, version = despecced(text)
         return PackageSpec(cfg, name, version)

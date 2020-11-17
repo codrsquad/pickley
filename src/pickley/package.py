@@ -249,15 +249,15 @@ class VenvPackager(Packager):
         delivery.ping = ping
         args = [pspec.specced]
         extras = None
-        if pspec.dashed == PICKLEY:
+        if pspec.folder:
+            args = [pspec.folder]
+
+        elif pspec.dashed == PICKLEY:
             # Inject extra packages for pickley, to help bootstrap
             extras = ["virtualenv", "requests"]
             project_path = runez.log.project_path()
             if project_path:
                 args = ["-e", project_path]  # Development mode (running from source checkout)
-
-        elif pspec.folder:
-            args = [pspec.folder]
 
         venv = PythonVenv(pspec)
         venv.pip_install(*args)
