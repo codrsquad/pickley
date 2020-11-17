@@ -389,17 +389,18 @@ def base(what):
     """Show pickley base folder"""
     path = CFG.base.path
     if what:
-        if what in ("audit", "audit.log"):
-            path = CFG.meta.full_path("audit.log")
-
-        elif what == "cache":
-            path = CFG.cache.path
-
-        elif what == "meta":
-            path = CFG.meta.path
-
-        else:
-            abort("Unknown base folder reference '%s'" % runez.red(what))
+        paths = {
+            "audit": CFG.meta.full_path("audit.log"),
+            "cache": CFG.cache.path,
+            "config": CFG.meta.full_path("config.json"),
+            "meta": CFG.meta.path,
+        }
+        paths["audit.log"] = paths["audit"]
+        paths["config.json"] = paths["config"]
+        path = paths.get(what)
+        if not path:
+            options = [runez.green(s) for s in sorted(paths)]
+            abort("Unknown base folder reference '%s', try one of: %s" % (runez.red(what), ", ".join(options)))
 
     print(path)
 

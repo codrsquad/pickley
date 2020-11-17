@@ -2,6 +2,12 @@
 Release notes
 =============
 
+2.2.4 (2020-11-00)
+------------------
+
+* Added ``config`` path output to ``base`` sub-command
+
+
 2.2.3 (2020-11-17)
 ------------------
 
