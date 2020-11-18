@@ -64,33 +64,34 @@ class SoftLockException(Exception):
 class SoftLock(object):
     """
     Simple soft file lock mechanism, allows to ensure only one pickley is working on a specific installation.
-    A 'lock' is a simple file containing 2 lines: process id of the logfetch holding it, and the CLI args it was invoked with.
+    A lock is a simple file containing 2 lines: process id holding it, and the CLI args it was invoked with.
     """
 
-    def __init__(self, lock, give_up=None, invalid=None):
+    def __init__(self, pspec, give_up=None, invalid=None):
         """
         Args:
-            lock (str): Path to lock file
+            pspec (PackageSpec): Package to acquire lock for
             give_up (int | None): Timeout in seconds after which to give up (raise SoftLockException) if lock could not be acquired
             invalid (int | None): Age in seconds after which to consider existing lock as invalid
         """
-        self.lock = lock
-        self.give_up = give_up or 120
+        self.pspec = pspec
+        self.lock_path = pspec.get_lock_path()
+        self.give_up = give_up or pspec.cfg.install_timeout(pspec) or 120
         self.invalid = invalid or self.give_up * 2
 
     def __repr__(self):
-        return self.lock
+        return "lock %s" % self.pspec
 
     def _locked_by(self):
         """
         Returns:
             (str): CLI args of process holding the lock, if any
         """
-        if self.invalid and self.invalid > 0 and not runez.file.is_younger(self.lock, self.invalid):
+        if self.invalid and self.invalid > 0 and not runez.file.is_younger(self.lock_path, self.invalid):
             return None  # Lock file does not exist or invalidation age reached
 
         pid = None
-        for line in runez.readlines(self.lock, default=[], errors="ignore"):
+        for line in runez.readlines(self.lock_path, default=[], errors="ignore"):
             if pid is not None:
                 return line  # 2nd line hold CLI args process was invoked with
 
@@ -107,7 +108,7 @@ class SoftLock(object):
         holder_args = self._locked_by()
         while holder_args:
             if time.time() >= cutoff:
-                lock = runez.bold(runez.short(self.lock))
+                lock = runez.bold(runez.short(self.lock_path))
                 holder_args = runez.bold(holder_args)
                 raise SoftLockException("Can't grab lock %s, giving up\nIt is being held by: pickley %s" % (lock, holder_args))
 
@@ -116,26 +117,27 @@ class SoftLock(object):
 
         # We got the soft lock
         if runez.DRYRUN:
-            print("Would acquire %s" % runez.short(self.lock))
+            print("Would acquire %s" % runez.short(self.lock_path))
 
         else:
-            LOG.debug("Acquired %s" % runez.short(self.lock))
+            LOG.debug("Acquired %s" % runez.short(self.lock_path))
 
-        runez.write(self.lock, "%s\n%s\n" % (os.getpid(), runez.quoted(sys.argv[1:])), logger=False)
+        runez.write(self.lock_path, "%s\n%s\n" % (os.getpid(), runez.quoted(sys.argv[1:])), logger=False)
+        self.pspec.resolve()
         return self
 
     def __exit__(self, *_):
         """Release lock"""
         if runez.DRYRUN:
-            print("Would release %s" % runez.short(self.lock))
+            print("Would release %s" % runez.short(self.lock_path))
 
         else:
-            LOG.debug("Released %s" % runez.short(self.lock))
+            LOG.debug("Released %s" % runez.short(self.lock_path))
 
         if CFG.base:
             runez.Anchored.pop(CFG.base.path)
 
-        runez.delete(self.lock, logger=False)
+        runez.delete(self.lock_path, logger=False)
 
 
 def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
@@ -149,13 +151,14 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
     Returns:
         (pickley.TrackedManifest): Manifest is successfully installed (or was already up-to-date)
     """
-    skip_reason = pspec.skip_reason(force)
-    if skip_reason:
-        inform("Skipping installation of %s: %s" % (pspec.dashed, runez.bold(skip_reason)))
-        return None
-
-    with SoftLock(pspec.lock_path, give_up=pspec.cfg.install_timeout(pspec)):
+    with SoftLock(pspec):
         started = time.time()
+        pspec.resolve()
+        skip_reason = pspec.skip_reason(force)
+        if skip_reason:
+            inform("Skipping installation of %s: %s" % (pspec.dashed, runez.bold(skip_reason)))
+            return None
+
         manifest = pspec.get_manifest()
         if is_upgrade and not manifest and not quiet:
             abort("'%s' is not installed" % runez.red(pspec))
@@ -275,7 +278,7 @@ def auto_upgrade_v1(cfg):
         setup_audit_log(cfg)
         inform("Auto-upgrading %s packages with pickley v2" % len(v1.installed))
         for prev in v1.installed:
-            pspec = PackageSpec.from_text(cfg, prev.name)
+            pspec = PackageSpec(cfg, prev.name)
             try:
                 manifest = perform_install(pspec, is_upgrade=False, quiet=False)
                 if manifest and manifest.entrypoints and prev.entrypoints:
@@ -340,7 +343,7 @@ def bootstrap():
     if "pickley.bootstrap" in sys.argv[0]:
         # We're running from pass1 bootstrap
         setup_audit_log()
-        with SoftLock(pickleyspec.lock_path):
+        with SoftLock(pickleyspec):
             VenvPackager.install(pickleyspec, ping=False)
 
         LOG.debug("Pass 2 bootstrap done")
@@ -349,7 +352,7 @@ def bootstrap():
 
     if needs_bootstrap(pickleyspec):
         setup_audit_log()
-        with SoftLock(pickleyspec.lock_path):
+        with SoftLock(pickleyspec):
             delivery = DeliveryMethod.delivery_method_by_name(pickleyspec.settings.delivery)
             delivery.ping = False
             venv = PythonVenv(pickleyspec, folder=pickleyspec.cfg.meta.full_path(PICKLEY, "pickley.bootstrap"))
@@ -375,14 +378,15 @@ def auto_upgrade(force, package):
         if not package:
             sys.exit(0)
 
-    pspec = PackageSpec.from_text(CFG, package)
+    pspec = PackageSpec(CFG, package)
     ping = pspec.ping_path
     if not force and runez.file.is_younger(ping, 5):  # 5 seconds cool down on version check to avoid bursts
         LOG.debug("Skipping auto-upgrade, checked recently")
         sys.exit(0)
 
     runez.touch(ping)
-    if runez.file.is_younger(pspec.lock_path, CFG.install_timeout(pspec)):
+    lock_path = pspec.get_lock_path()
+    if runez.file.is_younger(lock_path, CFG.install_timeout(pspec)):
         LOG.debug("Lock file present, another installation is in progress")
         sys.exit(0)
 
@@ -642,7 +646,7 @@ class PackageFinalizer(object):
         req = runez.flattened(req, shellify=True)
         req.append(self.folder)
         self.requirements = req
-        self.pspec = PackageSpec.from_folder(CFG, self.folder)
+        self.pspec = PackageSpec(CFG, self.folder)
         LOG.info("Using python: %s" % self.pspec.python)
         if self.dist.startswith("root/"):
             # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues

@@ -2,8 +2,10 @@
 Release notes
 =============
 
-2.2.4 (2020-11-17)
+2.2.4 (2020-11-18)
 ------------------
+
+* Perform potential ``git clone`` while holding the installation lock
 
 * Added ``config`` path output to ``base`` sub-command
 

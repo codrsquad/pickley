@@ -36,7 +36,7 @@ def brew_realpath(path):
 
 
 def test_edge_cases(temp_folder, logged):
-    venv = MagicMock(bin_path=lambda x: os.path.join("mypkg/bin", x))
+    venv = MagicMock(bin_path=lambda x: os.path.join("some-package/bin", x))
     entry_points = {"some-source": ""}
     cfg = PickleyConfig()
     cfg.set_base(".")
@@ -44,9 +44,9 @@ def test_edge_cases(temp_folder, logged):
     d = DeliveryMethod()
     with pytest.raises(SystemExit):
         d.install(pspec, venv, entry_points)
-    assert "Can't deliver some-source -> mypkg/bin/some-source: source does not exist" in logged.pop()
+    assert "Can't deliver some-source -> some-package/bin/some-source: source does not exist" in logged.pop()
 
-    runez.touch("mypkg/bin/some-source")
+    runez.touch("some-package/bin/some-source")
     with pytest.raises(SystemExit):
         d.install(pspec, venv, entry_points)
     assert "Failed to deliver" in logged.pop()

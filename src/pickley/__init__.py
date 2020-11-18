@@ -8,7 +8,7 @@ from datetime import datetime
 
 import runez
 
-from pickley.env import AvailablePythons, py_version_components, python_exe_path, PythonFromPath
+from pickley.env import AvailablePythons, py_version_components, python_exe_path, PythonFromPath, PythonInstallation
 from pickley.pypi import PepVersion, PypiInfo
 
 
@@ -43,7 +43,7 @@ def canonical_pypi_name(original):
     Returns:
         (str): Corresponding canonical pypi name
     """
-    return original.lower().replace("_", "-").replace(".", "-")
+    return original and original.lower().replace("_", "-").replace(".", "-")
 
 
 def inform(message):
@@ -113,10 +113,12 @@ def validate_pypi_name(name):
         logging.warning("'%s' is not pypi canonical, use dashes only, and lowercase" % name)
 
 
-def git_clone(url, folder):
-    runez.ensure_folder(folder, clean=True, dryrun=False)
+def git_clone(pspec):
+    basename = runez.basename(pspec.original)
+    pspec.folder = pspec.cfg.cache.full_path("checkout", basename)
+    runez.ensure_folder(pspec.folder, clean=True, dryrun=False)
     logger = LOG.info if runez.DRYRUN else runez.UNSET
-    runez.run("git", "clone", url, folder, dryrun=False, logger=logger)
+    runez.run("git", "clone", pspec.original, pspec.folder, dryrun=False, logger=logger)
 
 
 class PackageSpec(object):
@@ -128,64 +130,77 @@ class PackageSpec(object):
     - wheel transforms dashes to underscores
     """
 
-    def __init__(self, cfg, name, version=None, folder=None):
+    # The following fields become available after a call to resolve()
+    name = None  # type: str
+    version = None  # type: str
+    folder = None  # type: str
+    dashed = None  # type: str
+    wheelified = None  # type: str
+    python = None  # type: PythonInstallation
+    pinned = None  # type: str
+    settings = None  # type: TrackedSettings
+
+    def __init__(self, cfg, name_or_url, version=None):
         """
         Args:
             cfg (PickleyConfig): Associated configuration
-            name (str): Given pypi package name
+            name_or_url (str): Provided package reference (either name, folder or git url)
             version (str | None): Optional version spec
-            folder (str | None): Folder where a checkout of associated project resides
         """
         self.cfg = cfg
-        self.original = name
+        self.original = name_or_url
         self.version = version
-        self.folder = folder
-        validate_pypi_name(self.original)
-        self.dashed = canonical_pypi_name(self.original)
-        self.wheelified = self.original.replace("-", "_").replace(".", "_")
-        self.pinned = cfg.pinned_version(self)
-        self.python = cfg.find_python(self)
+        self._delayed_resolver = self._get_delayed_resolver()
+        if self._delayed_resolver is None:
+            self.resolve()
+
+    def __repr__(self):
+        return self.specced or self.dashed or self.original
+
+    def __lt__(self, other):
+        return str(self) < str(other)
+
+    def _get_delayed_resolver(self):
+        if "://" in self.original or self.original.endswith(".git"):
+            return git_clone
+
+        if "/" in self.original:
+            folder = runez.resolved_path(self.original)
+            if os.path.isdir(folder):
+                self.folder = folder
+
+    def resolve(self):
+        if self.name:
+            return
+
+        if self._delayed_resolver is not None:
+            self._delayed_resolver(self)
+            self._delayed_resolver = None
+
+        self.name, self.version = self.resolved_name_version()
+        validate_pypi_name(self.name)
+        self.dashed = canonical_pypi_name(self.name)
+        self.wheelified = self.name.replace("-", "_").replace(".", "_")
+        self.pinned = self.cfg.pinned_version(self)
+        self.python = self.cfg.find_python(self)
         self.settings = TrackedSettings(
-            delivery=cfg.delivery_method(self),
-            index=cfg.index(self) or cfg.default_index,
+            delivery=self.cfg.delivery_method(self),
+            index=self.cfg.index(self) or self.cfg.default_index,
             python=self.python.executable,
         )
 
-    @classmethod
-    def from_text(cls, cfg, text):
-        if text:
-            if "://" in text or text.endswith(".git"):
-                basename = runez.basename(text)
-                folder = cfg.cache.full_path("checkout", basename)
-                git_clone(text, folder)
-                pspec = PackageSpec.from_folder(cfg, folder)
-                return pspec
+    def resolved_name_version(self):
+        if not self.folder:
+            if self.version:
+                return self.original, self.version
 
-            if "/" in text:
-                folder = runez.resolved_path(text)
-                if os.path.isdir(folder):
-                    pspec = PackageSpec.from_folder(cfg, folder)
-                    return pspec
+            return despecced(self.original)
 
-        name, version = despecced(text)
-        return PackageSpec(cfg, name, version)
-
-    @classmethod
-    def from_folder(cls, cfg, folder):
-        """
-        Args:
-            cfg (PickleyConfig): Associated configuration
-            folder (str): Path to folder to examine
-
-        Returns:
-            (PackageSpec): Extracted package spec
-        """
-        folder = runez.resolved_path(folder)
-        setup_py = os.path.join(folder, "setup.py")
+        setup_py = os.path.join(self.folder, "setup.py")
         if not os.path.exists(setup_py):
-            abort("No setup.py in %s" % folder)
+            abort("No setup.py in %s" % self.folder)
 
-        with runez.CurrentFolder(folder):
+        with runez.CurrentFolder(self.folder):
             # Some setup.py's assume current folder is the one with their setup.py
             r = runez.run(sys.executable, "setup.py", "--name", dryrun=False, fatal=False, logger=False)
             package_name = r.output
@@ -198,17 +213,11 @@ class PackageSpec(object):
             if r.failed or not package_version:
                 abort("Could not determine package version from setup.py")
 
-            return cls(cfg, package_name, package_version, folder=folder)
-
-    def __repr__(self):
-        return self.specced or self.dashed
-
-    def __lt__(self, other):
-        return str(self) < str(other)
+        return package_name, package_version
 
     @property
     def specced(self):
-        if self.version:
+        if self.name and self.version:
             return specced(self.dashed, self.version)
 
     @property
@@ -218,34 +227,36 @@ class PackageSpec(object):
 
     @property
     def install_path(self):
-        if self.dashed == PICKLEY and runez.log.dev_folder():
-            return self.cfg.meta.full_path(PICKLEY, "%s-dev" % PICKLEY)
+        if self.name:
+            if self.dashed == PICKLEY and runez.log.dev_folder():
+                return self.cfg.meta.full_path(PICKLEY, "%s-dev" % PICKLEY)
 
-        if self.version:
-            return self.cfg.meta.full_path(self.dashed, "%s-%s" % (self.dashed, self.version))
-
-    @property
-    def lock_path(self):
-        """Path to .lock file (to ensure one pickley works on one installation at a time)"""
-        return self.cfg.meta.full_path("%s.lock" % self.dashed)
+            if self.version:
+                return self.cfg.meta.full_path(self.dashed, "%s-%s" % (self.dashed, self.version))
 
     @property
     def manifest_path(self):
-        return self.cfg.meta.full_path(self.dashed, ".manifest.json")
+        return self.name and self.cfg.meta.full_path(self.dashed, ".manifest.json")
 
     @property
     def meta_path(self):
-        return self.cfg.meta.full_path(self.dashed)
+        return self.name and self.cfg.meta.full_path(self.dashed)
 
     @property
     def ping_path(self):
         """Path to .ping file (for throttle auto-upgrade checks)"""
-        return self.cfg.cache.full_path("%s.ping" % self.dashed)
+        return self.name and self.cfg.cache.full_path("%s.ping" % self.dashed)
 
     @property
     def is_already_installed_by_pickley(self):
         """bool: True if this package was already installed by pickley once"""
-        return self.dashed == PICKLEY or os.path.exists(self.manifest_path)
+        if self.name:
+            return self.dashed == PICKLEY or os.path.exists(self.manifest_path)
+
+    def get_lock_path(self):
+        """str: Path to lock file used during installation for this package"""
+        name = self.dashed or os.path.basename(self.original)
+        return self.cfg.meta.full_path("%s.lock" % name)
 
     def skip_reason(self, force=False):
         """str: Reason for skipping installation, when applicable"""
@@ -605,7 +616,7 @@ class PickleyConfig(object):
         """
         if names:
             result = [self.resolved_bundle(name) for name in runez.flattened(names, split=" ")]
-            return [PackageSpec.from_text(self, name) for name in runez.flattened(result, unique=True)]
+            return [PackageSpec(self, name) for name in runez.flattened(result, unique=True)]
 
         result = []
         if os.path.isdir(self.meta.path):
@@ -614,7 +625,7 @@ class PickleyConfig(object):
                     fpath = os.path.join(self.meta.path, fname)
                     if os.path.isdir(fpath):
                         if os.path.exists(os.path.join(fpath, ".manifest.json")) or os.path.exists(os.path.join(fpath, ".current.json")):
-                            result.append(PackageSpec.from_text(self, fname))
+                            result.append(PackageSpec(self, fname))
 
         return result
 
@@ -1002,7 +1013,7 @@ class RawConfig(object):
         Returns:
             Value, if any
         """
-        if pspec:
+        if pspec and pspec.name:
             pinned = self.get_nested("pinned", pspec.dashed)
             if isinstance(pinned, dict):
                 value = pinned.get(key)

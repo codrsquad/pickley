@@ -102,10 +102,11 @@ def test_debian_mode(temp_folder, logged):
         assert "'foo' failed --version sanity check" in logged.pop()
 
 
-def mock_clone(url, folder):
-    setup_py = os.path.join(folder, "setup.py")
-    name = runez.basename(url)
-    runez.write(setup_py, "from setuptools import setup\nsetup(name='%s', version='1.0')\n" % name, dryrun=False)
+def mock_git_clone(pspec):
+    basename = runez.basename(pspec.original)
+    pspec.folder = pspec.cfg.cache.full_path("checkout", basename)
+    setup_py = os.path.join(pspec.folder, "setup.py")
+    runez.write(setup_py, "from setuptools import setup\nsetup(name='%s', version='1.0')\n" % basename, dryrun=False)
 
 
 def test_dryrun(cli):
@@ -174,7 +175,7 @@ def test_dryrun(cli):
         assert cli.failed
         assert cli.match("No setup.py")
 
-    with patch("pickley.git_clone", side_effect=mock_clone):
+    with patch("pickley.git_clone", side_effect=mock_git_clone):
         cli.run("-n install git@github.com:zsimic/mgit.git")
         assert cli.succeeded
         assert cli.match("Would run: ... -mpip ... install .pickley/.cache/checkout/mgit")
@@ -275,27 +276,29 @@ def test_facultative(cli):
     cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
 
 
-def test_lock(temp_folder, logged):
-    with SoftLock("foo", give_up=600) as lock:
-        assert str(lock) == "foo"
-        assert os.path.exists("foo")
+def test_lock(temp_cfg, logged):
+    pspec = PackageSpec(temp_cfg, "foo")
+    lock_path = dot_meta("foo.lock")
+    with SoftLock(pspec, give_up=600) as lock:
+        assert str(lock) == "lock foo"
+        assert os.path.exists(lock_path)
         try:
             # Try to grab same lock a seconds time, give up after 1 second
-            with SoftLock("foo", give_up=1, invalid=600):
+            with SoftLock(pspec, give_up=1, invalid=600):
                 assert False, "Should not grab same lock twice!"
 
         except SoftLockException as e:
             assert "giving up" in str(e)
 
-    assert not os.path.exists("foo")  # Check that lock was released
+    assert not os.path.exists(lock_path)  # Check that lock was released
 
     # Check that lock detects bogus (or dead) PID
-    runez.write("foo", "0\nbar\n")
-    with SoftLock("foo", give_up=600):
-        lines = runez.readlines("foo")
-        assert lines[0] == str(os.getpid())  # File "foo" replaced with correct stuff
+    runez.write(lock_path, "0\nbar\n")
+    with SoftLock(pspec, give_up=600):
+        lines = runez.readlines(lock_path)
+        assert lines[0] == str(os.getpid())  # Lock file replaced with correct stuff
 
-    assert not os.path.exists("foo")  # Lock released
+    assert not os.path.exists(lock_path)  # Lock released
 
 
 def test_install_folder(cli):
