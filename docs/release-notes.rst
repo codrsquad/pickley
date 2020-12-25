@@ -2,7 +2,7 @@
 Release notes
 =============
 
-2.2.4 (2020-11-18)
+2.2.4 (2021-01-NN)
 ------------------
 
 * Perform potential ``git clone`` while holding the installation lock

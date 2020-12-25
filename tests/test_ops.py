@@ -276,31 +276,6 @@ def test_facultative(cli):
     cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
 
 
-def test_lock(temp_cfg, logged):
-    pspec = PackageSpec(temp_cfg, "foo")
-    lock_path = dot_meta("foo.lock")
-    with SoftLock(pspec, give_up=600) as lock:
-        assert str(lock) == "lock foo"
-        assert os.path.exists(lock_path)
-        try:
-            # Try to grab same lock a seconds time, give up after 1 second
-            with SoftLock(pspec, give_up=1, invalid=600):
-                assert False, "Should not grab same lock twice!"
-
-        except SoftLockException as e:
-            assert "giving up" in str(e)
-
-    assert not os.path.exists(lock_path)  # Check that lock was released
-
-    # Check that lock detects bogus (or dead) PID
-    runez.write(lock_path, "0\nbar\n")
-    with SoftLock(pspec, give_up=600):
-        lines = runez.readlines(lock_path)
-        assert lines[0] == str(os.getpid())  # Lock file replaced with correct stuff
-
-    assert not os.path.exists(lock_path)  # Lock released
-
-
 def test_install_folder(cli):
     project = runez.log.project_path()
     cli.run("--debug", "-dsymlink", "install", project)
@@ -384,6 +359,31 @@ def test_install_pypi(cli):
         assert not os.path.islink("mgit")
         contents = runez.readlines("mgit")
         assert WRAPPER_MARK in contents
+
+
+def test_lock(temp_cfg, logged):
+    pspec = PackageSpec(temp_cfg, "foo")
+    lock_path = dot_meta("foo.lock")
+    with SoftLock(pspec, give_up=600) as lock:
+        assert str(lock) == "lock foo"
+        assert os.path.exists(lock_path)
+        try:
+            # Try to grab same lock a seconds time, give up after 1 second
+            with SoftLock(pspec, give_up=1, invalid=600):
+                assert False, "Should not grab same lock twice!"
+
+        except SoftLockException as e:
+            assert "giving up" in str(e)
+
+    assert not os.path.exists(lock_path)  # Check that lock was released
+
+    # Check that lock detects bogus (or dead) PID
+    runez.write(lock_path, "0\nbar\n")
+    with SoftLock(pspec, give_up=600):
+        lines = runez.readlines(lock_path)
+        assert lines[0] == str(os.getpid())  # Lock file replaced with correct stuff
+
+    assert not os.path.exists(lock_path)  # Lock released
 
 
 def test_main():

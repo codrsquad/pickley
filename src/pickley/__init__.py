@@ -492,7 +492,7 @@ class PickleyConfig(object):
         self.cache = FolderBase("cache", os.path.join(self.meta.path, ".cache"))
 
         if self.cli:
-            cli = runez.serialize.json_sanitized(self.cli.to_dict(), keep_none=False)
+            cli = runez.serialize.json_sanitized(self.cli.to_dict())
             self.configs.append(RawConfig(self, "cli", cli))
 
         self._add_config_file(self.config_path)
@@ -582,7 +582,7 @@ class PickleyConfig(object):
             (PythonInstallation): Object representing python installation
         """
         desired = self.get_value("python", pspec=pspec)
-        desired = runez.flattened(desired, split=",", sanitized=True)
+        desired = runez.flattened(desired, keep_empty=None, split=",")
         issues = []
         python = None
         for d in desired:
