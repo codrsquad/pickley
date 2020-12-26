@@ -5,6 +5,8 @@ Release notes
 2.2.4 (2021-01-NN)
 ------------------
 
+* Using latest pex 2.1.24
+
 * Perform potential ``git clone`` while holding the installation lock
 
 * Added ``config`` path output to ``base`` sub-command
