@@ -12,7 +12,7 @@ from pickley.env import AvailablePythons, py_version_components, python_exe_path
 from pickley.pypi import PepVersion, PypiInfo
 
 
-__version__ = "2.2.3"
+__version__ = "2.2.4"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
 DOT_META = ".pickley"
