@@ -105,7 +105,12 @@ class PythonVenv(object):
         if runez.DRYRUN:
             return {pspec.dashed: "dryrun"}  # Pretend an entry point exists in dryrun mode
 
-        r = self.run_python("-mpip", "show", "-f", pspec.dashed, fatal=False)
+        name = pspec.dashed
+        if name == "ansible":  # pragma: no cover
+            # Is there a better way to detect weird indirections like ansible does?
+            name = "ansible-base"
+
+        r = self.run_python("-mpip", "show", "-f", name, fatal=False)
         if r.succeeded:
             location = None
             in_files = False

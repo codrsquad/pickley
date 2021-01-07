@@ -2,7 +2,7 @@
 Release notes
 =============
 
-2.2.4 (2021-01-NN)
+2.2.4 (2021-01-07)
 ------------------
 
 * Using latest pex 2.1.24
@@ -12,6 +12,10 @@ Release notes
 * Added ``config`` path output to ``base`` sub-command
 
 * Allow to install from folder as well (in addition to git url)
+
+* Special case for ansible_
+
+* Moved repo to github/codrsquad
 
 
 2.2.3 (2020-11-17)
@@ -118,3 +122,6 @@ Release notes
 * Corrected venv creation with py3
 
 * Default to absolute venvs (non-relocatable), as relocatable venvs are tricky to keep working
+
+
+.. _ansible: https://pypi.org/project/ansible/
