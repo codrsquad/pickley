@@ -5,16 +5,16 @@ Automate installation of standalone python CLIs
     :target: https://pypi.org/project/pickley/
     :alt: Version on pypi
 
-.. image:: https://github.com/zsimic/pickley/workflows/Tests/badge.svg
-    :target: https://github.com/zsimic/pickley/actions
+.. image:: https://github.com/codrsquad/pickley/workflows/Tests/badge.svg
+    :target: https://github.com/codrsquad/pickley/actions
     :alt: Tested with Github Actions
 
-.. image:: https://codecov.io/gh/zsimic/pickley/branch/master/graph/badge.svg
-    :target: https://codecov.io/gh/zsimic/pickley
+.. image:: https://codecov.io/gh/codrsquad/pickley/branch/master/graph/badge.svg
+    :target: https://codecov.io/gh/codrsquad/pickley
     :alt: Test code codecov
 
 .. image:: https://img.shields.io/pypi/pyversions/pickley.svg
-    :target: https://github.com/zsimic/pickley
+    :target: https://github.com/codrsquad/pickley
     :alt: Python versions tested (link to github project)
 
 
@@ -150,7 +150,7 @@ Installation
 Install from github releases
 ----------------------------
 
-- Go to https://github.com/zsimic/pickley/releases/latest
+- Go to https://github.com/codrsquad/pickley/releases/latest
 - Download pickley from there (1st link), and drop it in ``~/.local/bin`` for example (or any folder in your PATH)
 
 bash one-line install
@@ -166,7 +166,7 @@ Install from source
 
 Run (you will need tox_)::
 
-    git clone https://github.com/zsimic/pickley.git
+    git clone https://github.com/codrsquad/pickley.git
     cd pickley
     tox -e package
     cp .tox/package/pickley ~/.local/bin/

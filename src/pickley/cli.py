@@ -1,5 +1,5 @@
 """
-See https://github.com/zsimic/pickley
+See https://github.com/codrsquad/pickley
 """
 
 import logging
