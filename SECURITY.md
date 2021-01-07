@@ -9,4 +9,4 @@
 
 ## Reporting a Vulnerability
 
-To report any bug, please open an issue in our [issue tracker](https://github.com/zsimic/pickley/issues).
+To report any bug, please open an issue in our [issue tracker](https://github.com/codrsquad/pickley/issues).

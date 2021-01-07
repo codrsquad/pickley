@@ -7,7 +7,7 @@ Development
 
 To get going locally, simply do this::
 
-    git clone https://github.com/zsimic/pickley.git
+    git clone https://github.com/codrsquad/pickley.git
     cd pickley
 
     # Conveniently create the .venv via tox

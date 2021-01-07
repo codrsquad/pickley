@@ -98,7 +98,7 @@ def pypi_name_problem(name):
             note = "\npickley intentionally refuses to look at names that don't start with a letter"
 
         if note:
-            note += "\nIf you think this name is legit, please submit an issue https://github.com/zsimic/pickley/issues"
+            note += "\nIf you think this name is legit, please submit an issue https://github.com/codrsquad/pickley/issues"
             problem = "%s\n%s" % (problem, note)
 
         return problem

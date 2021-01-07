@@ -12,7 +12,7 @@ if __name__ == "__main__":
         setup_requires="setupmeta",
         versioning="dev",
         author="Zoran Simic zoran@simicweb.com",
-        url="https://github.com/zsimic/pickley",
+        url="https://github.com/codrsquad/pickley",
         entry_points={
             "console_scripts": [
                 "pickley = pickley.cli:protected_main",
