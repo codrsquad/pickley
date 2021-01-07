@@ -37,6 +37,6 @@ if __name__ == "__main__":
             "Topic :: Software Development :: Build Tools",
             "Topic :: System :: Installation/Setup",
             "Topic :: System :: Software Distribution",
-            "Topic :: Utilities"
+            "Topic :: Utilities",
         ],
     )

@@ -32,7 +32,6 @@ def download_command(target, url):
 
 
 class PythonVenv(object):
-
     def __init__(self, pspec, folder=None, python=None, index=None):
         """
         Args:

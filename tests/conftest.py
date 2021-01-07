@@ -27,7 +27,7 @@ def dot_meta(relative=None, parent=None):
 
 
 def verify_abort(func, *args, **kwargs):
-    exception = kwargs.pop('exception', SystemExit)
+    exception = kwargs.pop("exception", SystemExit)
     with runez.CaptureOutput() as logged:
         with pytest.raises(exception):
             func(*args, **kwargs)
@@ -35,7 +35,6 @@ def verify_abort(func, *args, **kwargs):
 
 
 class TemporaryBase(runez.TempFolder):
-
     def __enter__(self):
         super(TemporaryBase, self).__enter__()
         os.environ["PICKLEY_ROOT"] = self.tmp_folder
