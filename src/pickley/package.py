@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 
 import runez
 
@@ -10,7 +9,6 @@ from pickley.env import python_exe_path
 
 
 LOG = logging.getLogger(__name__)
-RE_BIN_SCRIPT = re.compile(r"^[./]+/bin/([-a-z0-9_.]+)$", re.IGNORECASE)
 
 
 def entry_points_from_txt(path):
@@ -20,7 +18,11 @@ def entry_points_from_txt(path):
 
 def entry_points_from_metadata(path):
     metadata = runez.read_json(path, default={})
-    return metadata.get("extensions", {}).get("python.commands", {}).get("wrap_console")
+    extensions = metadata.get("extensions")
+    if isinstance(extensions, dict):
+        commands = extensions.get("python.commands")
+        if isinstance(commands, dict):
+            return commands.get("wrap_console")
 
 
 def download_command(target, url):
@@ -121,26 +123,26 @@ class PythonVenv(object):
                         break
 
                     line = line.strip()
-                    m = RE_BIN_SCRIPT.match(line)
-                    if m:
-                        name = m.group(1)
-                        if "_completer" not in name:
+                    dirname, basename = os.path.split(line)
+                    if os.path.basename(dirname) == "bin":
+                        if "_completer" not in basename:
                             path = os.path.abspath(os.path.join(location, line))
                             if self._is_venv_exe(path):
                                 if bin_scripts is None:
                                     bin_scripts = {}
 
-                                bin_scripts[name] = path
+                                bin_scripts[basename] = path
 
-                    elif line.endswith("entry_points.txt"):
-                        ep = entry_points_from_txt(os.path.join(location, line))
-                        if ep:
-                            return ep
+                    elif dirname.endswith(".dist-info"):
+                        if basename == "entry_points.txt":
+                            ep = entry_points_from_txt(os.path.join(location, line))
+                            if ep:
+                                return ep
 
-                    elif line.endswith("metadata.json"):
-                        ep = entry_points_from_metadata(os.path.join(location, line))
-                        if ep:
-                            return ep
+                        elif basename == "metadata.json":
+                            ep = entry_points_from_metadata(os.path.join(location, line))
+                            if ep:
+                                return ep
 
                 elif line.startswith("Location:"):
                     location = line.partition(":")[2].strip()

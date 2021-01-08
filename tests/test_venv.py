@@ -18,7 +18,7 @@ Name: mgit
 Version: 1.0.0
 Location: .
 Files:
-  mgit/metadata.json
+  mgit.dist-info/metadata.json
 """
 
 MGIT_PIP_METADATA = """
@@ -59,7 +59,7 @@ def simulated_run(*args, **_):
 
 
 def test_entry_points(temp_cfg):
-    runez.write("mgit/metadata.json", MGIT_PIP_METADATA)
+    runez.write("mgit.dist-info/metadata.json", MGIT_PIP_METADATA)
     with patch("runez.run", side_effect=simulated_run):
         pspec = PackageSpec(temp_cfg, "mgit")
         venv = PythonVenv(pspec, folder="")
