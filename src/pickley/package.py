@@ -59,7 +59,12 @@ class PythonVenv(object):
             if python.major > 2 and pspec.dashed != "tox":
                 # See https://github.com/tox-dev/tox/issues/1689
                 runez.run(python.executable, "-mvenv", self.folder)
-                self.pip_install("-U", "pip", "setuptools", "wheel")
+                pip = "pip"
+                if os.environ.get("VIRTUALENV_PIP"):  # pragma: no cover
+                    # Optionally respect https://tox.readthedocs.io/en/latest/config.html#conf-download
+                    pip += "==%s" % os.environ.get("VIRTUALENV_PIP")
+
+                self.pip_install("-U", pip, "setuptools", "wheel")
                 return
 
             runez.ensure_folder(pspec.cfg.cache.path, logger=False)

@@ -2,6 +2,12 @@
 Release notes
 =============
 
+2.2.6 (2021-01-11)
+------------------
+
+* Respect ``VIRTUALENV_PIP`` env var if present
+
+
 2.2.5 (2021-01-07)
 ------------------
 
