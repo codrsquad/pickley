@@ -46,6 +46,7 @@ def setup_audit_log(cfg=CFG):
         return
 
     if not runez.log.file_handler:
+        runez.log.progress.start(message_color=runez.dim, spinner_color=runez.bold)
         runez.ensure_folder(cfg.meta.path)
         runez.log.setup(
             file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",
