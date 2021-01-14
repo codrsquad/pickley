@@ -222,6 +222,13 @@ def find_base():
     return _find_base_from_program_path(program_path) or os.path.dirname(program_path)
 
 
+def clean_env_vars(*keys):
+    """Ensure given env vars are removed if present"""
+    for key in keys:
+        if key in os.environ:
+            del os.environ[key]
+
+
 @runez.click.group()
 @click.pass_context
 @runez.click.version(message="%(version)s", version=__version__)
@@ -238,10 +245,7 @@ def main(ctx, debug, config, index, python, delivery, packager):
     global PACKAGER
     PACKAGER = PexPackager if packager == "pex" else VenvPackager
     runez.system.AbortException = SystemExit
-    if "__PYVENV_LAUNCHER__" in os.environ:
-        # See https://github.com/python/cpython/pull/9516
-        del os.environ["__PYVENV_LAUNCHER__"]
-
+    clean_env_vars("__PYVENV_LAUNCHER__", "PYTHONPATH")  # See https://github.com/python/cpython/pull/9516
     if PLATFORM == "darwin" and "ARCHFLAGS" not in os.environ:
         # Avoid issue on some OSX installations where ARM support seems to have been enabled too early
         os.environ["ARCHFLAGS"] = "-arch x86_64"
