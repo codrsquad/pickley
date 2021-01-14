@@ -175,7 +175,7 @@ class PythonVenv(object):
         return runez.run(python_exe_path(self.folder), *args, **kwargs)
 
     def _run_pip(self, *args, **kwargs):
-        return self.run_python("-mpip", "-v", *args, **kwargs)
+        return self.run_python("-mpip", "-v", "--isolated", *args, **kwargs)
 
 
 def simplified_pip_error(error, output):
