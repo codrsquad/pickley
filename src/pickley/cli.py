@@ -47,11 +47,13 @@ def setup_audit_log(cfg=CFG):
 
     if not runez.log.file_handler:
         runez.log.progress.start(message_color=runez.dim, spinner_color=runez.bold)
+        log_path = cfg.meta.full_path("audit.log")
+        runez.log.trace("Logging to %s", log_path)
         runez.ensure_folder(cfg.meta.path)
         runez.log.setup(
             file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",
             file_level=logging.DEBUG,
-            file_location=cfg.meta.full_path("audit.log"),
+            file_location=log_path,
             greetings=":: {argv}",
             rotate="size:500k",
             rotate_count=1,
@@ -121,7 +123,7 @@ class SoftLock(object):
             print("Would acquire %s" % runez.short(self.lock_path))
 
         else:
-            LOG.debug("Acquired %s" % runez.short(self.lock_path))
+            runez.log.trace("Acquired %s" % runez.short(self.lock_path))
 
         runez.write(self.lock_path, "%s\n%s\n" % (os.getpid(), runez.quoted(sys.argv[1:])), logger=False)
         self.pspec.resolve()
@@ -133,12 +135,12 @@ class SoftLock(object):
             print("Would release %s" % runez.short(self.lock_path))
 
         else:
-            LOG.debug("Released %s" % runez.short(self.lock_path))
+            runez.log.trace("Released %s" % runez.short(self.lock_path))
 
         if CFG.base:
             runez.Anchored.pop(CFG.base.path)
 
-        runez.delete(self.lock_path, logger=False)
+        runez.delete(self.lock_path, logger=runez.log.trace)
 
 
 def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
@@ -267,11 +269,12 @@ def main(ctx, debug, config, index, python, delivery, packager):
         CFG.set_base(find_base())
 
     runez.log.setup(
-        debug=debug,
+        debug=debug or os.environ.get("PICKLEY_TRACE"),
         console_format="%(levelname)s %(message)s" if debug else "%(message)s",
         console_level=level,
         console_stream=sys.stderr,
         locations=None,
+        trace="PICKLEY_TRACE",
     )
 
 
@@ -710,7 +713,7 @@ class Symlinker(object):
     def apply(self, exe):
         dest = os.path.join(self.target, os.path.basename(exe))
         if os.path.exists(exe):
-            runez.delete(dest)
+            runez.delete(dest, logger=runez.log.trace)
             r = runez.symlink(exe, dest, must_exist=False)
             if r > 0:
                 inform("Symlinked %s -> %s" % (runez.short(dest), runez.short(exe)))
@@ -720,7 +723,7 @@ class Symlinker(object):
 
 
 def delete_file(path):
-    if runez.delete(path, fatal=False, logger=False) > 0:
+    if runez.delete(path, fatal=False, logger=runez.log.trace) > 0:
         return 1
 
     return 0

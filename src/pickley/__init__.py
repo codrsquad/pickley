@@ -328,7 +328,7 @@ class PackageSpec(object):
             keep_for (int): Time in seconds for how long to keep the previously installed version
         """
         if self.cfg.cache.contains(self.folder):
-            runez.delete(self.folder)
+            runez.delete(self.folder, logger=runez.log.trace)
 
         current = self.get_manifest()
         meta_path = self.meta_path

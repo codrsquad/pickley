@@ -72,7 +72,7 @@ class PythonVenv(object):
             args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
             runez.run(*args)
             runez.run(python.executable, zipapp, folder)
-            runez.delete(zipapp, fatal=False, logger=False)
+            runez.delete(zipapp, fatal=False, logger=runez.log.trace)
 
     def __repr__(self):
         return runez.short(self.folder)
@@ -142,11 +142,13 @@ class PythonVenv(object):
                         if basename == "entry_points.txt":
                             ep = entry_points_from_txt(os.path.join(location, line))
                             if ep:
+                                runez.log.trace("Found %s entry points in %s" % (len(ep), line))
                                 return ep
 
                         elif basename == "metadata.json":
                             ep = entry_points_from_metadata(os.path.join(location, line))
                             if ep:
+                                runez.log.trace("Found %s entry points in %s" % (len(ep), line))
                                 return ep
 
                 elif line.startswith("Location:"):
@@ -154,6 +156,9 @@ class PythonVenv(object):
 
                 elif line.startswith("Files:"):
                     in_files = True
+
+            if bin_scripts is not None:
+                runez.log.trace("Found %s bin/ scripts" % len(bin_scripts))
 
             return bin_scripts
 
@@ -237,7 +242,7 @@ class PexPackager(Packager):
             result = []
             for name in entry_points:
                 target = os.path.join(dist_folder, name)
-                runez.delete(target, logger=False)
+                runez.delete(target, logger=runez.log.trace)
                 pex_venv.run_python(
                     "-mpex", "-v", "-o%s" % target, "--pex-root", pex_root, "--tmpdir", tmp,
                     "--no-index", "--find-links", wheels,  # resolver options
@@ -277,7 +282,7 @@ class VenvPackager(Packager):
 
         entry_points = venv.find_entry_points(pspec)
         if not entry_points:
-            runez.delete(pspec.meta_path)
+            runez.delete(pspec.meta_path, logger=runez.log.trace)
             abort("Can't install '%s', it is %s" % (runez.bold(pspec.dashed), runez.red("not a CLI")))
 
         return delivery.install(pspec, venv, entry_points)
