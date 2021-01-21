@@ -11,20 +11,6 @@ from pickley.env import python_exe_path
 LOG = logging.getLogger(__name__)
 
 
-def entry_points_from_txt(path):
-    metadata = runez.file.ini_to_dict(path, default={})
-    return metadata.get("console_scripts")
-
-
-def entry_points_from_metadata(path):
-    metadata = runez.read_json(path, default={})
-    extensions = metadata.get("extensions")
-    if isinstance(extensions, dict):
-        commands = extensions.get("python.commands")
-        if isinstance(commands, dict):
-            return commands.get("wrap_console")
-
-
 def download_command(target, url):
     curl = runez.which("curl")
     if curl:
@@ -33,30 +19,162 @@ def download_command(target, url):
     return ["wget", "-q", "-O%s" % target, url]
 
 
-class PythonVenv(object):
-    def __init__(self, pspec, folder=None, python=None, index=None):
+class PackageFolder(object):
+    """Allows to track reported file contents by `pip show -f`"""
+
+    def __init__(self, location=None, folder=None):
+        self.location = location
+        self.folder = folder
+        self.files = {}
+
+    def __str__(self):
+        return "%s [%s files]" % (self.folder, len(self))
+
+    def __len__(self):
+        return len(self.files)
+
+    def add_file(self, path):
+        if not self.location:
+            self.location = os.path.dirname(path)
+
+        if self.folder is None:
+            self.folder = os.path.basename(os.path.dirname(path))
+
+        relative = path[len(self.location) + 1:]
+        self.files[relative] = path
+
+
+class PackageContents(object):
+    """Contents of a pip-installed package"""
+
+    def __init__(self, venv, pspec):
         """
         Args:
-            pspec (pickley.PackageSpec): Package spec to install
+            venv (PythonVenv): Venv to extract info from
+            pspec (pickley.PackageSpec): Package spec to look for
+        """
+        self.venv = venv
+        self.pspec = pspec
+        self.location = None
+        self.bin = PackageFolder(folder="bin")
+        self.completers = PackageFolder(folder="bin")
+        self.dist_info = PackageFolder()
+        self.files = None
+        self.info = {}
+        name = pspec.dashed
+        if runez.DRYRUN and not venv.is_venv_exe("bin/pip"):
+            self.bin.files = {pspec.dashed: "dryrun"}  # Pretend an entry point exists in dryrun mode
+            return
+
+        if name == "ansible":
+            name = "ansible-base"  # Is there a better way to detect weird indirections like ansible does?
+
+        r = venv.run_python("-mpip", "show", "-f", name, fatal=False)
+        if not r.succeeded:
+            return
+
+        for line in r.output.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+
+            if self.files is not None:
+                dirname, basename = os.path.split(line)
+                if "__pycache__" in dirname or basename.endswith(".pyc"):
+                    continue
+
+                path = os.path.abspath(os.path.join(self.location, line))
+                if os.path.basename(dirname) == "bin":
+                    if "_completer" in basename:
+                        self.completers.add_file(path)
+
+                    elif venv.is_venv_exe(path):
+                        self.bin.add_file(path)
+
+                elif dirname.endswith(".dist-info"):
+                    self.dist_info.add_file(path)
+
+                else:
+                    self.files.add_file(path)
+
+            elif line.startswith("Files:"):
+                if not self.location:
+                    return
+
+                self.files = PackageFolder(runez.resolved_path(self.location), folder="")
+
+            else:
+                key, _, value = line.partition(":")
+                value = value.strip()
+                self.info[key] = value
+                if key == "Location":
+                    self.location = value
+
+    def __repr__(self):
+        return "%s [%s]" % (self.pspec, runez.short(self.location))
+
+    @runez.cached_property
+    def entry_points(self):
+        metadata_json = self.dist_info.files.get("metadata.json")
+        if metadata_json:
+            metadata = runez.read_json(metadata_json, default={})
+            extensions = metadata.get("extensions")
+            if isinstance(extensions, dict):
+                commands = extensions.get("python.commands")
+                if isinstance(commands, dict):
+                    wrap_console = commands.get("wrap_console")
+                    if wrap_console:
+                        runez.log.trace("Found %s entry points in metadata.json" % len(wrap_console))
+                        return wrap_console
+
+        entry_points_txt = self.dist_info.files.get("entry_points.txt")
+        if entry_points_txt:
+            metadata = runez.file.ini_to_dict(entry_points_txt, default={})
+            console_scripts = metadata.get("console_scripts")
+            if console_scripts:
+                runez.log.trace("Found %s entry points in entry_points.txt" % len(console_scripts))
+                return console_scripts
+
+        if self.bin.files:
+            runez.log.trace("Found %s bin/ scripts" % len(self.bin.files))
+
+        return self.bin.files or None
+
+
+class PythonVenv(object):
+    def __init__(self, pspec=None, folder=None, python=None, index=None, cfg=None):
+        """
+        Args:
+            pspec (pickley.PackageSpec | None): Package spec to install
             folder (str | None): Target folder (default: pspec.install_path)
             python (pickley.env.PythonInstallation): Python to use (default: pspec.python)
             index (str | None): Optional custom pypi index to use (default: pspec.index)
+            cfg (pickley.PickleyConfig | None): Config to use
         """
-        if folder is None:
+        if folder is None and pspec:
             folder = pspec.install_path
 
-        if python is None:
+        if not python and pspec:
             python = pspec.python
 
+        if not index and pspec:
+            index = pspec.index
+
+        if not cfg and pspec:
+            cfg = pspec.cfg
+
+        if not python:
+            python = cfg.available_pythons.invoker
+
         self.folder = folder
-        self.index = index or pspec.index
+        self.index = index
         if folder:
             runez.ensure_folder(folder, clean=True, logger=False)
-            if pspec.cfg.bundled_virtualenv_path:
-                runez.run(pspec.cfg.bundled_virtualenv_path, "-p", python.executable, folder)
+            if cfg.bundled_virtualenv_path:
+                runez.run(cfg.bundled_virtualenv_path, "-p", python.executable, folder)
                 return
 
-            if python.major > 2 and pspec.dashed != "tox":
+            if python.major > 2 and (not pspec or pspec.dashed != "tox"):
                 # See https://github.com/tox-dev/tox/issues/1689
                 runez.run(python.executable, "-mvenv", self.folder)
                 pip = "pip"
@@ -67,8 +185,8 @@ class PythonVenv(object):
                 self.pip_install("-U", pip, "setuptools", "wheel")
                 return
 
-            runez.ensure_folder(pspec.cfg.cache.path, logger=False)
-            zipapp = os.path.realpath(pspec.cfg.cache.full_path("virtualenv.pyz"))
+            runez.ensure_folder(cfg.cache.path, logger=runez.log.trace)
+            zipapp = os.path.realpath(cfg.cache.full_path("virtualenv.pyz"))
             args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
             runez.run(*args)
             runez.run(python.executable, zipapp, folder)
@@ -87,7 +205,7 @@ class PythonVenv(object):
         """
         return os.path.join(self.folder, "bin", name)
 
-    def _is_venv_exe(self, path):
+    def is_venv_exe(self, path):
         """
         Args:
             path (str): Path to file to examine
@@ -100,67 +218,6 @@ class PythonVenv(object):
             if lines and len(lines) > 1 and lines[0].startswith("#!"):
                 if self.folder in lines[0] or self.folder in lines[1]:  # 2 variants: "#!<folder>/bin/python" or 'exec "<folder>/bin/..."'
                     return True
-
-    def find_entry_points(self, pspec):
-        """
-        Args:
-            pspec (pickley.PackageSpec): Package spec to look for
-
-        Returns:
-            (dict | None): Entry points, when available
-        """
-        if runez.DRYRUN:
-            return {pspec.dashed: "dryrun"}  # Pretend an entry point exists in dryrun mode
-
-        name = pspec.dashed
-        if name == "ansible":  # pragma: no cover
-            # Is there a better way to detect weird indirections like ansible does?
-            name = "ansible-base"
-
-        r = self.run_python("-mpip", "show", "-f", name, fatal=False)
-        if r.succeeded:
-            location = None
-            in_files = False
-            bin_scripts = None
-            for line in r.output.splitlines():
-                if in_files:
-                    if not location:
-                        break
-
-                    line = line.strip()
-                    dirname, basename = os.path.split(line)
-                    if os.path.basename(dirname) == "bin":
-                        if "_completer" not in basename:
-                            path = os.path.abspath(os.path.join(location, line))
-                            if self._is_venv_exe(path):
-                                if bin_scripts is None:
-                                    bin_scripts = {}
-
-                                bin_scripts[basename] = path
-
-                    elif dirname.endswith(".dist-info"):
-                        if basename == "entry_points.txt":
-                            ep = entry_points_from_txt(os.path.join(location, line))
-                            if ep:
-                                runez.log.trace("Found %s entry points in %s" % (len(ep), line))
-                                return ep
-
-                        elif basename == "metadata.json":
-                            ep = entry_points_from_metadata(os.path.join(location, line))
-                            if ep:
-                                runez.log.trace("Found %s entry points in %s" % (len(ep), line))
-                                return ep
-
-                elif line.startswith("Location:"):
-                    location = line.partition(":")[2].strip()
-
-                elif line.startswith("Files:"):
-                    in_files = True
-
-            if bin_scripts is not None:
-                runez.log.trace("Found %s bin/ scripts" % len(bin_scripts))
-
-            return bin_scripts
 
     def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""
@@ -236,11 +293,11 @@ class PexPackager(Packager):
         pex_venv = PythonVenv(pspec, folder=os.path.join(build_folder, "pex-venv"))
         pex_venv.pip_install("pex==2.1.24", *requirements)
         pex_venv.pip_wheel("-v", "--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
-        entry_points = pex_venv.find_entry_points(pspec)
-        if entry_points:
+        contents = PackageContents(pex_venv, pspec)
+        if contents.entry_points:
             wheel_path = pspec.find_wheel(wheels)
             result = []
-            for name in entry_points:
+            for name in contents.entry_points:
                 target = os.path.join(dist_folder, name)
                 runez.delete(target, logger=runez.log.trace)
                 pex_venv.run_python(
@@ -280,12 +337,12 @@ class VenvPackager(Packager):
         if extras:
             venv.run_python("-mpip", "install", *extras, fatal=False)
 
-        entry_points = venv.find_entry_points(pspec)
-        if not entry_points:
+        contents = PackageContents(venv, pspec)
+        if not contents.entry_points:
             runez.delete(pspec.meta_path, logger=runez.log.trace)
             abort("Can't install '%s', it is %s" % (runez.bold(pspec.dashed), runez.red("not a CLI")))
 
-        return delivery.install(pspec, venv, entry_points)
+        return delivery.install(pspec, venv, contents.entry_points)
 
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements, compile):
@@ -295,10 +352,10 @@ class VenvPackager(Packager):
         if compile:
             venv.run_python("-mcompileall", dist_folder)
 
-        entry_points = venv.find_entry_points(pspec)
-        if entry_points:
+        contents = PackageContents(venv, pspec)
+        if contents.entry_points:
             result = []
-            for name in entry_points:
+            for name in contents.entry_points:
                 result.append(venv.bin_path(name))
 
             return result

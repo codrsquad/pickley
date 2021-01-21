@@ -5,24 +5,20 @@ import runez
 from mock import patch
 
 from pickley import PackageSpec
-from pickley.package import PythonVenv
+from pickley.package import PackageContents, PythonVenv
 
 
-BOGUS_PIP_SHOW = """
-Files:
-  bogus/metadata.json
-"""
-
-MGIT_PIP_SHOW = """
-Name: mgit
+PIP_SHOW_OUTPUT = """
+Name: ansible
 Version: 1.0.0
 Location: .
 Files:
-  mgit.dist-info/metadata.json
-"""
-
-MGIT_PIP_METADATA = """
-{"extensions": {"python.commands": {"wrap_console": ["mgit"]}}}
+  ../bin/ansible
+  ../bin/ansible_completer
+  ansible.dist-info/metadata.json
+  foo/__pycache__/bar.py
+  foo/bar.py
+  foo/bar.pyc
 """
 
 
@@ -48,26 +44,47 @@ def test_edge_cases(temp_cfg):
 
 
 def simulated_run(*args, **_):
-    if "--version" in args:
-        return runez.program.RunResult("0.0.0", code=0)
+    if "ansible-base" in args:
+        return runez.program.RunResult(PIP_SHOW_OUTPUT, code=0)
 
-    if "mgit" in args:
-        return runez.program.RunResult(MGIT_PIP_SHOW, code=0)
+    if "no-location" in args:
+        return runez.program.RunResult("Files:\n  no-location.dist-info/metadata.json", code=0)
 
-    if "bogus" in args:
-        return runez.program.RunResult(BOGUS_PIP_SHOW, code=0)
+    return runez.program.RunResult("", code=1)
 
 
 def test_entry_points(temp_cfg):
-    runez.write("mgit.dist-info/metadata.json", MGIT_PIP_METADATA)
-    with patch("runez.run", side_effect=simulated_run):
+    venv = PythonVenv(folder="", cfg=temp_cfg)
+    with runez.CaptureOutput(dryrun=True):
         pspec = PackageSpec(temp_cfg, "mgit")
-        venv = PythonVenv(pspec, folder="")
-        assert venv.find_entry_points(pspec) == ["mgit"]
+        contents = PackageContents(venv, pspec)
+        assert str(contents) == "mgit [None]"
+        assert str(contents.bin) == "bin [1 files]"
+        assert contents.entry_points == {"mgit": "dryrun"}
 
-        pspec = PackageSpec(temp_cfg, "bogus")
-        venv = PythonVenv(pspec, folder="")
-        assert venv.find_entry_points(pspec) is None
+    runez.write("ansible.dist-info/metadata.json", '{"extensions": {"python.commands": {"wrap_console": ["ansible"]}}}')
+    with patch("runez.run", side_effect=simulated_run):
+        pspec = PackageSpec(temp_cfg, "ansible")  # Used to trigger ansible edge case
+        contents = PackageContents(venv, pspec)
+        assert str(contents) == "ansible [.]"
+        assert str(contents.bin) == "bin [0 files]"
+        assert str(contents.completers) == "bin [1 files]"
+        assert str(contents.dist_info) == "ansible.dist-info [1 files]"
+        assert contents.entry_points == ["ansible"]
+        assert str(contents.files) == " [1 files]"
+        assert contents.files.files.get("foo/bar.py")
+        assert contents.info == {"Name": "ansible", "Version": "1.0.0", "Location": "."}
+        assert contents.location == "."
+        assert contents.pspec is pspec
+        assert contents.venv is venv
+
+        contents = PackageContents(venv, PackageSpec(temp_cfg, "no-location"))
+        assert contents.files is None
+        assert contents.entry_points is None
+
+        contents = PackageContents(venv, PackageSpec(temp_cfg, "no-such-package"))
+        assert contents.files is None
+        assert contents.entry_points is None
 
 
 def test_pip_fail(temp_cfg, logged):

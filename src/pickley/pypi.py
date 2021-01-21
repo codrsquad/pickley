@@ -72,7 +72,7 @@ class PepVersion(object):
     components = None
     prerelease = None
 
-    def __init__(self, text):
+    def __init__(self, text, max_parts=4):
         self.text = text
         m = RE_VERSION.match(text)
         if not m:
@@ -80,10 +80,10 @@ class PepVersion(object):
 
         self.text, major, main_part, pre, pre_num, rel, rel_num = m.group(1, 2, 3, 7, 8, 10, 11)
         components = (major + main_part).split(".")
-        if len(components) > 3:
+        if len(components) > max_parts:
             return  # Invalid version
 
-        while len(components) < 3:
+        while len(components) < max_parts:
             components.append(0)
 
         components.append(rel_num if rel == "post" else 0)  # Using imaginary 4th component to hold post-release

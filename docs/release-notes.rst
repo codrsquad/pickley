@@ -2,10 +2,14 @@
 Release notes
 =============
 
-2.2.8 (2021-01-12)
-------------------
+2.2.11 (2021-01-20)
+-------------------
 
 * Added progress spinner
+
+* Remove ``PYTHONPATH`` from env vars if present, use ``pip install --isolated``
+
+* Generalized package contents inspection
 
 
 2.2.6 (2021-01-11)
