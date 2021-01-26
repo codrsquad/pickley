@@ -11,15 +11,7 @@ Release notes
 
 * Generalized package contents inspection
 
-
-2.2.6 (2021-01-11)
-------------------
-
 * Respect ``VIRTUALENV_PIP`` env var if present
-
-
-2.2.5 (2021-01-07)
-------------------
 
 * Look into ``.dist-info`` only for entry points
 
@@ -49,21 +41,9 @@ Release notes
 
 * Removed package --no-sanity-check CLI flag
 
-
-2.2.2 (2020-11-16)
-------------------
-
 * ``base`` command can now show path of meta folder and audit.log
 
-
-2.2.1 (2020-11-10)
-------------------
-
 * Use bundled virtualenv only when running from a venv (not from a pex)
-
-
-2.2.0 (2020-11-09)
-------------------
 
 * Error out early if an unusable python is requested, explicitly accept ``invoker`` to represent python pickley was packaged with
 
@@ -74,10 +54,6 @@ Release notes
 * Added ``facultative`` setting, allowing to optionally install packages (if not there already)
 
 * Removed python2 support for packaging via ``pex``
-
-
-2.1.8 (2020-10-30)
-------------------
 
 * Removed default sanity check, use ``pickley package --sanity-check=--version`` to enable it explicitly
 
