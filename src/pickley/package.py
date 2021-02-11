@@ -190,10 +190,12 @@ class PythonVenv(object):
 
             runez.ensure_folder(cfg.cache.path, logger=runez.log.trace)
             zipapp = os.path.realpath(cfg.cache.full_path("virtualenv.pyz"))
-            args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
-            runez.run(*args)
+            if not runez.file.is_younger(zipapp, runez.date.SECONDS_IN_ONE_DAY):
+                runez.delete(zipapp, fatal=False, logger=runez.log.trace)
+                args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
+                runez.run(*args)
+
             runez.run(python.executable, zipapp, folder)
-            runez.delete(zipapp, fatal=False, logger=runez.log.trace)
 
     def __repr__(self):
         return runez.short(self.folder)

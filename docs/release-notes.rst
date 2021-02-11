@@ -2,10 +2,12 @@
 Release notes
 =============
 
-2.3.0 (2021-02-11)
+2.3.1 (2021-02-11)
 ------------------
 
-* Create venvs with a bootstrapped virtualenv when module `venv` is not available
+* Keep ``virtualenv.pyz`` for 1 day in cache
+
+* Create venvs with a bootstrapped virtualenv when module ``venv`` is not available
 
 * Using latest pex 2.1.30
 
