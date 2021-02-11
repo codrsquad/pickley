@@ -176,14 +176,17 @@ class PythonVenv(object):
 
             if python.major > 2 and (not pspec or pspec.dashed != "tox"):
                 # See https://github.com/tox-dev/tox/issues/1689
-                runez.run(python.executable, "-mvenv", self.folder)
-                pip = "pip"
-                if os.environ.get("VIRTUALENV_PIP"):  # pragma: no cover
-                    # Optionally respect https://tox.readthedocs.io/en/latest/config.html#conf-download
-                    pip += "==%s" % os.environ.get("VIRTUALENV_PIP")
+                r = runez.run(python.executable, "-mvenv", self.folder, fatal=False)
+                if r.succeeded:
+                    pip = "pip"
+                    if os.environ.get("VIRTUALENV_PIP"):  # pragma: no cover
+                        # Optionally respect https://tox.readthedocs.io/en/latest/config.html#conf-download
+                        pip += "==%s" % os.environ.get("VIRTUALENV_PIP")
 
-                self.pip_install("-U", pip, "setuptools", "wheel")
-                return
+                    self.pip_install("-U", pip, "setuptools", "wheel")
+                    return
+
+                LOG.debug("Module venv failed, trying virtualenv bootstrap")
 
             runez.ensure_folder(cfg.cache.path, logger=runez.log.trace)
             zipapp = os.path.realpath(cfg.cache.full_path("virtualenv.pyz"))
@@ -291,7 +294,7 @@ class PexPackager(Packager):
         runez.ensure_folder(tmp, logger=False)
         runez.ensure_folder(wheels, logger=False)
         pex_venv = PythonVenv(pspec, folder=os.path.join(build_folder, "pex-venv"))
-        pex_venv.pip_install("pex==2.1.24", *requirements)
+        pex_venv.pip_install("pex==2.1.30", *requirements)
         pex_venv.pip_wheel("-v", "--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
         contents = PackageContents(pex_venv, pspec)
         if contents.entry_points:

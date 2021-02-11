@@ -2,6 +2,14 @@
 Release notes
 =============
 
+2.3.0 (2021-02-11)
+------------------
+
+* Create venvs with a bootstrapped virtualenv when module `venv` is not available
+
+* Using latest pex 2.1.30
+
+
 2.2.11 (2021-01-20)
 -------------------
 
