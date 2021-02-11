@@ -56,28 +56,30 @@ Once you have pickley_, you can get other python CLIs and use them as standalone
 
     # One-liner to grab pickley, and drop it in ~/.local/bin
     $ curl -sLo ~/.local/bin/pickley `curl -s https://pypi.org/pypi/pickley/json | grep -Eo '"download_url":"([^"]+)"' | cut -d'"' -f4`
+    $ chmod a+x ~/.local/bin/pickley
 
-    $ which pickley
+    # Double-check you do have ~/.local/bin in your PATH
+    $ which -a pickley
     ~/.local/bin/pickley
 
     $ pickley base
     ~/.local/bin
 
     $ pickley install tox twine
-    Installed tox v3.15.2 in 6 seconds 328 ms
-    Installed twine v3.1.1 in 6 seconds 954 ms
+    Installed tox v3.21.4 in 6 seconds 328 ms
+    Installed twine v3.3.0 in 6 seconds 954 ms
 
     $ which tox
     ~/.local/bin/tox
 
     $ tox --version
-    tox version 3.15.2
+    tox version 3.21.4
 
     $ pickley list
     | Package    | Version |
     -------------|----------
-    | tox        | 3.15.2  |
-    | twine      | 3.1.1   |
+    | tox        | 3.21.4  |
+    | twine      | 3.3.0   |
 
 
 Configuration
@@ -153,12 +155,10 @@ Install from github releases
 - Go to https://github.com/codrsquad/pickley/releases/latest
 - Download pickley from there (1st link), and drop it in ``~/.local/bin`` for example (or any folder in your PATH)
 
-bash one-line install
----------------------
-
-Run::
+You can do that with these commands::
 
     curl -sLo ~/.local/bin/pickley `curl -s https://pypi.org/pypi/pickley/json | grep -Eo '"download_url":"([^"]+)"' | cut -d'"' -f4`
+    chmod a+x ~/.local/bin/pickley
 
 
 Install from source
