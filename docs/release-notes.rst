@@ -2,7 +2,7 @@
 Release notes
 =============
 
-2.3.1 (2021-02-11)
+2.3.2 (2021-02-11)
 ------------------
 
 * Keep ``virtualenv.pyz`` for 1 day in cache
