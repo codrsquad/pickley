@@ -79,7 +79,7 @@ def test_bogus_config(temp_folder, logged):
 
     p = cfg.find_python(pspec=None, fatal=False)
     assert p.executable == "/dev/null/foo"
-    assert p.problem == "not an executable"
+    assert p.problem == "/dev/null/foo is not installed"
     assert "was not usable, skipped" in logged.pop()
 
     assert not logged
@@ -87,7 +87,7 @@ def test_bogus_config(temp_folder, logged):
         # Fails to resolve due to desired python configured to be /dev/null
         PackageSpec(cfg, "mgit")
 
-    assert "Python '/dev/null' was not usable, skipped: not an executable" in logged.pop()
+    assert "Python '/dev/null' was not usable, skipped" in logged.pop()
 
 
 def test_default_index(temp_folder, logged):
@@ -101,15 +101,13 @@ def test_default_index(temp_folder, logged):
     assert not logged
 
 
-def test_edge_cases():
-    assert "intentionally" in pypi_name_problem("0-0")
+def test_edge_cases(temp_cfg):
+    assert str(PickleyConfig()) == "<not-configured>"
+    assert "intentionally refuses" in pypi_name_problem("0-0")
     assert pypi_name_problem("mgit") is None
 
-    cfg = PickleyConfig()
-    assert str(cfg) == "<not-configured>"
-
-    p = cfg.find_python(pspec=None)
-    assert p == cfg.available_pythons.invoker
+    p = temp_cfg.find_python(pspec=None)
+    assert p is temp_cfg.available_pythons.invoker
 
 
 def test_good_config(temp_folder, logged):

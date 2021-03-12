@@ -33,8 +33,7 @@ def protected_main():
         abort(e)
 
     except NotImplementedError as e:
-        msg = runez.stringified(e) or "Not implemented"
-        abort(msg.format(packager=runez.red(PACKAGER.__name__.replace("Packager", "").lower())))
+        abort(runez.stringified(e) or "Not implemented")
 
 
 def setup_audit_log(cfg=CFG):
@@ -237,7 +236,7 @@ def clean_env_vars(*keys):
 @runez.click.debug()
 @runez.click.dryrun("-n")
 @runez.click.color()
-@click.option("--config", "-c", default="~/.config/pickley.json", metavar="PATH", help="Configuration to use")
+@click.option("--config", "-c", metavar="PATH", help="Optional additional configuration to use")
 @click.option("--index", "-i", metavar="PATH", help="Pypi index to use")
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", help="Delivery method to use")
@@ -261,8 +260,6 @@ def main(ctx, debug, config, index, python, delivery, packager):
     level = logging.WARNING
     if ctx.invoked_subcommand == "package":
         level = logging.INFO
-        if python is None:
-            python = "python"  # Use invoker python by default when packaging
 
     CFG.set_cli(config, delivery, index, python)
     if ctx.invoked_subcommand != "package":
@@ -315,7 +312,7 @@ def needs_bootstrap(pickleyspec=None):
     if pickleyspec is None:
         return ".whl" in _location_grand_parent() or "pickley.bootstrap" in sys.argv[0]
 
-    if pickleyspec.python and not pickleyspec.python.problem and CFG.available_pythons.invoker.major < pickleyspec.python.major:
+    if pickleyspec.python and not pickleyspec.python.problem and CFG.available_pythons.invoker < pickleyspec.python:
         return True  # A better python became available
 
     manifest = pickleyspec.get_manifest()
@@ -479,11 +476,15 @@ def diagnostics(border, verbose):
     table.header[0].align = "right"
     table.header[1].style = "bold"
     table.add_row("base", runez.short(CFG.base))
-    python = CFG.find_python()
-    table.add_row("python", "%s %s" % (runez.short(python.executable), runez.dim("(%s)" % python.version)))
+    desired = CFG.get_value("python")
+    table.add_row("desired python", desired)
+    python = CFG.find_python(fatal=False)
+    table.add_row("selected python", python.representation())
+    table.add_row("invoker python", CFG.available_pythons.invoker.representation())
     table.add_row("sys.executable", runez.short(sys.executable))
     table.add_row("default index", CFG.default_index)
     table.add_row("pip.conf", runez.short(CFG.pip_conf, none=runez.dim("-not found-")))
+    table.add_row("deferred locations", runez.short(CFG.available_pythons.deferred))
 
     if verbose:
         table.add_row("sys.prefix", runez.short(sys.prefix))
@@ -491,6 +492,22 @@ def diagnostics(border, verbose):
         table.add_row("__file__", runez.short(__file__))
 
     print(table)
+    print("\nAvailable pythons:")
+    for python in CFG.available_pythons.available:
+        print("- %s" % python.representation())
+
+    if CFG.available_pythons.deferred:
+        added = CFG.available_pythons.scan_deferred(logger=None)
+        if added:
+            print("\nDeferred locations add %s python installations:" % (runez.bold(len(added))))
+            for python in added:
+                print("- %s" % python.representation())
+
+            if verbose:
+                print("\nRe-sorted:")
+                CFG.available_pythons.sort()
+                for python in CFG.available_pythons.available:
+                    print("- %s" % python.representation())
 
 
 @main.command()

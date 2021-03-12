@@ -10,7 +10,6 @@ from mock import patch
 from pickley import __version__, get_program_path, PackageSpec, PickleyConfig, TrackedManifest
 from pickley.cli import find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
-from pickley.env import UnknownPython
 from pickley.package import download_command, Packager
 
 from .conftest import dot_meta
@@ -46,9 +45,7 @@ def test_bootstrap(temp_cfg):
     pspec.python = temp_cfg.available_pythons.invoker
     assert needs_bootstrap(pspec) is True  # Due to no manifest
 
-    pspec.python = UnknownPython("py3")
-    pspec.python.problem = None
-    pspec.python.major = temp_cfg.available_pythons.invoker.major + 1
+    pspec.python.spec.version.components = (pspec.python.major + 1, 0, 0)
     assert needs_bootstrap(pspec) is True  # Due to higher version of python available
 
     with patch("runez.which", return_value="curl"):
@@ -162,7 +159,7 @@ def test_dryrun(cli):
     cli.run("-n --color config")
     assert cli.succeeded
 
-    cli.expect_failure("-n -Pfoo install mgit", "Python 'foo' is not usable: not available")
+    cli.expect_failure("-n -Pfoo install mgit", "Python '?foo' is not usable: not available")
 
     # Simulate an old entry point that was now removed
     runez.write(dot_meta("mgit/.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
@@ -221,8 +218,13 @@ def test_dryrun(cli):
 def test_edge_cases(temp_cfg, logged):
     import pickley.__main__  # noqa, just verify it imports
 
-    assert PackageSpec(temp_cfg, "mgit").find_wheel(".", fatal=False) is None
+    mgit = PackageSpec(temp_cfg, "mgit")
+    assert mgit.find_wheel(".", fatal=False) is None
     assert "Expecting 1 wheel" in logged.pop()
+
+    runez.touch("mgit-1.0.0.whl")
+    w = mgit.find_wheel(".", fatal=False)
+    assert w == "./mgit-1.0.0.whl"
 
     # Exercise protected_main()
     with patch("pickley.cli.main", side_effect=KeyboardInterrupt):
@@ -235,13 +237,10 @@ def test_edge_cases(temp_cfg, logged):
             protected_main()
     assert "mocked lock" in logged
 
-    with patch("pickley.cli.main", side_effect=NotImplementedError("{packager} is not supported")):
+    with patch("pickley.cli.main", side_effect=NotImplementedError("packager is not supported")):
         with pytest.raises(SystemExit):
             protected_main()
-    assert "venv is not supported" in logged
-
-    with pytest.raises(NotImplementedError):
-        Packager.install(None)
+    assert "packager is not supported" in logged
 
     with pytest.raises(NotImplementedError):
         Packager.package(None, None, None, None, False)
@@ -393,14 +392,21 @@ def test_main():
 
 
 def test_package_pex(cli):
+    cli.run("--dryrun", "-ppex", "-Pinvoker", "package", cli.project_folder)
+    if runez.PY2:
+        assert cli.failed
+        assert "not supported any more with python2" in cli.logged
+        return
+
+    assert cli.succeeded
+    assert "mpex" in cli.logged.stdout
+    contents = runez.readlines(runez.log.project_path("requirements.txt"))
+    if any(s.startswith("-e") for s in contents):
+        return  # Skip actual pex test if we're running with '-e ...path...' in requirements.txt
+
     with patch.dict(os.environ, {"PEX_ROOT": os.path.join(os.getcwd(), ".pex")}):
         expected = "dist/pickley"
         cli.run("-ppex", "-Pinvoker", "package", cli.project_folder)
-        if runez.PY2:
-            assert cli.failed
-            assert "not supported any more with python2" in cli.logged
-            return
-
         assert cli.succeeded
         assert runez.is_executable(expected)
 

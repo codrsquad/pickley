@@ -7,8 +7,8 @@ import time
 from datetime import datetime
 
 import runez
+from runez.pyenv import PythonDepot
 
-from pickley.env import AvailablePythons, py_version_components, python_exe_path, PythonFromPath, PythonInstallation
 from pickley.pypi import PepVersion, PypiInfo
 
 
@@ -23,7 +23,7 @@ K_LEAVES = {"facultative", "install_timeout", "pyenv", "version", "version_check
 PLATFORM = platform.system().lower()
 
 DEFAULT_PYPI = "https://pypi.org/simple"
-DEFAULT_PYTHONS = "/usr/bin/python3, python3, python"
+DEFAULT_PYTHONS = "python3, python"
 RE_PYPI_CANONICAL = re.compile(r"^[a-z][a-z0-9-]*[a-z0-9]$")
 RE_PYPI_ACCEPTABLE = re.compile(r"^[a-z][a-z0-9._-]*[a-z0-9]$", re.IGNORECASE)
 
@@ -136,7 +136,7 @@ class PackageSpec(object):
     folder = None  # type: str
     dashed = None  # type: str
     wheelified = None  # type: str
-    python = None  # type: PythonInstallation
+    python = None  # type: runez.pyenv.PythonInstallation
     pinned = None  # type: str
     settings = None  # type: TrackedSettings
 
@@ -293,19 +293,23 @@ class PackageSpec(object):
 
     def is_healthily_installed(self):
         """Double-check that current venv is still usable"""
-        py_path = python_exe_path(self.install_path)
+        py_path = self.cfg.available_pythons.resolved_python_path(self.install_path)
         return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=None).succeeded
 
     def find_wheel(self, folder, fatal=True):
         """list[str]: Wheel for this package found in 'folder', if any"""
-        result = []
-        prefix = "%s-" % self.wheelified
-        for fname in os.listdir(folder):
-            if fname.startswith(prefix):
-                result.append(os.path.join(folder, fname))
+        if runez.DRYRUN:
+            return ["%s-%s-py2.py3-none-any.whl" % (self.wheelified, self.version)]
 
-        if len(result) == 1:
-            return result[0]
+        result = []
+        if folder and os.path.isdir(folder):
+            prefix = "%s-" % self.wheelified
+            for fname in os.listdir(folder):
+                if fname.startswith(prefix):
+                    result.append(os.path.join(folder, fname))
+
+            if len(result) == 1:
+                return result[0]
 
         return runez.abort("Expecting 1 wheel, found: %s" % (result or "None"), fatal=fatal, return_value=None)
 
@@ -459,7 +463,6 @@ class PickleyConfig(object):
     def __init__(self):
         self.configs = []
         self.config_path = None
-        self.available_pythons = AvailablePythons(self._pyenv_scanner)
         self.pip_conf, self.pip_conf_index = get_default_index("~/.config/pip/pip.conf", "/etc/pip.conf")
         self.default_index = self.pip_conf_index or DEFAULT_PYPI
         self._explored = set()
@@ -481,6 +484,13 @@ class PickleyConfig(object):
 
         return self._bundled_virtualenv_path
 
+    @runez.cached_property
+    def available_pythons(self):
+        depot = PythonDepot()
+        depot.scan_pyenv(self.pyenv())
+        depot.scan_invoker()
+        return depot
+
     def set_base(self, base_path):
         """
         Args:
@@ -490,7 +500,6 @@ class PickleyConfig(object):
         self.base = FolderBase("base", base_path)
         self.meta = FolderBase("meta", os.path.join(self.base.path, DOT_META))
         self.cache = FolderBase("cache", os.path.join(self.meta.path, ".cache"))
-
         if self.cli:
             cli = runez.serialize.json_sanitized(self.cli.to_dict())
             self.configs.append(RawConfig(self, "cli", cli))
@@ -513,50 +522,14 @@ class PickleyConfig(object):
 
     def _add_config_file(self, path, base=None):
         path = runez.resolved_path(path, base=base)
-        if path and not any(c.source == path for c in self.configs):
-            values = runez.read_json(path, default=None)
+        if path and not any(c.source == path for c in self.configs) and os.path.exists(path):
+            values = runez.read_json(path)
             if values:
                 self.configs.append(RawConfig(self, path, values))
                 included = values.get("include")
                 if included:
                     for additional in runez.flattened(included):
                         self._add_config_file(additional, base=os.path.dirname(path))
-
-    def _pyenv_scanner(self):
-        location = self.pyenv()
-        if location:
-            location = runez.resolved_path(location)
-            self._explored.add(location)
-            if not location.endswith("versions"):
-                location = os.path.join(location, "versions")
-                self._explored.add(location)
-
-            if os.path.isdir(location):
-                for fname in os.listdir(location):
-                    folder = os.path.join(location, fname)
-                    self._explored.add(folder)
-                    folder = os.path.join(folder, "bin")
-                    self._explored.add(folder)
-                    c = py_version_components(fname, loose=False)
-                    if c and len(c) == 3:
-                        python = PythonFromPath(os.path.join(folder, "python"), version=fname)
-                        yield python
-
-        env_path = os.environ.get("PATH")
-        if env_path:
-            for folder in env_path.split(os.pathsep):
-                folder = runez.resolved_path(folder)
-                if not folder.startswith(sys.prefix) and folder not in self._explored and os.path.isdir(folder):
-                    self._explored.add(folder)
-                    fpath = os.path.join(folder, "python")
-                    python = PythonFromPath(fpath)
-                    if not python.problem:
-                        yield python
-
-                    fpath = os.path.join(folder, "python3")
-                    python = PythonFromPath(fpath)
-                    if not python.problem:
-                        yield python
 
     def _expand_bundle(self, result, seen, bundle_name):
         if not bundle_name or bundle_name in seen:
@@ -579,7 +552,7 @@ class PickleyConfig(object):
             fatal (bool): If True, abort execution is no valid python could be found
 
         Returns:
-            (PythonInstallation): Object representing python installation
+            (runez.pyenv.PythonInstallation): Object representing python installation
         """
         desired = self.get_value("python", pspec=pspec)
         desired = runez.flattened(desired, keep_empty=None, split=",")
@@ -602,7 +575,7 @@ class PickleyConfig(object):
             python = self.available_pythons.invoker
 
         if fatal and python.problem:
-            abort("Python '%s' is not usable: %s" % (runez.bold(python), runez.red(python.problem)))
+            abort("Python '%s' is not usable: %s" % (runez.bold(runez.short(python.spec)), runez.red(python.problem)))
 
         return python
 

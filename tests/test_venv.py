@@ -24,17 +24,16 @@ Files:
 
 def test_edge_cases(temp_cfg):
     pspec = PackageSpec(temp_cfg, "foo")
-    pspec.python = temp_cfg.available_pythons.invoker
     with runez.CaptureOutput(dryrun=True) as logged:
         pspec.cfg._bundled_virtualenv_path = None
         venv = PythonVenv(pspec, "myvenv")
         assert str(venv) == "myvenv"
         assert not pspec.is_healthily_installed()
-        if runez.PY2:
-            assert "virtualenv.pyz myvenv" in logged
+        assert "-mvenv myvenv" in logged.pop()
 
-        else:
-            assert "-mvenv myvenv" in logged
+        tox = PackageSpec(temp_cfg, "tox")
+        PythonVenv(tox, "myvenv")
+        assert "virtualenv.pyz" in logged.pop()
 
     with runez.CaptureOutput() as logged:
         runez.touch("dummy.whl")
@@ -89,7 +88,7 @@ def test_entry_points(temp_cfg):
 
 def test_pip_fail(temp_cfg, logged):
     pspec = PackageSpec(temp_cfg, "bogus")
-    venv = PythonVenv(pspec, folder="", python=temp_cfg.available_pythons.invoker)
+    venv = PythonVenv(pspec, folder="")
     assert str(venv) == ""
     with patch("pickley.package.PythonVenv._run_pip", return_value=runez.program.RunResult("", "some\nerror", code=1)):
         with pytest.raises(SystemExit):
@@ -102,6 +101,5 @@ def test_pip_fail(temp_cfg, logged):
         with pytest.raises(SystemExit):
             venv.pip_install("foo")
 
-        assert not logged.stderr
         assert "No matching distribution for ..." in logged
         assert "You should consider" not in logged

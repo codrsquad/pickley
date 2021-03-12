@@ -3,6 +3,7 @@ import os
 import pytest
 import runez
 from runez.conftest import cli, logged, temp_folder
+from runez.pyenv import PythonDepot
 
 from pickley import DOT_META, PICKLEY, PickleyConfig
 from pickley.cli import main
@@ -52,5 +53,8 @@ cli.context = TemporaryBase
 def temp_cfg():
     with TemporaryBase() as base:
         cfg = PickleyConfig()
+        cfg.available_pythons = PythonDepot()
+        cfg.available_pythons.deferred = []
+        cfg.available_pythons.register_invoker()
         cfg.set_base(base)
         yield cfg
