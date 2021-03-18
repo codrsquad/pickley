@@ -159,16 +159,12 @@ class PythonVenv(object):
         if not index and pspec:
             index = pspec.index
 
-        if not cfg and pspec:
-            cfg = pspec.cfg
-
-        if not python:
-            python = pspec.cfg.find_python(pspec=pspec)
-
         self.folder = folder
         self.index = index
         self.py_path = os.path.join(folder, "bin", "python")
         if folder:
+            cfg = cfg or pspec.cfg
+            python = python or cfg.find_python(pspec=pspec)
             runez.ensure_folder(folder, clean=True, logger=False)
             if cfg.bundled_virtualenv_path:
                 runez.run(cfg.bundled_virtualenv_path, "-p", python.executable, folder)
@@ -188,10 +184,10 @@ class PythonVenv(object):
 
                 LOG.debug("Module venv failed, trying virtualenv bootstrap")  # pragma: no cover
 
-            runez.ensure_folder(cfg.cache.path, logger=runez.log.trace)
+            runez.ensure_folder(cfg.cache.path)
             zipapp = os.path.realpath(cfg.cache.full_path("virtualenv.pyz"))
             if not runez.file.is_younger(zipapp, runez.date.SECONDS_IN_ONE_DAY):
-                runez.delete(zipapp, fatal=False, logger=runez.log.trace)
+                runez.delete(zipapp, fatal=False)
                 args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
                 runez.run(*args)
 
@@ -308,7 +304,7 @@ class PexPackager(Packager):
             result = []
             for name in contents.entry_points:
                 target = os.path.join(dist_folder, name)
-                runez.delete(target, logger=runez.log.trace)
+                runez.delete(target)
                 pex_venv.run_python(
                     "-mpex", "-v", "-o%s" % target, "--pex-root", pex_root, "--tmpdir", tmp,
                     "--no-index", "--find-links", wheels,  # resolver options
@@ -348,7 +344,7 @@ class VenvPackager(Packager):
 
         contents = PackageContents(venv, pspec)
         if not contents.entry_points:
-            runez.delete(pspec.meta_path, logger=runez.log.trace)
+            runez.delete(pspec.meta_path)
             abort("Can't install '%s', it is %s" % (runez.bold(pspec.dashed), runez.red("not a CLI")))
 
         return delivery.install(pspec, venv, contents.entry_points)

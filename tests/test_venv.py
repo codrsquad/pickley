@@ -26,10 +26,15 @@ def test_edge_cases(temp_cfg):
     pspec = PackageSpec(temp_cfg, "foo")
     with runez.CaptureOutput(dryrun=True) as logged:
         pspec.cfg._bundled_virtualenv_path = None
+        pspec.python = temp_cfg.available_pythons.invoker
         venv = PythonVenv(pspec, "myvenv")
         assert str(venv) == "myvenv"
         assert not pspec.is_healthily_installed()
-        assert "-mvenv myvenv" in logged.pop()
+        if runez.PY2:
+            assert "virtualenv.pyz myvenv" in logged
+
+        else:
+            assert "-mvenv myvenv" in logged.pop()
 
         tox = PackageSpec(temp_cfg, "tox")
         PythonVenv(tox, "myvenv")

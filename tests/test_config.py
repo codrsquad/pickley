@@ -79,15 +79,15 @@ def test_bogus_config(temp_folder, logged):
 
     p = cfg.find_python(pspec=None, fatal=False)
     assert p.executable == "/dev/null/foo"
-    assert p.problem == "/dev/null/foo is not installed"
-    assert "was not usable, skipped" in logged.pop()
+    assert p.problem == "not available"
+    assert "skipped: not available" in logged.pop()
 
     assert not logged
     with pytest.raises(SystemExit):
         # Fails to resolve due to desired python configured to be /dev/null
         PackageSpec(cfg, "mgit")
 
-    assert "Python '/dev/null' was not usable, skipped" in logged.pop()
+    assert "No suitable python" in logged.pop()
 
 
 def test_default_index(temp_folder, logged):

@@ -139,7 +139,7 @@ class SoftLock(object):
         if CFG.base:
             runez.Anchored.pop(CFG.base.path)
 
-        runez.delete(self.lock_path, logger=runez.log.trace)
+        runez.delete(self.lock_path, logger=False)
 
 
 def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
@@ -260,6 +260,7 @@ def main(ctx, debug, config, index, python, delivery, packager):
     level = logging.WARNING
     if ctx.invoked_subcommand == "package":
         level = logging.INFO
+        python = python or "invoker"  # Default to using invoker for 'package' subcommand
 
     CFG.set_cli(config, delivery, index, python)
     if ctx.invoked_subcommand != "package":
@@ -484,7 +485,6 @@ def diagnostics(border, verbose):
     table.add_row("sys.executable", runez.short(sys.executable))
     table.add_row("default index", CFG.default_index)
     table.add_row("pip.conf", runez.short(CFG.pip_conf, none=runez.dim("-not found-")))
-    table.add_row("deferred locations", runez.short(CFG.available_pythons.deferred))
 
     if verbose:
         table.add_row("sys.prefix", runez.short(sys.prefix))
@@ -492,22 +492,10 @@ def diagnostics(border, verbose):
         table.add_row("__file__", runez.short(__file__))
 
     print(table)
+    CFG.available_pythons.scan_path_env_var()
     print("\nAvailable pythons:")
     for python in CFG.available_pythons.available:
         print("- %s" % python.representation())
-
-    if CFG.available_pythons.deferred:
-        added = CFG.available_pythons.scan_deferred(logger=None)
-        if added:
-            print("\nDeferred locations add %s python installations:" % (runez.bold(len(added))))
-            for python in added:
-                print("- %s" % python.representation())
-
-            if verbose:
-                print("\nRe-sorted:")
-                CFG.available_pythons.sort()
-                for python in CFG.available_pythons.available:
-                    print("- %s" % python.representation())
 
 
 @main.command()
@@ -730,7 +718,7 @@ class Symlinker(object):
     def apply(self, exe):
         dest = os.path.join(self.target, os.path.basename(exe))
         if os.path.exists(exe):
-            runez.delete(dest, logger=runez.log.trace)
+            runez.delete(dest, logger=False)
             r = runez.symlink(exe, dest, must_exist=False)
             if r > 0:
                 inform("Symlinked %s -> %s" % (runez.short(dest), runez.short(exe)))
@@ -740,7 +728,7 @@ class Symlinker(object):
 
 
 def delete_file(path):
-    if runez.delete(path, fatal=False, logger=runez.log.trace) > 0:
+    if runez.delete(path, fatal=False, logger=False) > 0:
         return 1
 
     return 0

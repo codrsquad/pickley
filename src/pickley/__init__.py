@@ -293,8 +293,9 @@ class PackageSpec(object):
 
     def is_healthily_installed(self):
         """Double-check that current venv is still usable"""
-        py_path = self.cfg.available_pythons.resolved_python_path(self.install_path)
-        return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=None).succeeded
+        py_path = self.cfg.available_pythons.resolved_python_exe(self.install_path)
+        if py_path:
+            return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
     def find_wheel(self, folder, fatal=True):
         """list[str]: Wheel for this package found in 'folder', if any"""
@@ -332,7 +333,7 @@ class PackageSpec(object):
             keep_for (int): Time in seconds for how long to keep the previously installed version
         """
         if self.cfg.cache.contains(self.folder):
-            runez.delete(self.folder, logger=runez.log.trace)
+            runez.delete(self.folder, logger=False)
 
         current = self.get_manifest()
         meta_path = self.meta_path
@@ -486,10 +487,7 @@ class PickleyConfig(object):
 
     @runez.cached_property
     def available_pythons(self):
-        depot = PythonDepot()
-        depot.scan_pyenv(self.pyenv())
-        depot.scan_invoker()
-        return depot
+        return PythonDepot(pyenv=self.pyenv())
 
     def set_base(self, base_path):
         """
@@ -522,7 +520,7 @@ class PickleyConfig(object):
 
     def _add_config_file(self, path, base=None):
         path = runez.resolved_path(path, base=base)
-        if path and not any(c.source == path for c in self.configs) and os.path.exists(path):
+        if path and all(c.source != path for c in self.configs) and os.path.exists(path):
             values = runez.read_json(path)
             if values:
                 self.configs.append(RawConfig(self, path, values))
@@ -555,27 +553,26 @@ class PickleyConfig(object):
             (runez.pyenv.PythonInstallation): Object representing python installation
         """
         desired = self.get_value("python", pspec=pspec)
-        desired = runez.flattened(desired, keep_empty=None, split=",")
+        desired = [d.strip() for d in runez.flattened(desired, keep_empty=None, split=",")]
+        desired = [d for d in desired if d]
+        if not desired:
+            # Edge case: configured empty python... just use invoker in that case
+            return self.available_pythons.invoker
+
         issues = []
         python = None
         for d in desired:
-            d = d.strip()
-            if d:
-                python = self.available_pythons.find_python(d)
-                if not python.problem:
-                    return python
+            python = self.available_pythons.find_python(d)
+            if not python.problem:
+                return python
 
-                issues.append((d, python.problem))
+            issues.append("Python '%s' skipped: %s" % (runez.bold(runez.short(d)), runez.red(python.problem)))
 
-        for i in issues[:-1]:
-            # Warn for the first N-1 desired pythons (if any) only, the last one will trigger an error in caller
-            LOG.warning("Python '%s' was not usable, skipped: %s" % i)
+        for i in issues:  # Warn only if no python could be found at all
+            LOG.warning(i)
 
-        if python is None:
-            python = self.available_pythons.invoker
-
-        if fatal and python.problem:
-            abort("Python '%s' is not usable: %s" % (runez.bold(runez.short(python.spec)), runez.red(python.problem)))
+        if fatal:
+            abort("No suitable python installation found")
 
         return python
 

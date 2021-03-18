@@ -108,7 +108,7 @@ def mock_git_clone(pspec):
 
 def test_dryrun(cli):
     with patch("pickley.cli.needs_bootstrap", return_value=False):
-        cli.run("-n auto-upgrade")
+        cli.run("-n -Pinvoker auto-upgrade")
         assert cli.succeeded
         assert not cli.logged
 
@@ -159,7 +159,7 @@ def test_dryrun(cli):
     cli.run("-n --color config")
     assert cli.succeeded
 
-    cli.expect_failure("-n -Pfoo install mgit", "Python '?foo' is not usable: not available")
+    cli.expect_failure("-n -Pfoo install mgit", "No suitable python")
 
     # Simulate an old entry point that was now removed
     runez.write(dot_meta("mgit/.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
