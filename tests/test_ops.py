@@ -275,11 +275,33 @@ def test_facultative(cli):
     cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
 
 
+def check_is_wrapper(path, is_wrapper):
+    if is_wrapper:
+        assert not os.path.islink(path)
+        contents = runez.readlines(path)
+        assert WRAPPER_MARK in contents
+
+    else:
+        assert os.path.islink(path)
+
+    r = runez.run(path, "--version")
+    assert r.succeeded
+
+
 def test_install_folder(cli):
+    """Check that flip-flopping between symlink/wrapper works"""
     project = runez.log.project_path()
     cli.run("--debug", "-dsymlink", "install", project)
     assert cli.succeeded
-    assert os.path.islink("pickley")
+    check_is_wrapper("pickley", False)
+
+    cli.run("--debug", "-dwrap", "install", "--force", project)
+    assert cli.succeeded
+    check_is_wrapper("pickley", True)
+
+    cli.run("--debug", "-dsymlink", "install", "--force", project)
+    assert cli.succeeded
+    check_is_wrapper("pickley", False)
 
 
 def check_install_from_pypi(cli, delivery, package, simulate_version=None):
@@ -355,9 +377,7 @@ def test_install_pypi(cli):
     if sys.version_info[0] > 2:
         # Bootstrapping out of py2 is tested separately
         check_install_from_pypi(cli, "wrap", "mgit", simulate_version="0.0.0")
-        assert not os.path.islink("mgit")
-        contents = runez.readlines("mgit")
-        assert WRAPPER_MARK in contents
+        check_is_wrapper("mgit", True)
 
 
 def test_lock(temp_cfg, logged):

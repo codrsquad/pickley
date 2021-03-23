@@ -131,6 +131,7 @@ class DeliveryMethodSymlink(DeliveryMethod):
     short_name = "symlink"
 
     def _install(self, pspec, target, source):
+        runez.delete(target, logger=False)
         if os.path.isabs(source) and os.path.isabs(target):
             parent = runez.parent_folder(target)
             if runez.parent_folder(source).startswith(parent):
@@ -170,6 +171,7 @@ class DeliveryMethodWrap(DeliveryMethod):
             pickley=runez.quoted(pickley, adapter=None),
             source=runez.quoted(source, adapter=None),
         )
+        runez.delete(target, logger=False)
         runez.write(target, contents, logger=False)
         runez.make_executable(target, logger=False)
 
