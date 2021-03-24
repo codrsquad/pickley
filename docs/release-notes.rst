@@ -2,6 +2,12 @@
 Release notes
 =============
 
+2.4.0 (2021-03-23)
+------------------
+
+* Prefer pyenv-installed pythons, when configured/available
+
+
 2.3.2 (2021-02-11)
 ------------------
 
