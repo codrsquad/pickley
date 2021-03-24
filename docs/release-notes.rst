@@ -7,6 +7,8 @@ Release notes
 
 * Prefer pyenv-installed pythons, when configured/available
 
+* Using pex 2.1.34
+
 
 2.3.2 (2021-02-11)
 ------------------
