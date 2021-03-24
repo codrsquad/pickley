@@ -311,14 +311,20 @@ def _location_grand_parent():
 
 def needs_bootstrap(pickleyspec=None):
     if pickleyspec is None:
-        return ".whl" in _location_grand_parent() or "pickley.bootstrap" in sys.argv[0]
+        if ".whl" in _location_grand_parent():
+            return "Unpacking pex wheel"
+
+        if "pickley.bootstrap" in sys.argv[0]:
+            return "Upgrading pass1"
+
+        return None
 
     if pickleyspec.python and not pickleyspec.python.problem and CFG.available_pythons.invoker < pickleyspec.python:
-        return True  # A better python became available
+        return "Better python version available (%s vs %s)" % (CFG.available_pythons.invoker, pickleyspec.python)
 
     manifest = pickleyspec.get_manifest()
     if not manifest or not manifest.version:
-        return True  # We're running from an old pickley v1 install (no v2 manifest)
+        return "Upgrading old pickley v1"  # We're running from an old pickley v1 install (no v2 manifest)
 
 
 def bootstrap():
@@ -356,8 +362,10 @@ def bootstrap():
         runez.run(pickleyspec.exe_path(PICKLEY), "auto-upgrade", fatal=None, stdout=None, stderr=None)  # Trigger auto_upgrade_v1()
         sys.exit(0)
 
-    if needs_bootstrap(pickleyspec):
+    reason = needs_bootstrap(pickleyspec)
+    if reason:
         setup_audit_log()
+        LOG.debug("Bootstrapping pickley: %s" % reason)
         with SoftLock(pickleyspec):
             delivery = DeliveryMethod.delivery_method_by_name(pickleyspec.settings.delivery)
             delivery.ping = False

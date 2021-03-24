@@ -39,14 +39,15 @@ def test_base(temp_folder):
 
 
 def test_bootstrap(temp_cfg):
-    assert needs_bootstrap() is False
+    assert needs_bootstrap() is None
 
     pspec = PackageSpec(temp_cfg, "pickley", "0.0")
     pspec.python = temp_cfg.available_pythons.invoker
-    assert needs_bootstrap(pspec) is True  # Due to no manifest
+    assert needs_bootstrap(pspec) == "Upgrading old pickley v1"
 
     pspec.python.spec.version.components = (pspec.python.major + 1, 0, 0)
-    assert needs_bootstrap(pspec) is True  # Due to higher version of python available
+    reason = needs_bootstrap(pspec)
+    assert reason.startswith("Better python version available")
 
     with patch("runez.which", return_value="curl"):
         assert "curl" == download_command("", "")[0]
