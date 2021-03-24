@@ -319,7 +319,7 @@ def needs_bootstrap(pickleyspec=None):
 
         return None
 
-    if pickleyspec.python and not pickleyspec.python.problem and CFG.available_pythons.invoker < pickleyspec.python:
+    if pickleyspec.python and not pickleyspec.python.problem and CFG.available_pythons.invoker.major < pickleyspec.python.major:
         return "Better python version available (%s vs %s)" % (CFG.available_pythons.invoker, pickleyspec.python)
 
     manifest = pickleyspec.get_manifest()
