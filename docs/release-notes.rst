@@ -2,7 +2,13 @@
 Release notes
 =============
 
-2.4.0 (2021-03-23)
+2.4.3 (2021-03-30)
+------------------
+
+* Added bootstrap tests, bumped runez
+
+
+2.4.2 (2021-03-23)
 ------------------
 
 * Prefer pyenv-installed pythons, when configured/available

@@ -38,22 +38,27 @@ def test_base(temp_folder):
     PickleyConfig.program_path = original
 
 
-def test_bootstrap(temp_cfg):
+def test_bootstrap(temp_cfg, monkeypatch):
     assert needs_bootstrap() is None
 
     pspec = PackageSpec(temp_cfg, "pickley", "0.0")
-    pspec.python = temp_cfg.available_pythons.invoker
     assert needs_bootstrap(pspec) == "Upgrading old pickley v1"
 
     pspec.python.spec.version.components = (pspec.python.major + 1, 0, 0)
     reason = needs_bootstrap(pspec)
     assert reason.startswith("Better python version available")
 
+    with patch("pickley.cli._location_grand_parent", return_value=".pex/pickley.whl"):
+        assert needs_bootstrap() == "Unpacking pex .pex/pickley.whl"
+
     with patch("runez.which", return_value="curl"):
         assert "curl" == download_command("", "")[0]
 
     with patch("runez.which", return_value=None):
         assert "wget" == download_command("", "")[0]
+
+    monkeypatch.setattr(sys, "argv", [".../pickley.bootstrap/...", "auto-upgrade"])
+    assert needs_bootstrap() == "Upgrading pass1"
 
 
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):

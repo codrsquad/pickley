@@ -53,6 +53,6 @@ cli.context = TemporaryBase
 def temp_cfg():
     with TemporaryBase() as base:
         cfg = PickleyConfig()
-        cfg.available_pythons = PythonDepot(pyenv=None, use_invoker=True, use_path=False)
+        cfg.available_pythons = PythonDepot(pyenv=None, use_path=False)
         cfg.set_base(base)
         yield cfg

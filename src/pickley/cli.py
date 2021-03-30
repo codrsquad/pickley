@@ -311,8 +311,9 @@ def _location_grand_parent():
 
 def needs_bootstrap(pickleyspec=None):
     if pickleyspec is None:
-        if ".whl" in _location_grand_parent():
-            return "Unpacking pex wheel"
+        grand_parent = _location_grand_parent()
+        if grand_parent and ".whl" in grand_parent:
+            return "Unpacking pex %s" % grand_parent
 
         if "pickley.bootstrap" in sys.argv[0]:
             return "Upgrading pass1"
@@ -534,7 +535,9 @@ def list(border, verbose):
     for pspec in packages:
         manifest = pspec.get_manifest()
         if manifest:
-            table.add_row(pspec.dashed, manifest.version, manifest.delivery, manifest.python, manifest.index)
+            python = CFG.available_pythons.find_python(manifest.python)
+            python = manifest.python if python.problem else python.representation(canonical=False, origin=False)
+            table.add_row(pspec.dashed, manifest.version, manifest.delivery, python, manifest.index)
 
     print(table)
 
