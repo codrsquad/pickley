@@ -12,7 +12,7 @@ from runez.pyenv import PythonDepot, Version
 from pickley.pypi import PypiInfo
 
 
-__version__ = "2.4.3"
+__version__ = "2.4.4"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
 DOT_META = ".pickley"
