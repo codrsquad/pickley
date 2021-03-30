@@ -7,9 +7,9 @@ import time
 from datetime import datetime
 
 import runez
-from runez.pyenv import PythonDepot
+from runez.pyenv import PythonDepot, Version
 
-from pickley.pypi import PepVersion, PypiInfo
+from pickley.pypi import PypiInfo
 
 
 __version__ = "2.4.3"
@@ -327,10 +327,10 @@ class PackageSpec(object):
 
         return manifest
 
-    def groom_installation(self, keep_for=60 * 60):
+    def groom_installation(self, keep_for=15):
         """
         Args:
-            keep_for (int): Time in seconds for how long to keep the previously installed version
+            keep_for (int): Time in days for how long to keep the previously installed version
         """
         if self.cfg.cache.contains(self.folder):
             runez.delete(self.folder, logger=False)
@@ -347,8 +347,8 @@ class PackageSpec(object):
                 fpath = os.path.join(meta_path, fname)
                 vpart = fname[len(self.dashed) + 1:]
                 if vpart != "dev" and vpart != current.version:
-                    version = PepVersion(vpart)
-                    if not version.components:
+                    version = Version(vpart)
+                    if not version.is_valid:
                         # Not a proper installation
                         runez.delete(fpath, fatal=False)
                         continue
@@ -364,7 +364,7 @@ class PackageSpec(object):
             for candidate in candidates[1:]:
                 runez.delete(candidate[2], fatal=False)
 
-            if youngest[0] > keep_for:
+            if youngest[0] > (keep_for * runez.date.SECONDS_IN_ONE_DAY):
                 runez.delete(youngest[2], fatal=False)
 
     def save_manifest(self, entry_points):
@@ -405,7 +405,7 @@ class PackageSpec(object):
 
         for candidate in candidates:
             if candidate and candidate.version:
-                if not desired or not desired.version or PepVersion(candidate.version) > PepVersion(desired.version):
+                if not desired or not desired.version or Version(candidate.version) > Version(desired.version):
                     desired = candidate
 
         return desired

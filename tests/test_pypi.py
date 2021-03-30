@@ -3,7 +3,7 @@ import runez
 from mock import MagicMock, patch
 
 from pickley import PackageSpec, TrackedManifest
-from pickley.pypi import curl_get, PepVersion, PypiInfo, UrllibRequestor
+from pickley.pypi import curl_get, PypiInfo, UrllibRequestor
 
 
 LEGACY_SAMPLE = """
@@ -100,43 +100,3 @@ def test_pypi_chain(temp_cfg):
     with patch("runez.run", return_value=runez.program.RunResult("failed")):
         with pytest.raises(Exception):
             curl_get("")
-
-
-def test_version():
-    foo = PepVersion("foo")
-    assert str(foo) == "foo"
-    assert not foo.components
-    assert not foo.prerelease
-
-    bogus = PepVersion("1.2.3.4.5")
-    assert str(bogus) == "1.2.3.4.5"
-    assert not bogus.components
-    assert not bogus.prerelease
-
-    vrc = PepVersion("1.0rc4-foo")
-    vdev = PepVersion("1.0a4.dev5-foo")
-    assert vrc < vdev
-    assert str(vrc) == "1.0rc4"
-    assert str(vdev) == "1.0a4.dev5"
-
-    v11 = PepVersion("1.1.2.3")
-    v12 = PepVersion("1.2.3")
-    v12p = PepVersion("1.2.3.post4")
-    v20 = PepVersion("2.0")
-    v20d = PepVersion("2.0.dev1")
-    v3 = PepVersion("3.0.1.2")
-    assert v12 > v11
-    assert v12p > v11
-    assert v20 > v11
-    assert v20d > v11
-    assert v3 > v11
-    assert v12p > v12
-    assert v20 > v12
-    assert v20d > v12
-    assert v3 > v12
-    assert v20 > v12p
-    assert v20d > v12p
-    assert v3 > v12p
-    assert v20d > v20
-    assert v3 > v20
-    assert v3 > v20d

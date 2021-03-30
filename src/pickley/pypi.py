@@ -4,11 +4,11 @@ import os
 import re
 
 import runez
+from runez.pyenv import Version
 
 
 LOG = logging.getLogger(__name__)
 RE_BASENAME = re.compile(r'href=".+/([^/#]+)\.(tar\.gz|whl)#', re.IGNORECASE)
-RE_VERSION = re.compile(r"^((\d+)((\.(\d+))+)((a|b|c|rc)(\d+))?(\.(dev|post)(\d+))?).*$")
 
 
 class RequestsRequestor(object):
@@ -63,57 +63,6 @@ def curl_get(url):
 SIMPLE_GET = runez.FallbackChain(RequestsRequestor(), UrllibRequestor(), curl_get)
 
 
-class PepVersion(object):
-    """
-    Parse versions according to PEP-0440, ordering for non pre-releases is well supported
-    Pre-releases are partially supported, no complex combinations (such as .post.dev) are paid attention to
-    """
-
-    components = None
-    prerelease = None
-
-    def __init__(self, text, max_parts=4):
-        self.text = text
-        m = RE_VERSION.match(text)
-        if not m:
-            return
-
-        self.text, major, main_part, pre, pre_num, rel, rel_num = m.group(1, 2, 3, 7, 8, 10, 11)
-        components = (major + main_part).split(".")
-        if len(components) > max_parts:
-            return  # Invalid version
-
-        while len(components) < max_parts:
-            components.append(0)
-
-        components.append(rel_num if rel == "post" else 0)  # Using imaginary 4th component to hold post-release
-        self.components = tuple(map(int, components))
-        if pre:
-            self.prerelease = ("c" if pre == "rc" else pre, int(pre_num))
-
-        if rel == "dev":
-            self.prerelease = ("dev", int(rel_num))
-
-    def __repr__(self):
-        return self.text
-
-    def __hash__(self):
-        return hash(self.text)
-
-    def __eq__(self, other):
-        return isinstance(other, PepVersion) and self.components == other.components and self.prerelease == other.prerelease
-
-    def __lt__(self, other):
-        if isinstance(other, PepVersion):
-            if self.components == other.components:
-                if self.prerelease:
-                    return other.prerelease and self.prerelease < other.prerelease
-
-                return bool(other.prerelease)
-
-            return self.components < other.components
-
-
 class PypiInfo(object):
 
     latest = None  # type: str
@@ -165,8 +114,8 @@ class PypiInfo(object):
             if m:
                 text = self.version_part(m.group(1))
                 if text:
-                    version = PepVersion(text)
-                    if version.components:
+                    version = Version(text)
+                    if version.is_valid:
                         if version.prerelease:
                             prereleases.add(version)
 
