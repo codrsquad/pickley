@@ -5,7 +5,7 @@ Release notes
 2.4.4 (2021-03-30)
 ------------------
 
-* Keep older versions for 15 days
+* Keep older versions for a minimum of 1 hour
 
 * Using pex 2.1.36
 

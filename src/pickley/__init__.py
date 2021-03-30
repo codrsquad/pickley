@@ -327,16 +327,17 @@ class PackageSpec(object):
 
         return manifest
 
-    def groom_installation(self, keep_for=15):
+    def groom_installation(self, keep_for=60):
         """
         Args:
-            keep_for (int): Time in days for how long to keep the previously installed version
+            keep_for (int): Minimum time in minutes for how long to keep the previous latest version
         """
         if self.cfg.cache.contains(self.folder):
             runez.delete(self.folder, logger=False)
 
         current = self.get_manifest()
         meta_path = self.meta_path
+        current_age = None
         if current and os.path.isdir(meta_path):
             now = time.time()
             candidates = []
@@ -346,7 +347,11 @@ class PackageSpec(object):
 
                 fpath = os.path.join(meta_path, fname)
                 vpart = fname[len(self.dashed) + 1:]
-                if vpart != "dev" and vpart != current.version:
+                age = now - os.path.getmtime(fpath)
+                if vpart == current.version:
+                    current_age = age
+
+                else:
                     version = Version(vpart)
                     if not version.is_valid:
                         # Not a proper installation
@@ -354,7 +359,7 @@ class PackageSpec(object):
                         continue
 
                     # Different version, previously installed
-                    candidates.append((now - os.path.getmtime(fpath), version, fpath))
+                    candidates.append((age, version, fpath))
 
             if not candidates:
                 return
@@ -364,8 +369,10 @@ class PackageSpec(object):
             for candidate in candidates[1:]:
                 runez.delete(candidate[2], fatal=False)
 
-            if youngest[0] > (keep_for * runez.date.SECONDS_IN_ONE_DAY):
-                runez.delete(youngest[2], fatal=False)
+            if current_age:
+                current_age = min(current_age, youngest[0])
+                if current_age > (keep_for * runez.date.SECONDS_IN_ONE_MINUTE):
+                    runez.delete(youngest[2], fatal=False)
 
     def save_manifest(self, entry_points):
         manifest = TrackedManifest(
