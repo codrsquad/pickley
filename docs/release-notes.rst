@@ -2,8 +2,12 @@
 Release notes
 =============
 
-2.4.3 (2021-03-30)
+2.4.4 (2021-03-30)
 ------------------
+
+* Keep older versions for 15 days
+
+* Using pex 2.1.36
 
 * Added bootstrap tests, bumped runez
 
