@@ -477,34 +477,29 @@ def config():
     print(CFG.represented())
 
 
-@main.command()
-@runez.click.border("-b", default="colon")
-@click.option("--verbose", "-v", is_flag=True, help="Show internal info")
-def diagnostics(border, verbose):
-    """Show diagnostics info"""
-    table = PrettyTable(2, border=border)
-    table.header[0].align = "right"
-    table.header[1].style = "bold"
-    table.add_row("base", runez.short(CFG.base))
+def _diagnostics():
     desired = CFG.get_value("python")
-    table.add_row("desired python", desired)
+    yield "base", CFG.base
+    yield "desired python", desired
     python = CFG.find_python(fatal=False)
-    table.add_row("selected python", python.representation())
-    table.add_row("invoker python", CFG.available_pythons.invoker.representation())
-    table.add_row("sys.executable", runez.short(sys.executable))
-    table.add_row("default index", CFG.default_index)
-    table.add_row("pip.conf", runez.short(CFG.pip_conf, none=runez.dim("-not found-")))
+    yield "selected python", python.representation()
+    if python is not CFG.available_pythons.invoker:
+        yield "invoker python", CFG.available_pythons.invoker.representation()
 
-    if verbose:
-        table.add_row("sys.prefix", runez.short(sys.prefix))
-        table.add_row("sys.arg[0]", runez.short(sys.argv[0]))
-        table.add_row("__file__", runez.short(__file__))
+    yield "default index", CFG.default_index
+    yield "pip.conf", CFG.pip_conf
 
-    print(table)
     CFG.available_pythons.scan_path_env_var()
-    print("\nAvailable pythons:")
+    yield ""
+    yield "Available pythons:"
     for python in CFG.available_pythons.available:
-        print("- %s" % python.representation())
+        yield python.representation()
+
+
+@main.command()
+def diagnostics():
+    """Show diagnostics info"""
+    print(PrettyTable.two_column_diagnostics(_diagnostics))
 
 
 @main.command()

@@ -238,7 +238,7 @@ class PythonVenv(object):
         return runez.run(self.py_path, *args, **kwargs)
 
     def _run_pip(self, *args, **kwargs):
-        return self.run_python("-mpip", "-v", "--isolated", *args, **kwargs)
+        return self.run_python("-mpip", "--isolated", *args, **kwargs)
 
 
 def simplified_pip_error(error, output):
@@ -297,7 +297,7 @@ class PexPackager(Packager):
         runez.ensure_folder(wheels, logger=False)
         pex_venv = PythonVenv(pspec, folder=os.path.join(build_folder, "pex-venv"))
         pex_venv.pip_install("pex==2.1.36", *requirements)
-        pex_venv.pip_wheel("-v", "--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
+        pex_venv.pip_wheel("--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
         contents = PackageContents(pex_venv, pspec)
         if contents.entry_points:
             wheel_path = pspec.find_wheel(wheels)
@@ -306,7 +306,7 @@ class PexPackager(Packager):
                 target = os.path.join(dist_folder, name)
                 runez.delete(target)
                 pex_venv.run_python(
-                    "-mpex", "-v", "-o%s" % target, "--pex-root", pex_root, "--tmpdir", tmp,
+                    "-mpex", "-o%s" % target, "--pex-root", pex_root, "--tmpdir", tmp,
                     "--no-index", "--find-links", wheels,  # resolver options
                     None if run_compile_all else "--no-compile",  # output options
                     "-c%s" % name,  # entry point options
