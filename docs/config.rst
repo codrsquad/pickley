@@ -56,7 +56,7 @@ Configuration files are json as their name implies, here's an example::
         "tox": {
             "delivery": "wrap",
             "index": "....",
-            "python": "3.7",
+            "python": "3.9",
             "version": "3.2.1"
         }
       },

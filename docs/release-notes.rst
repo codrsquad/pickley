@@ -2,6 +2,14 @@
 Release notes
 =============
 
+2.4.6 (2021-04-08)
+------------------
+
+* Bumped deps, using latest pex
+
+* Better diagnostics
+
+
 2.4.4 (2021-03-30)
 ------------------
 

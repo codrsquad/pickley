@@ -184,7 +184,7 @@ def test_v1(temp_folder, logged):
     assert installed == ["mgit", "pickley2-a"]
 
     # Add some files that should get cleaned up
-    runez.touch(dot_meta("_venvs/_py37/bin/pip"))
+    runez.touch(dot_meta("_venvs/_py39/bin/pip"))
     runez.touch(dot_meta("foo/.ping"))
 
     with patch("pickley.cli.perform_install", side_effect=mock_install):

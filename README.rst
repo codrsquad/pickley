@@ -66,8 +66,8 @@ Once you have pickley_, you can get other python CLIs and use them as standalone
     ~/.local/bin
 
     $ pickley install tox twine
-    Installed tox v3.21.4 in 6 seconds 328 ms
-    Installed twine v3.3.0 in 6 seconds 954 ms
+    Installed tox v3.21.4 in 6 seconds 501 ms
+    Installed twine v3.3.0 in 6 seconds 901 ms
 
     $ which tox
     ~/.local/bin/tox

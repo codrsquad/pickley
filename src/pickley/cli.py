@@ -489,17 +489,13 @@ def _diagnostics():
     yield "default index", CFG.default_index
     yield "pip.conf", CFG.pip_conf
 
-    CFG.available_pythons.scan_path_env_var()
-    yield ""
-    yield "Available pythons:"
-    for python in CFG.available_pythons.available:
-        yield python.representation()
-
 
 @main.command()
 def diagnostics():
     """Show diagnostics info"""
     print(PrettyTable.two_column_diagnostics(_diagnostics))
+    CFG.available_pythons.scan_path_env_var()
+    print("\n%s" % CFG.available_pythons.representation())
 
 
 @main.command()
@@ -531,7 +527,7 @@ def list(border, verbose):
         manifest = pspec.get_manifest()
         if manifest:
             python = CFG.available_pythons.find_python(manifest.python)
-            python = manifest.python if python.problem else python.representation(canonical=False, origin=False)
+            python = manifest.python if python.problem else python.representation()
             table.add_row(pspec.dashed, manifest.version, manifest.delivery, python, manifest.index)
 
     print(table)

@@ -11,6 +11,7 @@ from pickley.cli import main
 
 cli.default_exe = PickleyConfig.program_path
 cli.default_main = main
+PythonDepot.use_path = False
 assert logged, temp_folder  # Just making fixtures available, with no complaints about unused imports
 
 PickleyConfig.program_path = PickleyConfig.program_path.replace("pytest", PICKLEY)
@@ -53,6 +54,5 @@ cli.context = TemporaryBase
 def temp_cfg():
     with TemporaryBase() as base:
         cfg = PickleyConfig()
-        cfg.available_pythons = PythonDepot(pyenv=None, use_path=False)
         cfg.set_base(base)
         yield cfg

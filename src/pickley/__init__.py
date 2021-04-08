@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 
 import runez
-from runez.pyenv import PythonDepot, Version
+from runez.pyenv import pyenv_scanner, PythonDepot, Version
 
 from pickley.pypi import PypiInfo
 
@@ -494,7 +494,9 @@ class PickleyConfig(object):
 
     @runez.cached_property
     def available_pythons(self):
-        return PythonDepot(pyenv=self.pyenv())
+        pyenv = self.pyenv()
+        scanner = pyenv_scanner(pyenv) if pyenv else None
+        return PythonDepot(scanner=scanner)
 
     def set_base(self, base_path):
         """

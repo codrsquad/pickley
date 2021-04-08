@@ -172,7 +172,7 @@ def test_dryrun(cli):
     cli.expect_failure("-n install mgit pickley2.a", "Would state: Installed mgit v", "'pickley2.a' is not pypi canonical")
     runez.delete(dot_meta("mgit"))
 
-    cli.expect_success("-n diagnostics", "sys.executable")
+    cli.expect_success("-n -Pfoo diagnostics", "desired python : foo", "foo [not available]", "sys.executable")
     with patch("runez.run", return_value=runez.program.RunResult("failed")):
         cli.run("-n install git@github.com:zsimic/mgit.git")
         assert cli.failed

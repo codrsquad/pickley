@@ -34,8 +34,8 @@ some info about when/how it was installed::
           "tox-quickstart": "tox._quickstart:main"
         },
         "install_info": {
-            "args": "-P3.8 -dwrap install tox==1.2.3",
-            "timestamp": "2020-11-01 12:51:39",
+            "args": "-P3.9 -dwrap install tox==1.2.3",
+            "timestamp": "2020-11-01 12:51:01",
             "vpickley": "2.3.0"
         },
         "pinned": "1.2.3",
@@ -62,4 +62,3 @@ the latest for a given package, this is used to put a cooldown on query pypi via
         "source": "latest",
         "version": "1.2.1"
     }
-
