@@ -2,6 +2,12 @@
 Release notes
 =============
 
+2.5.2 (2021-05-21)
+------------------
+
+* Downgraded pex and click, test packaging with both oldest and newest supported version
+
+
 2.5.0 (2021-05-21)
 ------------------
 
