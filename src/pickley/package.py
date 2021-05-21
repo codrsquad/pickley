@@ -287,7 +287,7 @@ class PexPackager(Packager):
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements, run_compile_all):
         runez.ensure_folder(build_folder, clean=True)
-        if pspec.python.major < 3:
+        if pspec.python.major < 3:  # pragma: no cover
             abort("Packaging with pex is not supported any more with python2")
 
         pex_root = os.path.join(build_folder, "pex-root")
@@ -340,7 +340,7 @@ class VenvPackager(Packager):
         venv = PythonVenv(pspec)
         venv.pip_install(*args)
         if extras:
-            venv.run_python("-mpip", "install", *extras, fatal=False)
+            venv.pip_install(*extras)
 
         contents = PackageContents(venv, pspec)
         if not contents.entry_points:

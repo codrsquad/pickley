@@ -1,3 +1,5 @@
+from urllib.error import HTTPError
+
 import pytest
 import runez
 from mock import MagicMock, patch
@@ -75,23 +77,19 @@ def test_pypi(temp_cfg, logged):
 
 
 def test_pypi_chain(temp_cfg):
-    if not runez.PY2:
-        # Simulate urllib querying
-        from urllib.error import HTTPError
+    mocked_response = MagicMock()
+    mocked_response.read.return_value = "empty"
+    with patch("urllib.request.urlopen", return_value=mocked_response):
+        i = PypiInfo(None, PackageSpec(temp_cfg, "foo"), pypi_get=runez.FallbackChain(UrllibRequestor()))
+        assert "no versions published" in i.problem
 
-        mocked_response = MagicMock()
-        mocked_response.read.return_value = "empty"
-        with patch("urllib.request.urlopen", return_value=mocked_response):
-            i = PypiInfo(None, PackageSpec(temp_cfg, "foo"), pypi_get=runez.FallbackChain(UrllibRequestor()))
-            assert "no versions published" in i.problem
+    with patch("urllib.request.urlopen", side_effect=HTTPError("", 404, None, None, None)):
+        i = PypiInfo(None, PackageSpec(temp_cfg, "foo"), pypi_get=runez.FallbackChain(UrllibRequestor()))
+        assert "no data" in i.problem
 
-        with patch("urllib.request.urlopen", side_effect=HTTPError("", 404, None, None, None)):
-            i = PypiInfo(None, PackageSpec(temp_cfg, "foo"), pypi_get=runez.FallbackChain(UrllibRequestor()))
-            assert "no data" in i.problem
-
-        with patch("urllib.request.urlopen", side_effect=HTTPError("", 500, None, None, None)):
-            with pytest.raises(Exception):
-                PypiInfo(None, PackageSpec(temp_cfg, "foo"), pypi_get=runez.FallbackChain(UrllibRequestor()))
+    with patch("urllib.request.urlopen", side_effect=HTTPError("", 500, None, None, None)):
+        with pytest.raises(Exception):
+            PypiInfo(None, PackageSpec(temp_cfg, "foo"), pypi_get=runez.FallbackChain(UrllibRequestor()))
 
     # Exercise curl_get code path
     with patch("runez.run", return_value=runez.program.RunResult("empty", code=0)):

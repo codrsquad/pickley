@@ -251,12 +251,6 @@ def main(ctx, debug, config, index, python, delivery, packager):
         # Avoid issue on some OSX installations where ARM support seems to have been enabled too early
         os.environ["ARCHFLAGS"] = "-arch x86_64"
 
-    if runez.PY2:
-        import codecs
-
-        writer = codecs.getwriter("utf8")
-        sys.stdout = writer(sys.stdout)
-
     level = logging.WARNING
     if ctx.invoked_subcommand == "package":
         level = logging.INFO

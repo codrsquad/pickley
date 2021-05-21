@@ -30,11 +30,7 @@ def test_edge_cases(temp_cfg):
         venv = PythonVenv(pspec, "myvenv")
         assert str(venv) == "myvenv"
         assert not pspec.is_healthily_installed()
-        if runez.PY2:
-            assert "virtualenv.pyz myvenv" in logged
-
-        else:
-            assert "-mvenv myvenv" in logged.pop()
+        assert "-mvenv myvenv" in logged.pop()
 
         tox = PackageSpec(temp_cfg, "tox")
         PythonVenv(tox, "myvenv")

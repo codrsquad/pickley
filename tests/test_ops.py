@@ -8,7 +8,7 @@ import runez
 from mock import patch
 
 from pickley import __version__, get_program_path, PackageSpec, PickleyConfig, TrackedManifest
-from pickley.cli import find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
+from pickley.cli import clean_compiled_artifacts, find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.package import download_command, Packager
 
@@ -251,6 +251,15 @@ def test_edge_cases(temp_cfg, logged):
     with pytest.raises(NotImplementedError):
         Packager.package(None, None, None, None, False)
 
+    runez.touch("share/python-wheels/some-wheel.whl")
+    runez.touch("__pycache__/some_module.py")
+    runez.touch("some_module.pyc")
+    logged.pop()
+    clean_compiled_artifacts(".")
+    assert "Deleted 3 compiled artifacts" in logged.pop()
+    assert not os.path.exists("share/python-wheels")
+    assert os.path.isdir("share")
+
 
 def test_facultative(cli):
     runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"))
@@ -327,10 +336,7 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
     r = runez.run(package, "--version")
     assert r.succeeded
 
-    if sys.version_info[0] > 2:
-        # Bootstrapping out of py2 is tested separately
-        cli.expect_success("--debug auto-upgrade %s" % package, "Skipping auto-upgrade, checked recently")
-
+    cli.expect_success("--debug auto-upgrade %s" % package, "Skipping auto-upgrade, checked recently")
     cli.expect_success("install %s" % package, "is already installed")
     cli.expect_success("check", "is installed")
     cli.expect_success("list", package)
@@ -380,10 +386,8 @@ def test_install_pypi(cli):
     assert not os.path.exists(dot_meta("mgit"))
     assert os.path.exists(dot_meta("audit.log"))
 
-    if sys.version_info[0] > 2:
-        # Bootstrapping out of py2 is tested separately
-        check_install_from_pypi(cli, "wrap", "mgit", simulate_version="0.0.0")
-        check_is_wrapper("mgit", True)
+    check_install_from_pypi(cli, "wrap", "mgit", simulate_version="0.0.0")
+    check_is_wrapper("mgit", True)
 
 
 def test_lock(temp_cfg, logged):
@@ -419,11 +423,6 @@ def test_main():
 
 def test_package_pex(cli):
     cli.run("--dryrun", "-ppex", "-Pinvoker", "package", cli.project_folder)
-    if runez.PY2:
-        assert cli.failed
-        assert "not supported any more with python2" in cli.logged
-        return
-
     assert cli.succeeded
     assert "mpex" in cli.logged.stdout
     contents = runez.readlines(runez.log.project_path("requirements.txt"))

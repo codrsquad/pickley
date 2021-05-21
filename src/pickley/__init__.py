@@ -300,7 +300,7 @@ class PackageSpec(object):
     def find_wheel(self, folder, fatal=True):
         """list[str]: Wheel for this package found in 'folder', if any"""
         if runez.DRYRUN:
-            return ["%s-%s-py2.py3-none-any.whl" % (self.wheelified, self.version)]
+            return ["%s-%s-py3-none-any.whl" % (self.wheelified, self.version)]
 
         result = []
         if folder and os.path.isdir(folder):

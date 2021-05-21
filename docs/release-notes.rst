@@ -2,6 +2,14 @@
 Release notes
 =============
 
+2.5.0 (2021-05-21)
+------------------
+
+* Dropped support for python2
+
+* Corrected edge case when detecting development mode run
+
+
 2.4.7 (2021-05-05)
 ------------------
 
