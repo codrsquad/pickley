@@ -44,7 +44,7 @@ def test_edge_cases(temp_cfg):
 
 
 def simulated_run(*args, **_):
-    if "ansible-base" in args:
+    if "ansible-core" in args:
         return runez.program.RunResult(PIP_SHOW_OUTPUT, code=0)
 
     if "no-location" in args:

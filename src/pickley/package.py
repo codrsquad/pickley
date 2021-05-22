@@ -66,7 +66,8 @@ class PackageContents(object):
             return
 
         if name == "ansible":
-            name = "ansible-base"  # Is there a better way to detect weird indirections like ansible does?
+            # Is there a better way to detect weird indirections like ansible does?
+            name = "ansible-core" if not pspec.version or pspec.version >= "4" else "ansible-base"
 
         r = venv.run_python("-mpip", "show", "-f", name, fatal=False)
         if not r.succeeded:
