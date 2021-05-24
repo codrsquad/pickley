@@ -439,6 +439,15 @@ def test_package_pex(cli):
         version = r.output
         assert r.succeeded
 
+        if sys.version_info[:2] == (3, 6) and runez.is_executable("/usr/bin/python3"):
+            # Limited edge case: verify that system python can run the 3.6 pex
+            # Unfortunately hard to repro this on github actions, would need to python versions installed at same time
+            # So this will only be a valuable check when ran locally...
+            r = runez.run("/usr/bin/python3", expected, "--version")
+            assert not r.error
+            assert r.succeeded
+            assert version == r.output
+
         assert runez.run(expected, "diagnostics").succeeded
 
         r = runez.run(expected, "--debug", "auto-upgrade")

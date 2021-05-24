@@ -2,6 +2,12 @@
 Release notes
 =============
 
+2.5.4 (2021-05-24)
+------------------
+
+* Package pex with oldest supported python
+
+
 2.5.2 (2021-05-21)
 ------------------
 
