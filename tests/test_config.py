@@ -54,7 +54,7 @@ defaults:
 
 def grab_sample(name):
     cfg = PickleyConfig()
-    path = runez.log.tests_path("samples", name)
+    path = runez.SYS_INFO.tests_path("samples", name)
     runez.copy(path, DOT_META)
     cfg.set_cli("config.json", None, None, None)
     cfg.set_base(".")
@@ -176,7 +176,7 @@ def test_v1(temp_folder, logged):
     status = V1Status(cfg)
     assert not status.installed
 
-    sample = runez.log.tests_path("samples/v1")
+    sample = runez.SYS_INFO.tests_path("samples/v1")
     runez.copy(sample, DOT_META)
     status = V1Status(cfg)
     assert len(status.installed) == 2
