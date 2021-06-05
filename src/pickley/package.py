@@ -334,7 +334,7 @@ class VenvPackager(Packager):
         elif pspec.dashed == PICKLEY:
             # Inject extra packages for pickley, to help bootstrap
             extras = ["virtualenv", "requests"]
-            project_path = runez.SYS_INFO.dev_project_location
+            project_path = runez.DEV.project_folder
             if project_path:
                 args = ["-e", project_path]  # Development mode (running from source checkout)
 

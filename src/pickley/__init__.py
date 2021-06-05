@@ -228,7 +228,7 @@ class PackageSpec(object):
     @property
     def install_path(self):
         if self.name:
-            if self.dashed == PICKLEY and runez.SYS_INFO.dev_folder():
+            if self.dashed == PICKLEY and runez.DEV.venv_folder:
                 return self.cfg.meta.full_path(PICKLEY, "%s-dev" % PICKLEY)
 
             if self.version:

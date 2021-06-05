@@ -305,7 +305,7 @@ def check_is_wrapper(path, is_wrapper):
 
 def test_install_folder(cli):
     """Check that flip-flopping between symlink/wrapper works"""
-    project = runez.SYS_INFO.dev_project_location
+    project = runez.DEV.project_folder
     cli.run("--debug", "-dsymlink", "install", project)
     assert cli.succeeded
     check_is_wrapper("pickley", False)
@@ -425,7 +425,7 @@ def test_package_pex(cli):
     cli.run("--dryrun", "-ppex", "-Pinvoker", "package", cli.project_folder)
     assert cli.succeeded
     assert "mpex" in cli.logged.stdout
-    contents = runez.readlines(runez.SYS_INFO.project_path("requirements.txt"))
+    contents = runez.readlines(runez.DEV.project_path("requirements.txt"))
     if any(s.startswith("-e") for s in contents):
         return  # Skip actual pex test if we're running with '-e ...path...' in requirements.txt
 
