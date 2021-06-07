@@ -22,20 +22,6 @@ PACKAGER = VenvPackager  # Packager to use for this run
 CFG = PickleyConfig()
 
 
-def protected_main():
-    try:
-        main()
-
-    except KeyboardInterrupt:
-        abort(runez.red("\n\nAborted\n"))
-
-    except SoftLockException as e:
-        abort(e)
-
-    except NotImplementedError as e:
-        abort(runez.stringified(e) or "Not implemented")
-
-
 def setup_audit_log(cfg=CFG):
     """Setup audit.log log file handler"""
     if runez.DRYRUN:
@@ -487,9 +473,8 @@ def _diagnostics():
 @main.command()
 def diagnostics():
     """Show diagnostics info"""
-    print(PrettyTable.two_column_diagnostics(_diagnostics))
     CFG.available_pythons.scan_path_env_var()
-    print("\n%s" % CFG.available_pythons.representation())
+    print(PrettyTable.two_column_diagnostics(_diagnostics(), runez.SYS_INFO.diagnostics(), CFG.available_pythons.representation()))
 
 
 @main.command()

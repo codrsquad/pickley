@@ -15,7 +15,7 @@ if __name__ == "__main__":
         url="https://github.com/codrsquad/pickley",
         entry_points={
             "console_scripts": [
-                "pickley = pickley.cli:protected_main",
+                "pickley = pickley.__main__:main",
             ],
         },
         classifiers=[

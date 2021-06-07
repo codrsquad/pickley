@@ -1,5 +1,4 @@
 import os
-import subprocess
 import sys
 import time
 
@@ -8,7 +7,7 @@ import runez
 from mock import patch
 
 from pickley import __version__, get_program_path, PackageSpec, PickleyConfig, TrackedManifest
-from pickley.cli import clean_compiled_artifacts, find_base, needs_bootstrap, PackageFinalizer, protected_main, SoftLock, SoftLockException
+from pickley.cli import clean_compiled_artifacts, find_base, needs_bootstrap, PackageFinalizer, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.package import download_command, Packager
 
@@ -222,8 +221,6 @@ def test_dryrun(cli):
 
 
 def test_edge_cases(temp_cfg, logged):
-    import pickley.__main__  # noqa, just verify it imports
-
     mgit = PackageSpec(temp_cfg, "mgit")
     assert mgit.find_wheel(".", fatal=False) is None
     assert "Expecting 1 wheel" in logged.pop()
@@ -231,22 +228,6 @@ def test_edge_cases(temp_cfg, logged):
     runez.touch("mgit-1.0.0.whl")
     w = mgit.find_wheel(".", fatal=False)
     assert w == "./mgit-1.0.0.whl"
-
-    # Exercise protected_main()
-    with patch("pickley.cli.main", side_effect=KeyboardInterrupt):
-        with pytest.raises(SystemExit):
-            protected_main()
-    assert "Aborted" in logged.pop()
-
-    with patch("pickley.cli.main", side_effect=SoftLockException("mocked lock")):
-        with pytest.raises(SystemExit):
-            protected_main()
-    assert "mocked lock" in logged
-
-    with patch("pickley.cli.main", side_effect=NotImplementedError("packager is not supported")):
-        with pytest.raises(SystemExit):
-            protected_main()
-    assert "packager is not supported" in logged
 
     with pytest.raises(NotImplementedError):
         Packager.package(None, None, None, None, False)
@@ -415,10 +396,8 @@ def test_lock(temp_cfg, logged):
     assert not os.path.exists(lock_path)  # Lock released
 
 
-def test_main():
-    r = subprocess.check_output([sys.executable, "-mpickley", "--help"])  # Exercise __main__.py
-    r = runez.decode(r)
-    assert "auto-upgrade" in r
+def test_main(cli):
+    cli.exercise_main("-mpickley")
 
 
 def test_package_pex(cli):
