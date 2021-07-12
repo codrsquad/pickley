@@ -1,4 +1,0 @@
-{
-  "mgit": "mgit.cli:main",
-  "mgit-old": "simulates a removed entry point"
-}

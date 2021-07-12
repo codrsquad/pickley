@@ -44,8 +44,7 @@ else
     echo "{source} is not available anymore"
     echo ""
     echo "Please reinstall with:"
-    url=`curl -s https://pypi.org/pypi/pickley/json | grep -Eo '"download_url":"([^"]+)"' | cut -d'"' -f4`
-    echo curl -sLo {pickley} $url
+    echo 'curl https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley | bash'
     exit 1
 fi
 """ % WRAPPER_MARK
@@ -160,7 +159,7 @@ class DeliveryMethodWrap(DeliveryMethod):
 
         else:
             wrapper = GENERIC_WRAPPER
-            if not os.path.exists(pickley):
+            if runez.DEV.project_folder and not os.path.exists(pickley):
                 # We're running from development venv
                 pickley = pspec.cfg.program_path
 

@@ -2,6 +2,21 @@
 Release notes
 =============
 
+3.0.0 (2021-07-13)
+------------------
+
+* Require python 3.6+, simplified bootstrap (giving up on pex)
+
+* Major changes:
+
+  * NOT using ``pex`` any more (unfortunately there's always an issue with dependencies when using pex,
+    like for example: ``click`` having different requirements depending on python version)
+
+  * New bootstrap script ``get-pickley``
+
+  * ``pickley`` does not try and "bootstrap itself" anymore (used to re-install itself as a venv, from pex)
+
+
 2.5.4 (2021-05-24)
 ------------------
 

@@ -12,9 +12,8 @@ import runez
 from runez.render import PrettyTable
 
 from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, PLATFORM
-from pickley.delivery import DeliveryMethod, PICKLEY
+from pickley.delivery import PICKLEY
 from pickley.package import PexPackager, PythonVenv, VenvPackager
-from pickley.v1upgrade import V1Status
 
 
 LOG = logging.getLogger(__name__)
@@ -177,7 +176,9 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
 
             inform("%s %s v%s%s" % (action, pspec.dashed, runez.bold(pspec.version), runez.dim(note)))
 
-        pspec.groom_installation()
+        if not pspec.pickley_dev_mode:
+            pspec.groom_installation()
+
         return manifest
 
 
@@ -256,123 +257,11 @@ def main(ctx, debug, config, index, python, delivery, packager):
     )
 
 
-def auto_upgrade_v1(cfg):
-    """Look for v1 installations, and upgrade them to v2"""
-    v1 = V1Status(cfg)
-    if v1.installed:
-        # On first auto-upgrade pickley (ran in background by wrapper)
-        setup_audit_log(cfg)
-        inform("Auto-upgrading %s packages with pickley v2" % len(v1.installed))
-        for prev in v1.installed:
-            pspec = PackageSpec(cfg, prev.name)
-            try:
-                manifest = perform_install(pspec, is_upgrade=False, quiet=False)
-                if manifest and manifest.entrypoints and prev.entrypoints:
-                    for old_ep in prev.entrypoints:
-                        if old_ep not in manifest.entrypoints:
-                            runez.delete(os.path.join(cfg.base.path, old_ep))
-
-            except BaseException:
-                inform("%s could not be upgraded, please reinstall it" % runez.red(prev.name))
-                if prev.entrypoints:
-                    for old_ep in prev.entrypoints:
-                        runez.delete(os.path.join(cfg.base.path, old_ep))
-
-            inform("----")
-
-        v1.clean_old_files()
-        inform("Done")
-        sys.exit(0)
-
-
-def _location_grand_parent():
-    return runez.parent_folder(runez.parent_folder(__file__))
-
-
-def needs_bootstrap(pickleyspec=None):
-    if pickleyspec is None:
-        grand_parent = _location_grand_parent()
-        if grand_parent and ".whl" in grand_parent:
-            return "Unpacking pex %s" % grand_parent
-
-        if "pickley.bootstrap" in sys.argv[0]:
-            return "Upgrading pass1"
-
-        return None
-
-    if pickleyspec.python and not pickleyspec.python.problem and CFG.available_pythons.invoker.major < pickleyspec.python.major:
-        return "Better python version available (%s vs %s)" % (CFG.available_pythons.invoker, pickleyspec.python)
-
-    manifest = pickleyspec.get_manifest()
-    if not manifest or not manifest.version:
-        return "Upgrading old pickley v1"  # We're running from an old pickley v1 install (no v2 manifest)
-
-
-def bootstrap():
-    """Bootstrap pickley (reinstall with venv instead of downloaded pex package)"""
-    pickleyspec = PackageSpec(CFG, PICKLEY, __version__)
-    grand_parent = _location_grand_parent()
-    if grand_parent and grand_parent.endswith(".whl"):
-        # We are running from a pex package
-        setup_audit_log()
-        LOG.debug("Bootstrapping pickley %s with %s" % (pickleyspec.version, pickleyspec.python))
-        venv = PythonVenv(pickleyspec)
-        with runez.TempFolder():
-            venv.run_python("-mwheel", "pack", grand_parent)
-            names = os.listdir(".")
-            if len(names) == 1:
-                venv.pip_install(names[0])
-                venv.run_python("-mpip", "install", "requests", "virtualenv", fatal=False)  # Inject extra packages to help bootstrap
-
-            else:
-                abort("Internal error: wheel pack %s" % grand_parent)
-
-        delivery = DeliveryMethod.delivery_method_by_name(pickleyspec.settings.delivery)
-        delivery.ping = False
-        delivery.install(pickleyspec, venv, {PICKLEY: "bootstrapped"})
-        runez.run(pickleyspec.exe_path(PICKLEY), "auto-upgrade", fatal=None, stdout=None, stderr=None)  # Trigger auto_upgrade_v1()
-        sys.exit(0)
-
-    if "pickley.bootstrap" in sys.argv[0]:
-        # We're running from pass1 bootstrap
-        setup_audit_log()
-        with SoftLock(pickleyspec):
-            VenvPackager.install(pickleyspec, ping=False)
-
-        LOG.debug("Pass 2 bootstrap done")
-        runez.run(pickleyspec.exe_path(PICKLEY), "auto-upgrade", fatal=None, stdout=None, stderr=None)  # Trigger auto_upgrade_v1()
-        sys.exit(0)
-
-    reason = needs_bootstrap(pickleyspec)
-    if reason:
-        setup_audit_log()
-        LOG.debug("Bootstrapping pickley: %s" % reason)
-        with SoftLock(pickleyspec):
-            delivery = DeliveryMethod.delivery_method_by_name(pickleyspec.settings.delivery)
-            delivery.ping = False
-            venv = PythonVenv(pickleyspec, folder=pickleyspec.cfg.meta.full_path(PICKLEY, "pickley.bootstrap"))
-            venv.pip_install(pickleyspec.specced)
-            src = venv.bin_path(PICKLEY)
-            dest = pickleyspec.exe_path(PICKLEY)
-            delivery._install(pickleyspec, dest, src)
-
-        LOG.debug("Pass 1 bootstrap done")
-        runez.run(pickleyspec.exe_path(PICKLEY), "auto-upgrade", fatal=None, stdout=None, stderr=None)  # Trigger pass 2
-        sys.exit(0)
-
-
 @main.command(name="auto-upgrade")
 @click.option("--force", is_flag=True, help="Force auto-upgrade check, even if recently checked")
-@click.argument("package", required=False)
+@click.argument("package", required=True)
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
-    if not package or needs_bootstrap():
-        # We may need to bootstrap, or auto-upgrade v1, covered by test_config:test_v1
-        bootstrap()
-        auto_upgrade_v1(CFG)
-        if not package:
-            sys.exit(0)
-
     pspec = PackageSpec(CFG, package)
     ping = pspec.ping_path
     if not force and runez.file.is_younger(ping, 5):  # 5 seconds cool down on version check to avoid bursts
@@ -393,6 +282,16 @@ def auto_upgrade(force, package):
 def base(what):
     """Show pickley base folder"""
     path = CFG.base.path
+    if what == "bootstrap-own-wrapper":
+        # Internal: called by bootstrap script
+        from pickley.delivery import DeliveryMethodWrap
+
+        pspec = PackageSpec(CFG, PICKLEY, version=__version__)
+        venv = PythonVenv(pspec, create=False)
+        wrap = DeliveryMethodWrap()
+        wrap.install(pspec, venv, {PICKLEY: PICKLEY})
+        return
+
     if what:
         paths = {
             "audit": CFG.meta.full_path("audit.log"),

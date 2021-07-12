@@ -8,8 +8,7 @@ from datetime import datetime
 
 import runez
 from runez.pyenv import pyenv_scanner, PythonDepot, Version
-
-from pickley.pypi import PypiInfo
+from runez.pyenv import PypiStd
 
 
 __version__ = "2.5.5"
@@ -215,6 +214,14 @@ class PackageSpec(object):
 
         return package_name, package_version
 
+    @runez.cached_property
+    def pickley_dev_mode(self):
+        """Path to pickley source folder, if we're running in dev mode"""
+        if self.dashed == PICKLEY:
+            dev_path = self.cfg.pickley_dev_path()
+            if dev_path:
+                return dev_path
+
     @property
     def specced(self):
         if self.name and self.version:
@@ -228,7 +235,7 @@ class PackageSpec(object):
     @property
     def install_path(self):
         if self.name:
-            if self.dashed == PICKLEY and runez.DEV.venv_folder:
+            if self.pickley_dev_mode:
                 return self.cfg.meta.full_path(PICKLEY, "%s-dev" % PICKLEY)
 
             if self.version:
@@ -316,16 +323,7 @@ class PackageSpec(object):
 
     def get_manifest(self):
         """TrackedManifest: Manifest of the current installation of this package"""
-        manifest = TrackedManifest.from_file(self.manifest_path)
-        if not manifest:
-            # Temporary: take into account old v1 installs as well
-            old_base = self.cfg.meta.full_path(self.dashed)
-            old_manifest = runez.read_json(os.path.join(old_base, ".current.json"), default=None)
-            entry_points = runez.read_json(os.path.join(old_base, ".entry-points.json"), default=None)
-            if old_manifest and entry_points:
-                manifest = TrackedManifest(self.manifest_path, self.settings, entry_points)
-
-        return manifest
+        return TrackedManifest.from_file(self.manifest_path)
 
     def groom_installation(self, keep_for=60):
         """
@@ -426,9 +424,7 @@ class PackageSpec(object):
             if latest:
                 return latest
 
-        index = self.index
-        info = PypiInfo(index, self)
-        latest = TrackedVersion(index=index, problem=info.problem, source="latest", version=info.latest)
+        latest = TrackedVersion.from_pypi(self)
         if not latest.problem:
             runez.save_json(latest.to_dict(), path, fatal=None)
 
@@ -468,35 +464,30 @@ class PickleyConfig(object):
     configs = None  # type: list
     program_path = get_program_path()
 
+    _pickley_dev_path = None
+
     def __init__(self):
         self.configs = []
         self.config_path = None
         self.pip_conf, self.pip_conf_index = get_default_index("~/.config/pip/pip.conf", "/etc/pip.conf")
         self.default_index = self.pip_conf_index or DEFAULT_PYPI
         self._explored = set()
-        self._bundled_virtualenv_path = runez.UNSET
 
     def __repr__(self):
         return "<not-configured>" if self.base is None else runez.short(self.base)
-
-    @property
-    def bundled_virtualenv_path(self):
-        """str: Path to bundled virtualenv executable, if present"""
-        if self._bundled_virtualenv_path is runez.UNSET:
-            self._bundled_virtualenv_path = None
-            if sys.prefix != getattr(sys, "base_prefix", sys.prefix):
-                # We're running from a virtual environment
-                virtualenv = os.path.join(os.path.dirname(self.program_path), "virtualenv")
-                if runez.is_executable(virtualenv):
-                    self._bundled_virtualenv_path = virtualenv
-
-        return self._bundled_virtualenv_path
 
     @runez.cached_property
     def available_pythons(self):
         pyenv = self.pyenv()
         scanner = pyenv_scanner(pyenv) if pyenv else None
         return PythonDepot(scanner=scanner)
+
+    @classmethod
+    def pickley_dev_path(cls):
+        if cls._pickley_dev_path is None:
+            cls._pickley_dev_path = runez.DEV.project_folder
+
+        return cls._pickley_dev_path
 
     def set_base(self, base_path):
         """
@@ -603,7 +594,7 @@ class PickleyConfig(object):
                 if fname != PICKLEY:
                     fpath = os.path.join(self.meta.path, fname)
                     if os.path.isdir(fpath):
-                        if os.path.exists(os.path.join(fpath, ".manifest.json")) or os.path.exists(os.path.join(fpath, ".current.json")):
+                        if os.path.exists(os.path.join(fpath, ".manifest.json")):
                             result.append(PackageSpec(self, fname))
 
         return result
@@ -690,7 +681,7 @@ class PickleyConfig(object):
             if isinstance(pinned, dict):
                 return pinned.get("version")
 
-            if isinstance(pinned, runez.system.string_type):
+            if isinstance(pinned, str):
                 return pinned
 
     def pyenv(self):
@@ -763,8 +754,23 @@ class TrackedVersion(object):
         self.source = source
         self.version = version
 
-    def __repr__(self):
-        return "%s (%s) %s" % (self.version, self.source, self.problem or "")
+    @classmethod
+    def from_pypi(cls, pspec, index=None, include_prerelease=False):
+        """
+        Args:
+            pspec (PackageSpec): Pypi package name to lookup
+            index (str | None): URL to pypi index to use (default: pypi.org)
+            include_prerelease (bool): If True, include latest pre-release
+
+        Returns:
+            (TrackedVersion):
+        """
+        index = index or pspec.index or pspec.cfg.default_index
+        version = PypiStd.latest_pypi_version(pspec.dashed, index=index, include_prerelease=include_prerelease, fatal=False)
+        if not version:
+            return cls(index=index, problem="does not exist on %s" % index)
+
+        return cls(index=index, source="latest", version=version.text)
 
     @classmethod
     def from_manifest(cls, manifest, source="installed"):

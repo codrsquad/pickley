@@ -22,25 +22,11 @@ Files:
 """
 
 
-def test_edge_cases(temp_cfg):
-    pspec = PackageSpec(temp_cfg, "foo")
-    with runez.CaptureOutput(dryrun=True) as logged:
-        pspec.cfg._bundled_virtualenv_path = None
-        pspec.python = temp_cfg.available_pythons.invoker
-        venv = PythonVenv(pspec, "myvenv")
-        assert str(venv) == "myvenv"
-        assert not pspec.is_healthily_installed()
-        assert "-mvenv myvenv" in logged.pop()
-
-        tox = PackageSpec(temp_cfg, "tox")
-        PythonVenv(tox, "myvenv")
-        assert "virtualenv.pyz" in logged.pop()
-
-    with runez.CaptureOutput() as logged:
-        runez.touch("dummy.whl")
-        runez.ensure_folder(".", clean=True)
-        assert "Cleaned 1 file from" in logged.pop()
-        assert not os.path.exists("dummy.whl")
+def test_edge_cases(temp_cfg, logged):
+    runez.touch("dummy.whl")
+    runez.ensure_folder(".", clean=True)
+    assert "Cleaned 1 file from" in logged.pop()
+    assert not os.path.exists("dummy.whl")
 
 
 def simulated_run(*args, **_):

@@ -5,59 +5,47 @@ import time
 import pytest
 import runez
 from mock import patch
+from runez.http import GlobalHttpCalls
 
-from pickley import __version__, get_program_path, PackageSpec, PickleyConfig, TrackedManifest
-from pickley.cli import clean_compiled_artifacts, find_base, needs_bootstrap, PackageFinalizer, SoftLock, SoftLockException
+from pickley import __version__, get_program_path, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest
+from pickley.cli import clean_compiled_artifacts, find_base, PackageFinalizer, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
-from pickley.package import download_command, Packager
+from pickley.package import Packager
 
 from .conftest import dot_meta
 
 
-def test_base(temp_folder):
-    with patch.dict(os.environ, {"PICKLEY_ROOT": "temp-base"}, clear=True):
-        with pytest.raises(SystemExit):  # Env var points to a non-existing folder
-            find_base()
+def test_base(cli, monkeypatch):
+    monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")
+    folder = os.getcwd()
+    cli.expect_success("-n base", folder)
+    cli.expect_success("-n base audit", dot_meta("audit.log", parent=folder))
+    cli.expect_success("-n base cache", dot_meta(".cache", parent=folder))
+    cli.expect_success("-n base meta", dot_meta(parent=folder))
+    cli.expect_failure("-n base foo", "Unknown base folder reference")
 
-        runez.ensure_folder("temp-base")
-        assert find_base() == runez.resolved_path("temp-base")
+    cli.run("-n base bootstrap-own-wrapper")
+    assert cli.succeeded
+    assert "Would wrap pickley" in cli.logged
+
+    monkeypatch.setenv("PICKLEY_ROOT", "temp-base")
+    with pytest.raises(SystemExit):  # Env var points to a non-existing folder
+        find_base()
+
+    runez.ensure_folder("temp-base")
+    assert find_base() == runez.resolved_path("temp-base")
 
     assert sys.prefix in get_program_path("foo/bar.py")
 
-    original = PickleyConfig.program_path
-    PickleyConfig.program_path = "/foo/.venv/bin/pickley"
+    monkeypatch.delenv("PICKLEY_ROOT")
+    monkeypatch.setattr(PickleyConfig, "program_path", "/foo/.venv/bin/pickley")
     assert find_base() == "/foo/.venv/root"
 
-    PickleyConfig.program_path = dot_meta("pickley-0.0.0/bin/pickley", parent="foo")
+    monkeypatch.setattr(PickleyConfig, "program_path", dot_meta("pickley-0.0.0/bin/pickley", parent="foo"))
     assert find_base() == "foo"
 
-    PickleyConfig.program_path = "foo/bar"
+    monkeypatch.setattr(PickleyConfig, "program_path", "foo/bar")
     assert find_base() == "foo"
-
-    PickleyConfig.program_path = original
-
-
-def test_bootstrap(temp_cfg, monkeypatch):
-    assert needs_bootstrap() is None
-
-    pspec = PackageSpec(temp_cfg, "pickley", "0.0")
-    assert needs_bootstrap(pspec) == "Upgrading old pickley v1"
-
-    pspec.python.spec.version.components = (pspec.python.major + 1, 0, 0)
-    reason = needs_bootstrap(pspec)
-    assert reason.startswith("Better python version available")
-
-    with patch("pickley.cli._location_grand_parent", return_value=".pex/pickley.whl"):
-        assert needs_bootstrap() == "Unpacking pex .pex/pickley.whl"
-
-    with patch("runez.which", return_value="curl"):
-        assert "curl" == download_command("", "")[0]
-
-    with patch("runez.which", return_value=None):
-        assert "wget" == download_command("", "")[0]
-
-    monkeypatch.setattr(sys, "argv", [".../pickley.bootstrap/...", "auto-upgrade"])
-    assert needs_bootstrap() == "Upgrading pass1"
 
 
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
@@ -111,45 +99,15 @@ def mock_git_clone(pspec):
     runez.write(setup_py, "from setuptools import setup\nsetup(name='%s', version='1.0')\n" % basename, dryrun=False)
 
 
-def test_dryrun(cli):
-    with patch("pickley.cli.needs_bootstrap", return_value=False):
-        cli.run("-n -Pinvoker auto-upgrade")
-        assert cli.succeeded
-        assert not cli.logged
-
-    with patch("pickley.cli._location_grand_parent", return_value=".pex/pickley.whl"):
-        cli.run("-n auto-upgrade")
-        assert cli.failed
-        assert "Internal error" in cli.logged
-        runez.touch("pickley")  # Simulate a wheel present for pex-bootstrap case
-        cli.run("-n auto-upgrade")
-        assert cli.succeeded
-        assert "Bootstrapping pickley" in cli.logged
-
-    cli.run("-n auto-upgrade")
+@GlobalHttpCalls.allowed
+def test_dryrun(cli, monkeypatch):
+    cli.run("-n --debug auto-upgrade mgit")
     assert cli.succeeded
-    assert ".ping" not in cli.logged
-    assert "Pass 1 bootstrap done" in cli.logged
-    if sys.version_info[0] < 3:
-        assert "pickley.bootstrap" in cli.logged
-
-    cli.run("-n auto-upgrade", exe="pickley.bootstrap/bin/pickley")
+    assert "Would wrap mgit" in cli.logged
+    runez.touch(dot_meta("mgit.lock"))
+    cli.run("-n --debug auto-upgrade mgit")
     assert cli.succeeded
-    assert "Pass 2 bootstrap done" in cli.logged
-    assert ".ping" not in cli.logged
-
-    if sys.version_info[0] > 2:
-        cli.expect_success("-n --debug auto-upgrade mgit", "Would wrap mgit")
-        runez.touch(dot_meta("mgit.lock"))
-        cli.expect_success("-n --debug auto-upgrade mgit", "Lock file present, another installation is in progress")
-
-    with patch.dict(os.environ, {"__PYVENV_LAUNCHER__": "foo"}):
-        folder = os.getcwd()
-        cli.expect_success("-n base", folder)
-        cli.expect_success("-n base audit", dot_meta("audit.log", parent=folder))
-        cli.expect_success("-n base cache", dot_meta(".cache", parent=folder))
-        cli.expect_success("-n base meta", dot_meta(parent=folder))
-        cli.expect_failure("-n base foo", "Unknown base folder reference")
+    assert "Lock file present, another installation is in progress" in cli.logged
 
     cli.expect_success("-n check", "No packages installed")
     cli.expect_failure("-n check foo+bar", "'foo+bar' is not a valid pypi package name")
@@ -180,7 +138,7 @@ def test_dryrun(cli):
     with patch("pickley.git_clone", side_effect=mock_git_clone):
         cli.run("-n install git@github.com:zsimic/mgit.git")
         assert cli.succeeded
-        assert cli.match("Would run: ... -mpip ... install .pickley/.cache/checkout/mgit")
+        assert "Would run: pip install .pickley/.cache/checkout/mgit" in cli.logged
 
     cli.run("-n install mgit")
     assert cli.succeeded
@@ -201,7 +159,7 @@ def test_dryrun(cli):
     runez.write("setup.py", "import sys\nfrom setuptools import setup\nif sys.argv[1]=='--version': sys.exit(1)\nsetup(name='foo')")
     cli.expect_failure("-n package .", "Could not determine package version")
 
-    cli.expect_success(["-n", "package", cli.project_folder], "Would run: ... -mpip ... install ...requirements.txt")
+    cli.expect_success(["-n", "package", cli.project_folder], "Would run: pip install -r requirements.txt")
 
     cli.expect_failure("-n uninstall", "Specify packages to uninstall, or --all")
     cli.expect_failure("-n uninstall pickley", "Run 'uninstall --all' if you wish to uninstall pickley itself")
@@ -212,22 +170,19 @@ def test_dryrun(cli):
     cli.expect_success("-n upgrade", "No packages installed, nothing to upgrade")
     cli.expect_failure("-n upgrade mgit", "'mgit' is not installed")
 
-    # Simulate old pickley v1 install
-    cli.expect_success("-n list", "No packages installed")
-    runez.write(dot_meta("mgit/.current.json"), '{"version": "0.0.1"}')
-    runez.write(dot_meta("mgit/.entry-points.json"), '{"mgit": "mgit.cli:main"}')
-    cli.expect_success("-n upgrade mgit", "Would state: Upgraded mgit")
-    cli.expect_success("-n list", "mgit")
 
+def test_edge_cases(temp_cfg, monkeypatch, logged):
+    monkeypatch.setattr(PickleyConfig, "_pickley_dev_path", None)
+    pspec = PackageSpec(temp_cfg, PICKLEY)
+    assert pspec.pickley_dev_mode == runez.DEV.project_folder
+    assert pspec.install_path.endswith("%s-dev" % PICKLEY)
 
-def test_edge_cases(temp_cfg, logged):
-    mgit = PackageSpec(temp_cfg, "mgit")
-    assert mgit.find_wheel(".", fatal=False) is None
+    assert pspec.find_wheel(".", fatal=False) is None
     assert "Expecting 1 wheel" in logged.pop()
 
-    runez.touch("mgit-1.0.0.whl")
-    w = mgit.find_wheel(".", fatal=False)
-    assert w == "./mgit-1.0.0.whl"
+    runez.touch("%s-1.0.0.whl" % PICKLEY)
+    w = pspec.find_wheel(".", fatal=False)
+    assert w == "./%s-1.0.0.whl" % PICKLEY
 
     with pytest.raises(NotImplementedError):
         Packager.package(None, None, None, None, False)
@@ -242,6 +197,7 @@ def test_edge_cases(temp_cfg, logged):
     assert os.path.isdir("share")
 
 
+@GlobalHttpCalls.allowed
 def test_facultative(cli):
     runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"))
 
@@ -284,28 +240,13 @@ def check_is_wrapper(path, is_wrapper):
     assert r.succeeded
 
 
-def test_install_folder(cli):
-    """Check that flip-flopping between symlink/wrapper works"""
-    project = runez.DEV.project_folder
-    cli.run("--debug", "-dsymlink", "install", project)
-    assert cli.succeeded
-    check_is_wrapper("pickley", False)
-
-    cli.run("--debug", "-dwrap", "install", "--force", project)
-    assert cli.succeeded
-    check_is_wrapper("pickley", True)
-
-    cli.run("--debug", "-dsymlink", "install", "--force", project)
-    assert cli.succeeded
-    check_is_wrapper("pickley", False)
-
-
 def check_install_from_pypi(cli, delivery, package, simulate_version=None):
     cli.run("--debug", "-d%s" % delivery, "install", package)
     assert cli.succeeded
     assert cli.match("Installed %s" % package)
     assert runez.is_executable(package)
     m = TrackedManifest.from_file(dot_meta("%s/.manifest.json" % package))
+    assert str(m)
     assert m.entrypoints[package]
     assert m.install_info.args == runez.quoted(cli.args)
     assert m.install_info.timestamp
@@ -329,6 +270,7 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
         cli.expect_success("check", "v%s installed, can be upgraded to" % simulate_version)
 
 
+@GlobalHttpCalls.allowed
 def test_install_pypi(cli):
     cli.expect_failure("install six", "it is not a CLI")
     assert not os.path.exists(dot_meta("six"))
@@ -400,43 +342,11 @@ def test_main(cli):
     cli.exercise_main("-mpickley")
 
 
-def test_package_pex(cli):
-    cli.run("--dryrun", "-ppex", "-Pinvoker", "package", cli.project_folder)
+def test_package_pex(cli, monkeypatch):
+    cli.run("--dryrun", "-ppex", "package", cli.project_folder)
     assert cli.succeeded
-    assert "mpex" in cli.logged.stdout
-    contents = runez.readlines(runez.DEV.project_path("requirements.txt"))
-    if any(s.startswith("-e") for s in contents):
-        return  # Skip actual pex test if we're running with '-e ...path...' in requirements.txt
-
-    with patch.dict(os.environ, {"PEX_ROOT": os.path.join(os.getcwd(), ".pex")}):
-        expected = "dist/pickley"
-        cli.run("-ppex", "-Pinvoker", "package", cli.project_folder)
-        assert cli.succeeded
-        assert runez.is_executable(expected)
-
-        r = runez.run(expected, "--version")
-        version = r.output
-        assert r.succeeded
-
-        if sys.version_info[:2] == (3, 6) and runez.is_executable("/usr/bin/python3"):
-            # Limited edge case: verify that system python can run the 3.6 pex
-            # Unfortunately hard to repro this on github actions, would need to python versions installed at same time
-            # So this will only be a valuable check when ran locally...
-            r = runez.run("/usr/bin/python3", expected, "--version")
-            assert not r.error
-            assert r.succeeded
-            assert version == r.output
-
-        assert runez.run(expected, "diagnostics").succeeded
-
-        r = runez.run(expected, "--debug", "auto-upgrade")
-        assert r.succeeded
-        assert "Bootstrapping pickley" in r.full_output
-
-        assert runez.run(expected, "diagnostics").succeeded
-
-        manifest = TrackedManifest.from_file(dot_meta("pickley/.manifest.json"))
-        assert manifest.version == version
+    assert cli.match("Using python: ... invoker", stdout=True)
+    assert "Would run: pex " in cli.logged.stdout
 
 
 def test_package_venv(cli):

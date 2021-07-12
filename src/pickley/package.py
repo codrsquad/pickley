@@ -1,21 +1,15 @@
 import logging
 import os
+import sys
 
 import runez
+import virtualenv.__main__
 
 from pickley import abort, PICKLEY
 from pickley.delivery import DeliveryMethod
 
 
 LOG = logging.getLogger(__name__)
-
-
-def download_command(target, url):
-    curl = runez.which("curl")
-    if curl:
-        return [curl, "-s", "-o", target, url]
-
-    return ["wget", "-q", "-O%s" % target, url]
 
 
 class PackageFolder(object):
@@ -63,6 +57,10 @@ class PackageContents(object):
         name = pspec.dashed
         if runez.DRYRUN and not venv.is_venv_exe("bin/pip"):
             self.bin.files = {pspec.dashed: "dryrun"}  # Pretend an entry point exists in dryrun mode
+            return
+
+        if name == PICKLEY:
+            self.bin.files = {name: name}  # When pickley is installed with -e (--editable), metadata is not "standard"
             return
 
         if name == "ansible":
@@ -142,7 +140,7 @@ class PackageContents(object):
 
 
 class PythonVenv(object):
-    def __init__(self, pspec=None, folder=None, python=None, index=None, cfg=None):
+    def __init__(self, pspec=None, folder=None, python=None, index=None, cfg=None, create=True):
         """
         Args:
             pspec (pickley.PackageSpec | None): Package spec to install
@@ -150,6 +148,7 @@ class PythonVenv(object):
             python (pickley.env.PythonInstallation): Python to use (default: pspec.python)
             index (str | None): Optional custom pypi index to use (default: pspec.index)
             cfg (pickley.PickleyConfig | None): Config to use
+            create (bool): Create venv if True
         """
         if folder is None and pspec:
             folder = pspec.install_path
@@ -163,36 +162,11 @@ class PythonVenv(object):
         self.folder = folder
         self.index = index
         self.py_path = os.path.join(folder, "bin", "python")
-        if folder:
+        if create and folder:
             cfg = cfg or pspec.cfg
             python = python or cfg.find_python(pspec=pspec)
             runez.ensure_folder(folder, clean=True, logger=False)
-            if cfg.bundled_virtualenv_path:
-                runez.run(cfg.bundled_virtualenv_path, "-p", python.executable, folder)
-                return
-
-            if python.major > 2 and (not pspec or pspec.dashed != "tox"):
-                # See https://github.com/tox-dev/tox/issues/1689
-                r = runez.run(python.executable, "-mvenv", self.folder, fatal=False)
-                if r.succeeded:
-                    pip = "pip"
-                    if os.environ.get("VIRTUALENV_PIP"):  # pragma: no cover
-                        # Optionally respect https://tox.readthedocs.io/en/latest/config.html#conf-download
-                        pip += "==%s" % os.environ.get("VIRTUALENV_PIP")
-
-                    self.pip_install("-U", pip, "setuptools", "wheel")
-                    return
-
-                LOG.debug("Module venv failed, trying virtualenv bootstrap")  # pragma: no cover
-
-            runez.ensure_folder(cfg.cache.path)
-            zipapp = os.path.realpath(cfg.cache.full_path("virtualenv.pyz"))
-            if not runez.file.is_younger(zipapp, runez.date.SECONDS_IN_ONE_DAY):
-                runez.delete(zipapp, fatal=False)
-                args = download_command(zipapp, "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz")
-                runez.run(*args)
-
-            runez.run(python.executable, zipapp, folder)
+            runez.run(sys.executable, virtualenv.__main__.__file__, "-p", python.executable, folder)
 
     def __repr__(self):
         return runez.short(self.folder)
@@ -236,10 +210,11 @@ class PythonVenv(object):
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
+        kwargs.setdefault("short_exe", True)
         return runez.run(self.py_path, *args, **kwargs)
 
     def _run_pip(self, *args, **kwargs):
-        return self.run_python("-mpip", "--isolated", *args, **kwargs)
+        return self.run_python("-mpip", *args, **kwargs)
 
 
 def simplified_pip_error(error, output):
@@ -327,22 +302,14 @@ class VenvPackager(Packager):
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
         delivery.ping = ping
         args = [pspec.specced]
-        extras = None
         if pspec.folder:
             args = [pspec.folder]
 
-        elif pspec.dashed == PICKLEY:
-            # Inject extra packages for pickley, to help bootstrap
-            extras = ["virtualenv", "requests"]
-            project_path = runez.DEV.project_folder
-            if project_path:
-                args = ["-e", project_path]  # Development mode (running from source checkout)
+        elif pspec.pickley_dev_mode:
+            args = ["-e", pspec.pickley_dev_mode]  # pragma: no cover, convenience case for running pickley from .venv/
 
         venv = PythonVenv(pspec)
         venv.pip_install(*args)
-        if extras:
-            venv.pip_install(*extras)
-
         contents = PackageContents(venv, pspec)
         if not contents.entry_points:
             runez.delete(pspec.meta_path)

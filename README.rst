@@ -21,6 +21,8 @@ Automate installation of standalone python CLIs
 Overview
 ========
 
+See: `major changes in v3.0 <https://github.com/codrsquad/pickley/blob/master/docs/v3.rst>`_
+
 **pickley** allows to install and keep up-to-date standalone pip-installable python CLIs
 such as tox_, twine_, etc. A bit like brew_ or apt_, but based solely on pypi_
 
@@ -55,8 +57,7 @@ Example
 Once you have pickley_, you can get other python CLIs and use them as standalone programs, for example::
 
     # One-liner to grab pickley, and drop it in ~/.local/bin
-    $ curl -sLo ~/.local/bin/pickley `curl -s https://pypi.org/pypi/pickley/json | grep -Eo '"download_url":"([^"]+)"' | cut -d'"' -f4`
-    $ chmod a+x ~/.local/bin/pickley
+    $ curl https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley | bash
 
     # Double-check you do have ~/.local/bin in your PATH
     $ which -a pickley
@@ -88,41 +89,6 @@ Configuration
 See config_
 
 
-Packaging
-=========
-
-**pickley** can also be used to easily package your CLI project for delivery, example tox_ section for a project called ``foo``::
-
-
-    # Package ourselves up, this will produce a .tox/package/dist/foo executable ready to go
-    [testenv:package]
-    basepython = python
-    changedir = {envdir}
-    skip_install = True
-    deps = pickley
-    commands = pickley -ppex package {toxinidir}
-               python ./dist/foo --version
-
-
-pickley packages itself like this for example.
-See ``pickley package --help`` for options, by default:
-
-- Produced package(s) (one per entry point) are dropped in ``./dist`` (configurable via ``--dist`` or ``-d``)
-
-- Used wheels are dropped in ``./build`` (configurable via ``--build`` or ``-b``)
-
-- We run ``./dist/foo --version`` here as a sanity check against our freshly produced package
-
-- Using tox's ``changedir = {envdir}`` allows to simplify invocations
-  (relative paths are relative to ``{envdir}``, which is ``.tox/package`` in this case)
-
-- Using ``skip_install = True`` just for speedup (the project itself is not needed within the 'pacakage' tox env)
-
-You can run the ``package`` command from anywhere, for example this will drop a pex package in ``./root/apps/myproject``::
-
-    pickley -ppex package path/to/myproject -droot/apps/myproject
-
-
 Features
 ========
 
@@ -143,22 +109,18 @@ Features
 
     - ``list``: list installed packages via **pickley**, in folder where it resides (not globally)
 
-    - ``package``: can be used to simplify packaging of python project via pex_ or shiv_, for internal use
+    - ``package``: can be used to simplify packaging of python projects for internal use
 
 
 Installation
 ============
 
-Install from github releases
-----------------------------
+Install latest version in `~/.local/bin`
+----------------------------------------
 
-- Go to https://github.com/codrsquad/pickley/releases/latest
-- Download pickley from there (1st link), and drop it in ``~/.local/bin`` for example (or any folder in your PATH)
+Handy one-liner (you can also download the bootsrap script and see its ``--help``)::
 
-You can do that with these commands::
-
-    curl -sLo ~/.local/bin/pickley `curl -s https://pypi.org/pypi/pickley/json | grep -Eo '"download_url":"([^"]+)"' | cut -d'"' -f4`
-    chmod a+x ~/.local/bin/pickley
+    $ curl https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley | bash
 
 
 Install from source
@@ -168,8 +130,8 @@ Run (you will need tox_)::
 
     git clone https://github.com/codrsquad/pickley.git
     cd pickley
-    tox -e package
-    cp .tox/package/pickley ~/.local/bin/
+    tox -e venv
+    .venv/bin/pickley --help
 
 
 .. _pickley: https://pypi.org/project/pickley/

@@ -1,16 +1,12 @@
-import os
-
 import pytest
 import runez
-from mock import MagicMock, patch
+from runez.pyenv import PypiStd
 
-from pickley import __version__, DEFAULT_PYTHONS, despecced, DOT_META, get_default_index, inform, PackageSpec
+from pickley import __version__, DEFAULT_PYTHONS, despecced, DOT_META, get_default_index, PackageSpec
 from pickley import PickleyConfig, pypi_name_problem, specced
-from pickley.cli import auto_upgrade_v1
-from pickley.v1upgrade import V1Status
 
-from .conftest import dot_meta
 
+PYPI_CLIENT = PypiStd.default_pypi_client()
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -101,15 +97,18 @@ def test_default_index(temp_folder, logged):
     assert not logged
 
 
-def test_edge_cases(temp_cfg):
-    assert str(PickleyConfig()) == "<not-configured>"
+def test_edge_cases():
+    cfg = PickleyConfig()
+    assert str(cfg) == "<not-configured>"
     assert "intentionally refuses" in pypi_name_problem("0-0")
     assert pypi_name_problem("mgit") is None
+    p = cfg.find_python(pspec=None)
+    assert p is cfg.available_pythons.invoker
 
-    p = temp_cfg.find_python(pspec=None)
-    assert p is temp_cfg.available_pythons.invoker
 
-
+@PYPI_CLIENT.mock({
+    "https://pypi-mirror.mycompany.net/pypi/foo/": {"info": {"version": "0.1.2"}}
+})
 def test_good_config(temp_folder, logged):
     cfg = grab_sample("good-config")
 
@@ -123,26 +122,25 @@ def test_good_config(temp_folder, logged):
     assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
     logged.clear()
 
-    with patch("pickley.PypiInfo", return_value=MagicMock(problem=None, latest="0.1.2")):
-        d = pickley.get_desired_version_info()
-        assert d.source == "current"
-        assert d.version == __version__
+    d = pickley.get_desired_version_info()
+    assert d.source == "current"
+    assert d.version == __version__
 
-        d = mgit.get_desired_version_info()
-        assert d.source == "explicit"
-        assert d.version == "1.0.0"
+    d = mgit.get_desired_version_info()
+    assert d.source == "explicit"
+    assert d.version == "1.0.0"
 
-        # Verify latest when no pins configured
-        p = PackageSpec(cfg, "foo")
-        d = p.get_desired_version_info()
-        assert d.version == "0.1.2"
-        assert d.source == "latest"
+    # Verify latest when no pins configured
+    p = PackageSpec(cfg, "foo")
+    d = p.get_desired_version_info()
+    assert d.version == "0.1.2"
+    assert d.source == "latest"
 
-        # Verify pinned versions in samples/.../config.json are respected
-        p = PackageSpec(cfg, "mgit")
-        d = p.get_desired_version_info()
-        assert d.version == "1.2.1"
-        assert d.source == "pinned"
+    # Verify pinned versions in samples/.../config.json are respected
+    p = PackageSpec(cfg, "mgit")
+    d = p.get_desired_version_info()
+    assert d.version == "1.2.1"
+    assert d.source == "pinned"
 
 
 def test_speccing():
@@ -157,48 +155,3 @@ def test_speccing():
     assert despecced(" mgit == 1.0.0 ") == ("mgit", "1.0.0")
     assert despecced("mgit==") == ("mgit", None)
     assert despecced(" mgit == ") == ("mgit", None)
-
-
-def mock_install(pspec, **_):
-    if pspec.dashed == "pickley2-a":
-        raise Exception("does not exist")
-
-    inform("Upgraded %s" % pspec.dashed)
-    entrypoints = [pspec.dashed]
-    pspec.version = "1.0"
-    pspec.save_manifest(entrypoints)
-    return MagicMock(entrypoints=entrypoints)
-
-
-def test_v1(temp_folder, logged):
-    cfg = PickleyConfig()
-    cfg.set_base(".")
-    status = V1Status(cfg)
-    assert not status.installed
-
-    sample = runez.DEV.tests_path("samples/v1")
-    runez.copy(sample, DOT_META)
-    status = V1Status(cfg)
-    assert len(status.installed) == 2
-    installed = sorted([str(s) for s in status.installed])
-    assert installed == ["mgit", "pickley2-a"]
-
-    # Add some files that should get cleaned up
-    runez.touch(dot_meta("_venvs/_py39/bin/pip"))
-    runez.touch(dot_meta("foo/.ping"))
-
-    with patch("pickley.cli.perform_install", side_effect=mock_install):
-        with pytest.raises(SystemExit):
-            auto_upgrade_v1(cfg)
-
-        assert "Auto-upgrading 2 packages" in logged
-        assert "pickley2-a could not be upgraded, please reinstall it" in logged
-        assert "Upgraded mgit" in logged
-        assert "Deleted %s" % dot_meta("_venvs") in logged
-
-        assert os.path.exists(dot_meta("README.md"))  # untouched
-        assert os.path.exists(dot_meta("mgit/mgit-1.0/.manifest.json"))
-        assert os.path.isdir(dot_meta("pickley"))
-        assert not os.path.exists(dot_meta("_venvs"))  # cleaned
-        assert not os.path.exists(dot_meta("foo"))
-        assert not os.path.exists(dot_meta("pickley2-a"))
