@@ -2,6 +2,29 @@ Contributions are welcome!
 
 tox_ is used for building and testing, ``setup.py`` is kept simple thanks to setupmeta_.
 
+# Getting tox
+=============
+
+Any tox_ installation will do.
+
+Fun fact: you can use ``pickley`` to get a self-upgrading ``tox``, which you can then use to iterate
+on pickley's source code.
+
+Quick starter (grab pickley, install ``tox`` with it, make sure you have ``~/.local/bin`` in your ``PATH``)::
+
+    $ curl https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley | bash
+
+    # Double-check you got it (should show ~/.local/bin/pickley)
+    $ which -a pickley
+
+    $ pickley install tox
+
+    # Double-check you got it (should show ~/.local/bin/tox)
+    $ which -a tox
+    $ tox --version
+
+
+
 Development
 ===========
 
@@ -14,7 +37,7 @@ To get going locally, simply do this::
     tox -re venv
     .venv/bin/pickley --help
 
-    # ./.venv/ is a regular venv, you can use it with PyCharm etc
+    # .venv/ is a regular venv, you can use it with PyCharm etc
     source .venv/bin/activate
     which pickley
     deactivate
@@ -27,10 +50,6 @@ To get going locally, simply do this::
 
     # Base is .venv/root/ when running in dev mode
     .venv/root/mgit --version
-
-    # Package it up as a pex
-    tox -e package
-    head -1 .tox/package/dist/pickley
 
 
 Running the tests

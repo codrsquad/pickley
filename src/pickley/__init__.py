@@ -11,7 +11,7 @@ from runez.pyenv import pyenv_scanner, PythonDepot, Version
 from runez.pyenv import PypiStd
 
 
-__version__ = "2.5.5"
+__version__ = "3.0.0b1"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
 DOT_META = ".pickley"
