@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+# -*- coding: utf-8 -*-
+
 ''':'
 command -v python  >/dev/null 2>&1 && exec python  "$0" "$@"
 command -v python3 >/dev/null 2>&1 && exec python3 "$0" "$@"
@@ -6,8 +8,6 @@ command -v python2 >/dev/null 2>&1 && exec python2 "$0" "$@"
 >&2 echo "error: cannot find python"
 exit 1
 '''
-
-# -*- encoding: utf-8 -*-
 
 """
 Roam settings for shell rc files, Sublime Text etc.
