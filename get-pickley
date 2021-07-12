@@ -7,6 +7,8 @@ command -v python2 >/dev/null 2>&1 && exec python2 "$0" "$@"
 exit 1
 '''
 
+# -*- encoding: utf-8 -*-
+
 """
 Roam settings for shell rc files, Sublime Text etc.
 """
