@@ -3,8 +3,6 @@
 TMP_FOLDER="$(mktemp -d)"
 trap 'rm -rf -- "$TMP_FOLDER"' EXIT
 
->&2 echo "tmp: $TMP_FOLDER"
-
 find_python()
 {
   for p in "$@"; do
