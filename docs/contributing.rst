@@ -12,7 +12,7 @@ on pickley's source code.
 
 Quick starter (grab pickley, install ``tox`` with it, make sure you have ``~/.local/bin`` in your ``PATH``)::
 
-    $ curl https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley | bash
+    $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley)"
 
     # Double-check you got it (should show ~/.local/bin/pickley)
     $ which -a pickley

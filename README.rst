@@ -57,7 +57,7 @@ Example
 Once you have pickley_, you can get other python CLIs and use them as standalone programs, for example::
 
     # One-liner to grab pickley, and drop it in ~/.local/bin
-    $ curl https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley | bash
+    $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley)"
 
     # Double-check you do have ~/.local/bin in your PATH
     $ which -a pickley
@@ -120,7 +120,7 @@ Install latest version in `~/.local/bin`
 
 Handy one-liner (you can also download the bootsrap script and see its ``--help``)::
 
-    $ curl https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley | bash
+    $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley)"
 
 
 Install from source
