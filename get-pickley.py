@@ -45,6 +45,10 @@ def run_program(*args):
 
 
 def find_python3():
+    if sys.version_info[0] == 3 and sys.prefix == sys.base_prefix:
+        # We're not running from a venv
+        return sys.executable
+
     if is_executable("/usr/bin/python3"):
         return "/usr/bin/python3"
 
@@ -66,6 +70,9 @@ def main():
         LOG.info("%s is already is installed" % pickley_exe)
         sys.exit(0)
 
+    if "__PYVENV_LAUNCHER__" in os.environ:
+        del os.environ["__PYVENV_LAUNCHER__"]
+
     python3 = find_python3()
     if not python3:
         sys.exit("Could not find python3 on this machine")
@@ -86,7 +93,7 @@ def main():
         download(zipapp, VIRTUALENV_URL)
         run_program(sys.executable, zipapp, "-p", python3, pickley_venv)
         run_program(os.path.join(pickley_venv, "bin", "pip"), "install", "pickley==%s" % pickley_version)
-        run_program(os.path.join(pickley_venv, "bin", "pickley"), "base", "bootstrap-own-wrapper")
+        run_program(os.path.join(pickley_venv, "bin", "pickley"), "--debug", "base", "bootstrap-own-wrapper")
 
     finally:
         shutil.rmtree(tmp_folder, ignore_errors=True)
