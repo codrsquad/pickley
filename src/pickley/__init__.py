@@ -1,7 +1,6 @@
 import logging
 import os
 import platform
-import re
 import sys
 import time
 from datetime import datetime
@@ -23,8 +22,6 @@ PLATFORM = platform.system().lower()
 
 DEFAULT_PYPI = "https://pypi.org/simple"
 DEFAULT_PYTHONS = "python3, python"
-RE_PYPI_CANONICAL = re.compile(r"^[a-z][a-z0-9-]*[a-z0-9]$")
-RE_PYPI_ACCEPTABLE = re.compile(r"^[a-z][a-z0-9._-]*[a-z0-9]$", re.IGNORECASE)
 
 
 def abort(message):
@@ -32,17 +29,6 @@ def abort(message):
     print(message)
     _log_to_file(message, error=True)
     sys.exit(1)
-
-
-def canonical_pypi_name(original):
-    """
-    Args:
-        original (str): Name as given in setup.py
-
-    Returns:
-        (str): Corresponding canonical pypi name
-    """
-    return original and original.lower().replace("_", "-").replace(".", "-")
 
 
 def inform(message):
@@ -90,7 +76,7 @@ def specced(name, version):
 
 
 def pypi_name_problem(name):
-    if not name or not RE_PYPI_ACCEPTABLE.match(name):
+    if not PypiStd.is_acceptable(name):
         note = None
         problem = "'%s' is not a valid pypi package name" % runez.red(name)
         if name and not name[0].isalpha():
@@ -108,7 +94,7 @@ def validate_pypi_name(name):
     if problem:
         abort(problem)
 
-    if not RE_PYPI_CANONICAL.match(name):
+    if name != PypiStd.std_package_name(name):
         logging.warning("'%s' is not pypi canonical, use dashes only, and lowercase" % name)
 
 
@@ -178,8 +164,8 @@ class PackageSpec(object):
 
         self.name, self.version = self.resolved_name_version()
         validate_pypi_name(self.name)
-        self.dashed = canonical_pypi_name(self.name)
-        self.wheelified = self.name.replace("-", "_").replace(".", "_")
+        self.dashed = PypiStd.std_package_name(self.name)
+        self.wheelified = PypiStd.std_wheel_basename(self.name)
         self.pinned = self.cfg.pinned_version(self)
         self.python = self.cfg.find_python(self)
         self.settings = TrackedSettings(
@@ -215,7 +201,7 @@ class PackageSpec(object):
         return package_name, package_version
 
     @runez.cached_property
-    def pickley_dev_mode(self):
+    def _pickley_dev_mode(self):
         """Path to pickley source folder, if we're running in dev mode"""
         if self.dashed == PICKLEY:
             dev_path = self.cfg.pickley_dev_path()
@@ -235,7 +221,7 @@ class PackageSpec(object):
     @property
     def install_path(self):
         if self.name:
-            if self.pickley_dev_mode:
+            if self._pickley_dev_mode:
                 return self.cfg.meta.full_path(PICKLEY, "%s-dev" % PICKLEY)
 
             if self.version:
@@ -576,7 +562,7 @@ class PickleyConfig(object):
 
         return python
 
-    def package_specs(self, names=None):
+    def package_specs(self, names=None, include_pickley=False):
         """
         Args:
             names (list | None): Package names, if empty: all installed
@@ -591,7 +577,7 @@ class PickleyConfig(object):
         result = []
         if os.path.isdir(self.meta.path):
             for fname in sorted(os.listdir(self.meta.path)):
-                if fname != PICKLEY:
+                if include_pickley or fname != PICKLEY:
                     fpath = os.path.join(self.meta.path, fname)
                     if os.path.isdir(fpath):
                         if os.path.exists(os.path.join(fpath, ".manifest.json")):

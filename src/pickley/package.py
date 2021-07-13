@@ -305,8 +305,8 @@ class VenvPackager(Packager):
         if pspec.folder:
             args = [pspec.folder]
 
-        elif pspec.pickley_dev_mode:
-            args = ["-e", pspec.pickley_dev_mode]  # pragma: no cover, convenience case for running pickley from .venv/
+        elif pspec._pickley_dev_mode:
+            args = ["-e", pspec._pickley_dev_mode]  # pragma: no cover, convenience case for running pickley from .venv/
 
         venv = PythonVenv(pspec)
         venv.pip_install(*args)

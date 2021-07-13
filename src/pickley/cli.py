@@ -176,7 +176,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
 
             inform("%s %s v%s%s" % (action, pspec.dashed, runez.bold(pspec.version), runez.dim(note)))
 
-        if not pspec.pickley_dev_mode:
+        if not pspec._pickley_dev_mode:
             pspec.groom_installation()
 
         return manifest
@@ -199,7 +199,7 @@ def _find_base_from_program_path(path):
 
 
 def find_base():
-    base_path = os.environ.get("PICKLEY_ROOT")
+    base_path = runez.resolved_path(os.environ.get("PICKLEY_ROOT"))
     if base_path:
         if not os.path.isdir(base_path):
             abort("PICKLEY_ROOT points to non-existing directory %s" % runez.red(base_path))
@@ -391,7 +391,7 @@ def install(force, packages):
 @click.option("--verbose", "-v", is_flag=True, help="Show more information")
 def list(border, verbose):
     """List installed packages"""
-    packages = CFG.package_specs()
+    packages = CFG.package_specs(include_pickley=verbose)
     if not packages:
         print("No packages installed")
         sys.exit(0)

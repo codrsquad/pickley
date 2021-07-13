@@ -174,7 +174,7 @@ def test_dryrun(cli, monkeypatch):
 def test_edge_cases(temp_cfg, monkeypatch, logged):
     monkeypatch.setattr(PickleyConfig, "_pickley_dev_path", None)
     pspec = PackageSpec(temp_cfg, PICKLEY)
-    assert pspec.pickley_dev_mode == runez.DEV.project_folder
+    assert pspec._pickley_dev_mode == runez.DEV.project_folder
     assert pspec.install_path.endswith("%s-dev" % PICKLEY)
 
     assert pspec.find_wheel(".", fatal=False) is None
