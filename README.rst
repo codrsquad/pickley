@@ -21,7 +21,7 @@ Automate installation of standalone python CLIs
 Overview
 ========
 
-See: `major changes in v3.0 <https://github.com/codrsquad/pickley/blob/master/docs/v3.rst>`_
+See: `major changes in v3.0 <https://github.com/codrsquad/pickley/discussions/9>`_
 
 **pickley** allows to install and keep up-to-date standalone pip-installable python CLIs
 such as tox_, twine_, etc. A bit like brew_ or apt_, but based solely on pypi_
@@ -156,4 +156,4 @@ Run (you will need tox_)::
 
 .. _twine: https://pypi.org/project/twine/
 
-.. _config: docs/config.rst
+.. _config: https://github.com/codrsquad/pickley/wiki/Config
