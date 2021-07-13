@@ -48,6 +48,25 @@ def test_base(cli, monkeypatch):
     assert find_base() == "foo"
 
 
+def test_bootstrap(temp_folder, logged):
+    temp_base = runez.to_path(runez.resolved_path("base"))
+    with runez.CurrentFolder(runez.DEV.project_folder):
+        r = runez.run("get-pickley", "--base", temp_base, runez.DEV.project_folder, fatal=False)
+        assert r.succeeded
+        assert "bootstrap-own-wrapper" in r.output
+
+        r = runez.run("get-pickley", "--base", temp_base, runez.DEV.project_folder, fatal=False)
+        assert r.succeeded
+        assert "already installed" in r.full_output
+
+    pickley = runez.resolved_path("base/pickley")
+    r = runez.run(pickley, "--version", fatal=False)
+    assert r.succeeded
+
+    r = runez.run(pickley, "diagnostics", fatal=False)
+    assert r.succeeded
+
+
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
     p = PackageFinalizer("foo", dist, symlink)
     p.resolve()

@@ -67,7 +67,7 @@ def main():
     pickley_base = os.path.expanduser(args.base)
     pickley_exe = os.path.join(pickley_base, "pickley")
     if not args.force and is_executable(pickley_exe):
-        LOG.info("%s is already is installed" % pickley_exe)
+        LOG.info("%s is already installed" % pickley_exe)
         sys.exit(0)
 
     if "__PYVENV_LAUNCHER__" in os.environ:
@@ -81,6 +81,7 @@ def main():
     tmp_folder = os.path.realpath(tempfile.mkdtemp())
     try:
         pickley_version = args.version
+        spec = None
         if not pickley_version:
             pickley_meta = os.path.join(tmp_folder, "pickley-meta.json")
             download(pickley_meta, "https://pypi.org/pypi/pickley/json")
@@ -88,11 +89,21 @@ def main():
                 data = json.load(fh)
                 pickley_version = data["info"]["version"]
 
+        elif os.path.isdir(pickley_version):
+            # Allows to test this bootstrap script itself
+            spec = pickley_version
+            with open(os.path.join(spec, "src/pickley/__init__.py")) as fh:
+                contents = fh.read()
+                pickley_version = contents[contents.index("__version__") + 15:].partition('"')[0]
+
+        if not spec:
+            spec = "pickley==%s" % pickley_version
+
         pickley_venv = os.path.join(pickley_base, ".pickley", "pickley", "pickley-%s" % pickley_version)
         zipapp = os.path.join(tmp_folder, "virtualenv.pyz")
         download(zipapp, VIRTUALENV_URL)
         run_program(sys.executable, zipapp, "-p", python3, pickley_venv)
-        run_program(os.path.join(pickley_venv, "bin", "pip"), "install", "pickley==%s" % pickley_version)
+        run_program(os.path.join(pickley_venv, "bin", "pip"), "install", spec)
         run_program(os.path.join(pickley_venv, "bin", "pickley"), "--debug", "base", "bootstrap-own-wrapper")
 
     finally:
