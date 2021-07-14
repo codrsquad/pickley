@@ -7,7 +7,7 @@ import json
 import os
 import shutil
 import ssl
-import subprocess
+import subprocess  # nosec
 import sys
 import tempfile
 from urllib.request import Request, urlopen
@@ -25,7 +25,7 @@ def download(target, url, dryrun=False):
 
     try:
         request = Request(url)
-        response = urlopen(request, timeout=30, context=ssl.SSLContext())
+        response = urlopen(request, timeout=30, context=ssl.SSLContext())  # nosec
         with open(target, "wb") as fh:
             fh.write(response.read())
 
@@ -87,7 +87,7 @@ def run_program(*args, capture=False):
         if DRYRUN:
             return
 
-    p = subprocess.Popen(args, stdout=stdout, stderr=stderr)
+    p = subprocess.Popen(args, stdout=stdout, stderr=stderr)  # nosec
     out, err = p.communicate()
     if capture:
         out = merged_output(out, err, "exited with code %s" % p.returncode if p.returncode else None)
