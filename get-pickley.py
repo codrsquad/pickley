@@ -11,7 +11,6 @@ import subprocess
 import sys
 import tempfile
 
-
 LOG = logging.getLogger(__name__)
 VIRTUALENV_URL = "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz"
 
@@ -28,8 +27,22 @@ def which(program):
 
 
 def download(target, url):
+    try:
+        import ssl
+        from urllib.request import Request, urlopen
+
+        request = Request(url)
+        response = urlopen(request, timeout=30, context=ssl.SSLContext())
+        with open(target, "wb") as fh:
+            fh.write(response.read())
+
+        return
+
+    except Exception as e:
+        LOG.debug("GET %s failed, trying with curl: %s", url, e)
+
     curl = which("curl")
-    if is_executable(curl):
+    if curl:
         return run_program(curl, "-s", "-o", target, url)
 
     return run_program("wget", "-q", "-O%s" % target, url)
