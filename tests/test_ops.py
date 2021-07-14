@@ -48,23 +48,53 @@ def test_base(cli, monkeypatch):
     assert find_base() == "foo"
 
 
-def test_bootstrap(temp_folder, logged):
+def mocked_run(program, *_, **__):
+    return program
+
+
+def test_bootstrap(temp_folder, logged, monkeypatch):
+    from pickley import bstrap
+
+    assert bstrap.which("python")  # Check that which() works
+
     temp_base = runez.to_path(runez.resolved_path("base"))
-    with runez.CurrentFolder(runez.DEV.project_folder):
-        r = runez.run("get-pickley", "--base", temp_base, runez.DEV.project_folder, fatal=False)
-        assert r.succeeded
-        assert "bootstrap-own-wrapper" in r.output
+    runez.write(temp_base / PICKLEY, "#!/bin/sh\necho 0.1")  # Pretend we have an old pickley
+    runez.make_executable(temp_base / PICKLEY)
 
-        r = runez.run("get-pickley", "--base", temp_base, runez.DEV.project_folder, fatal=False)
-        assert r.succeeded
-        assert "already installed" in r.full_output
+    monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")  # macos oddity env var, should be removed
+    bstrap.main(["-n", "-b", str(temp_base)])
+    assert "__PYVENV_LAUNCHER__" not in os.environ
+    assert "Replacing older pickley 0.1" in logged
+    assert "Would run: python virtualenv.pyz" in logged.pop()
 
-    pickley = runez.resolved_path("base/pickley")
-    r = runez.run(pickley, "--version", fatal=False)
-    assert r.succeeded
+    with pytest.raises(SystemExit):
+        bstrap.main(["-n", "-b", str(temp_base), "0.1"])
+    assert "pickley version 0.1 is already installed" in logged.pop()
 
-    r = runez.run(pickley, "diagnostics", fatal=False)
-    assert r.succeeded
+    bstrap.DRYRUN = False
+    with pytest.raises(SystemExit):
+        bstrap.run_program("ls", "oops/no-such/folder")
+    assert "Running: " in logged.pop()
+
+    with patch("pickley.bstrap.is_executable", return_value=False):
+        with pytest.raises(SystemExit) as exc:
+            # Simulate no python 3
+            bstrap.main(["-n", "-b", str(temp_base)])
+        assert "Could not find python3 on this machine" in str(exc)
+
+    with patch("pickley.bstrap.Request", side_effect=Exception):  # urllib fails
+        with patch("pickley.bstrap.run_program", side_effect=mocked_run):  # mocked_run() returns just the program name
+            with patch("pickley.bstrap.which", side_effect=lambda x: x if x == "curl" else None):
+                assert bstrap.download("test", "test") == "curl"
+
+            with patch("pickley.bstrap.which", side_effect=lambda x: x if x == "wget" else None):
+                assert bstrap.download("test", "test") == "wget"
+
+    with patch("pickley.bstrap.is_executable", return_value=True):
+        assert bstrap.find_python3() == "/usr/bin/python3"
+
+    monkeypatch.setattr(sys, "base_prefix", sys.prefix)  # Pretend we don't run from a venv
+    assert bstrap.find_python3() == sys.executable
 
 
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
@@ -358,7 +388,7 @@ def test_lock(temp_cfg, logged):
 
 
 def test_main(cli):
-    cli.exercise_main("-mpickley")
+    cli.exercise_main("-mpickley", "src/pickley/bstrap.py")
 
 
 def test_package_pex(cli, monkeypatch):
