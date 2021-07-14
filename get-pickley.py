@@ -30,7 +30,7 @@ def which(program):
 def download(target, url):
     curl = which("curl")
     if is_executable(curl):
-        run_program(curl, "-s", "-o", target, url)
+        return run_program(curl, "-s", "-o", target, url)
 
     return run_program("wget", "-q", "-O%s" % target, url)
 
