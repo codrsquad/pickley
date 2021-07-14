@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 TMP_FOLDER="$(mktemp -d)"
 trap 'rm -rf -- "$TMP_FOLDER"' EXIT
 
@@ -23,11 +25,12 @@ if [ -z "$python" ]; then
     exit 1
 fi
 
-if [ -f get-pickley.py ]; then
-  script=get-pickley.py
+bstrap=src/pickley/bstrap.py
+if [[ -x get-pickley && -f $bstrap ]]; then
+  script=$bstrap
 else
-  script=$TMP_FOLDER/get-pickley.py
-  curl -fsSL -o "$script" "https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley.py"
+  script=$TMP_FOLDER/bstrap.py
+  curl -fsSL -o "$script" "https://raw.githubusercontent.com/codrsquad/pickley/master/$bstrap"
 fi
 
 $python "$script" "$@"
