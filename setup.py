@@ -34,6 +34,7 @@ setup(
     ],
     project_urls={
         "Documentation": "https://github.com/codrsquad/pickley/wiki",
+        "Release notes": "https://github.com/codrsquad/pickley/wiki/Release-notes",
         "Source": "https://github.com/codrsquad/pickley",
     },
 )
