@@ -6,8 +6,7 @@ import time
 from datetime import datetime
 
 import runez
-from runez.pyenv import pyenv_scanner, PythonDepot, Version
-from runez.pyenv import PypiStd
+from runez.pyenv import PypiStd, PythonDepot, PythonInstallationScanner, Version
 
 
 __version__ = "3.0.1"
@@ -465,7 +464,7 @@ class PickleyConfig(object):
     @runez.cached_property
     def available_pythons(self):
         pyenv = self.pyenv()
-        scanner = pyenv_scanner(pyenv) if pyenv else None
+        scanner = PythonInstallationScanner(pyenv) if pyenv else None
         return PythonDepot(scanner=scanner)
 
     @classmethod

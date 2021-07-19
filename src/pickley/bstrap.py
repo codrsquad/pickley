@@ -36,7 +36,7 @@ def download(target, url, dryrun=False):
 
     curl = which("curl")
     if curl:
-        return run_program(curl, "-s", "-o", target, url)
+        return run_program(curl, "-fsSL", "-o", target, url)
 
     return run_program("wget", "-q", "-O%s" % target, url)
 
