@@ -432,7 +432,7 @@ def get_program_path(path=None):
         path = runez.resolved_path(sys.argv[0])
 
     if path.endswith(".py") or path.endswith(".pyc"):
-        packaged = os.path.join(sys.prefix, "bin", "pickley")
+        packaged = runez.SYS_INFO.venv_bin_path(PICKLEY)
         if runez.is_executable(packaged):
             path = packaged  # Convenience when running from debugger
 
