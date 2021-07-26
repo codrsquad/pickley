@@ -18,7 +18,7 @@ jobs:
 
     - run: pip install -U pip setuptools wheel twine tox
     - run: tox -e py,docs,style
-    - run: python setup.py sdist bdist_wheel --universal
+    - run: python setup.py sdist bdist_wheel
 
     - name: Create Release
       id: create_release
