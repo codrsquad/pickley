@@ -408,3 +408,34 @@ def test_package_venv(cli):
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
     assert r.succeeded
     runez.delete("/tmp/pickley")
+
+
+def test_version_check(cli):
+    cli.run("version-check")
+    assert cli.failed
+    assert "Specify at least one program" in cli.logged
+
+    cli.run("version-check", "python")
+    assert cli.failed
+    assert "Invalid argument" in cli.logged
+
+    cli.run("--dryrun", "version-check", "python:1.0")
+    assert cli.succeeded
+    assert cli.match("Would run: .../python --version")
+
+    cli.run("version-check", "python:1.0")
+    assert cli.succeeded
+
+    cli.run("version-check", "python:100.0")
+    assert cli.failed
+    assert "python version too low" in cli.logged
+
+    with patch("runez.run", return_value=runez.program.RunResult(output="failed", code=1)):
+        cli.run("version-check", "python:1.0")
+        assert cli.failed
+        assert "--version failed" in cli.logged
+
+    with patch("runez.which", return_value=None):
+        cli.run("version-check", "python:1.0")
+        assert cli.failed
+        assert "not installed" in cli.logged

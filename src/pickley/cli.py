@@ -9,6 +9,7 @@ import time
 
 import click
 import runez
+from runez.pyenv import Version
 from runez.render import PrettyTable
 
 from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, PLATFORM
@@ -457,6 +458,45 @@ def uninstall(all, packages):
         runez.delete(CFG.base.full_path(PICKLEY))
         runez.delete(CFG.meta.path)
         inform("pickley is now %s" % runez.red("uninstalled"))
+
+
+@main.command()
+@click.argument("programs", nargs=-1)
+def version_check(programs):
+    """Check that programs are present with a minimum version"""
+    if not programs:
+        runez.abort("Specify at least one program to check")
+
+    specs = []
+    for program_spec in programs:
+        program, _, min_version = program_spec.partition(":")
+        min_version = Version(min_version)
+        if not program or not min_version.is_valid:
+            runez.abort("Invalid argument '%s', expecting format <program>:<version>" % program_spec)
+
+        specs.append((program, min_version))
+
+    overview = []
+    for program, min_version in specs:
+        if runez.DRYRUN:
+            runez.run(program, "--version")
+            continue
+
+        full_path = runez.which(program)
+        if not full_path:
+            runez.abort("%s is not installed" % program)
+
+        r = runez.run(full_path, "--version", fatal=False, logger=None)
+        if not r.succeeded:
+            runez.abort("%s --version failed: %s" % (runez.short(full_path), runez.short(r.full_output)))
+
+        version = Version.from_text(r.full_output)
+        if not version or version < min_version:
+            runez.abort("%s version too low: %s (need %s+)" % (runez.short(full_path), version, min_version))
+
+        overview.append("%s %s" % (program, version))
+
+    print(runez.short(runez.joined(overview, delimiter=" ; ")))
 
 
 @main.command()
