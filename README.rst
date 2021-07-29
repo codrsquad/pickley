@@ -57,7 +57,7 @@ Example
 Once you have pickley_, you can get other python CLIs and use them as standalone programs, for example::
 
     # One-liner to grab pickley, and drop it in ~/.local/bin
-    $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley)"
+    $ curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/master/src/pickley/bstrap.py | /usr/bin/python3 -
 
     # Double-check you do have ~/.local/bin in your PATH
     $ which -a pickley
@@ -118,9 +118,14 @@ Installation
 Install latest version in `~/.local/bin`
 ----------------------------------------
 
-Handy one-liner (you can also download the bootsrap script and see its ``--help``)::
+Handy one-line using ``bash``::
 
     $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley)"
+
+
+Handy one-liner using python (see ``--help``, the script accepts a few options)::
+
+    $ curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/master/src/pickley/bstrap.py | /usr/bin/python3 - --help
 
 
 Install from source
