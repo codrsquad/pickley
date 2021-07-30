@@ -13,6 +13,7 @@ import tempfile
 
 DRYRUN = False
 HOME = os.path.expanduser("~")
+RUNNING_FROM_VENV = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
 VIRTUALENV_URL = "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz"
 TMP_FOLDER = None  # type: str
 
@@ -56,7 +57,15 @@ def ensure_folder(path):
 
 
 def find_base(base):
-    if not base or os.pathsep not in base:
+    if not base:
+        base = which("pickley")
+        if base:
+            print("Found existing %s" % short(base))
+            return os.path.dirname(base)
+
+        return os.path.expanduser("~/.local/bin")
+
+    if os.pathsep not in base:
         return os.path.expanduser(base)
 
     path_dirs = os.environ.get("PATH", "").split(os.pathsep)
@@ -72,7 +81,7 @@ def find_base(base):
 
 
 def find_python3():
-    if sys.version_info[0] == 3 and sys.prefix == sys.base_prefix:
+    if sys.version_info[0] == 3 and not RUNNING_FROM_VENV:
         # We're not running from a venv
         return sys.executable
 
@@ -188,9 +197,10 @@ def short(text):
 
 def which(program):
     for p in os.environ.get("PATH", "").split(os.pathsep):
-        fp = os.path.join(p, program)
-        if fp and is_executable(fp):
-            return fp
+        if not RUNNING_FROM_VENV or p != os.path.join(sys.prefix, "bin"):
+            fp = os.path.join(p, program)
+            if fp and is_executable(fp):
+                return fp
 
 
 def main(args=None):
@@ -200,7 +210,7 @@ def main(args=None):
 
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--dryrun", "-n", action="store_true", help="Perform a dryrun")
-    parser.add_argument("--base", "-b", default="~/.local/bin", help="Base folder to use (default: %(default)s)")
+    parser.add_argument("--base", "-b", help="Base folder to use (default: ~/.local/bin)")
     parser.add_argument("--cfg", "-c", help="Seed pickley config with given contents (file or serialized json)")
     parser.add_argument("--force", "-f", action="store_true", help="Force a rerun (even if already done)")
     parser.add_argument("--mirror", "-m", help="Seed pypi mirror in pip.conf")
@@ -216,7 +226,7 @@ def main(args=None):
         abort("Could not find python3 on this machine")
 
     pickley_base = find_base(args.base)
-    print("Using %s, base: %s" % (python3, pickley_base))
+    print("Using %s, base: %s" % (python3, short(pickley_base)))
     seed_config(pickley_base, args.cfg, force=args.force)
     seed_mirror(args.mirror, force=args.force)
     TMP_FOLDER = os.path.realpath(tempfile.mkdtemp())
