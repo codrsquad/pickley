@@ -122,7 +122,7 @@ def test_dryrun(cli, monkeypatch):
     cli.run("-n --color config")
     assert cli.succeeded
 
-    cli.expect_failure("-n -Pfoo install mgit", "No suitable python")
+    cli.expect_failure("-n -Pfoo install bundle:bar", "No suitable python")
 
     # Simulate an old entry point that was now removed
     runez.write(dot_meta("mgit/.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
@@ -272,7 +272,7 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
 
 @GlobalHttpCalls.allowed
 def test_install_pypi(cli):
-    cli.expect_failure("install six", "it is not a CLI")
+    cli.expect_failure("--color install six", "it is not a CLI")
     assert not os.path.exists(dot_meta("six"))
 
     cli.expect_failure("install mgit+foo", "not a valid pypi package name")

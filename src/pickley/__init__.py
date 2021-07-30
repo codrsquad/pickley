@@ -570,8 +570,13 @@ class PickleyConfig(object):
             (list[PackageSpec]): Corresponding PackageSpec-s
         """
         if names:
-            result = [self.resolved_bundle(name) for name in runez.flattened(names, split=" ")]
-            return [PackageSpec(self, name) for name in runez.flattened(result, unique=True)]
+            names = runez.flattened(names, split=" ")
+            if include_pickley and PICKLEY not in names:
+                names.append(PICKLEY)
+
+            result = [self.resolved_bundle(name) for name in names]
+            result = runez.flattened(result, unique=True)
+            return [PackageSpec(self, name) for name in result]
 
         result = []
         if os.path.isdir(self.meta.path):

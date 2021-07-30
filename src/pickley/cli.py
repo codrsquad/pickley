@@ -31,7 +31,9 @@ def setup_audit_log(cfg=CFG):
         return
 
     if not runez.log.file_handler:
-        runez.log.progress.start(message_color=runez.dim, spinner_color=runez.bold)
+        if runez.color.is_coloring():
+            runez.log.progress.start(message_color=runez.dim, spinner_color=runez.bold)
+
         log_path = cfg.meta.full_path("audit.log")
         runez.log.trace("Logging to %s", log_path)
         runez.ensure_folder(cfg.meta.path)
@@ -383,7 +385,8 @@ def diagnostics():
 def install(force, packages):
     """Install a package from pypi"""
     setup_audit_log()
-    for pspec in CFG.package_specs(packages):
+    specs = CFG.package_specs(packages, include_pickley=packages and packages[0].startswith("bundle:"))
+    for pspec in specs:
         perform_install(pspec, is_upgrade=False, force=force, quiet=False)
 
 
