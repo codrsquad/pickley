@@ -18,7 +18,7 @@ TMP_FOLDER = None  # type: str
 
 
 def abort(message):
-    sys.exit(message)
+    sys.exit("--------\n\n%s\n\n--------" % message)
 
 
 def built_in_download(target, url):
@@ -55,6 +55,22 @@ def ensure_folder(path):
             os.makedirs(path)
 
 
+def find_base(base):
+    if not base or os.pathsep not in base:
+        return os.path.expanduser(base)
+
+    path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+    candidates = base.split(os.pathsep)
+    for c in candidates:
+        c = os.path.expanduser(c)
+        if c and os.path.isdir(c) and is_writable(c) and c in path_dirs:
+            return c
+
+    msg = "The following locations are not suitable: %s\n" % ", ".join(candidates)
+    msg += "Please make sure one those locations is writable and is in your PATH environment variable"
+    abort(msg)
+
+
 def find_python3():
     if sys.version_info[0] == 3 and sys.prefix == sys.base_prefix:
         # We're not running from a venv
@@ -85,6 +101,10 @@ def hdry(message, dryrun=None):
 
 def is_executable(path):
     return path and os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def is_writable(path):
+    return path and os.access(path, os.W_OK)
 
 
 def read_json(path):
@@ -195,8 +215,8 @@ def main(args=None):
     if not python3:
         abort("Could not find python3 on this machine")
 
-    print("Using %s" % python3)
-    pickley_base = os.path.expanduser(args.base)
+    pickley_base = find_base(args.base)
+    print("Using %s, base: %s" % (python3, pickley_base))
     seed_config(pickley_base, args.cfg, force=args.force)
     seed_mirror(args.mirror, force=args.force)
     TMP_FOLDER = os.path.realpath(tempfile.mkdtemp())

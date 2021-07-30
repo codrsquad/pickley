@@ -32,6 +32,11 @@ def test_bootstrap(cli, monkeypatch):
         assert "Would run: python virtualenv.pyz" in cli.logged
         assert "Would run: .local/bin/.pickley/pickley/pickley-" in cli.logged
 
+        # Simulate multiple base candidates given
+        cli.run("-n", "-b", "~/.local/bin:foo/bar", main=bstrap.main)
+        assert cli.failed
+        assert "not suitable: ~/.local/bin, foo/bar" in cli.logged
+
         # Simulate seeding
         cli.run("0.1", "-m", "my-mirror", "-c", '{"pyenv":"~/.pyenv"}', main=bstrap.main)
         assert cli.succeeded
@@ -40,6 +45,12 @@ def test_bootstrap(cli, monkeypatch):
         assert "pickley version 0.1 is already installed" in cli.logged
         assert runez.readlines(".config/pip/pip.conf") == ["[global]", "index-url = my-mirror"]
         assert runez.readlines(".local/bin/.pickley/config.json") == ["{", '  "pyenv": "~/.pyenv"', "}"]
+
+        monkeypatch.setenv("PATH", "foo/bar:%s" % os.environ["PATH"])
+        runez.ensure_folder("foo/bar", logger=None)
+        cli.run("-n", "-b", "~/.local/bin:foo/bar", main=bstrap.main)
+        assert cli.succeeded
+        assert "base: foo/bar" in cli.logged
 
         with patch("pickley.bstrap.is_executable", return_value=False):
             # Simulate no python 3
