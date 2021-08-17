@@ -641,7 +641,6 @@ class Symlinker(object):
     def apply(self, exe):
         dest = os.path.join(self.target, os.path.basename(exe))
         if os.path.exists(exe):
-            runez.delete(dest, logger=False)
             r = runez.symlink(exe, dest, must_exist=False)
             if r > 0:
                 inform("Symlinked %s -> %s" % (runez.short(dest), runez.short(exe)))

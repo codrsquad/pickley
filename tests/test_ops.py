@@ -222,7 +222,6 @@ def test_facultative(cli):
     # Simulate pickley symlink delivery
     dummy_target = dot_meta("foo")
     runez.touch(dummy_target)
-    runez.delete("virtualenv")
     runez.symlink(dummy_target, "virtualenv")
     cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
 
