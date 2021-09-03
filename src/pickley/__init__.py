@@ -538,8 +538,7 @@ class PickleyConfig(object):
             (runez.pyenv.PythonInstallation): Object representing python installation
         """
         desired = self.get_value("python", pspec=pspec)
-        desired = [d.strip() for d in runez.flattened(desired, keep_empty=None, split=",")]
-        desired = [d for d in desired if d]
+        desired = runez.flattened(desired, split=",")
         if not desired:
             # Edge case: configured empty python... just use invoker in that case
             return self.available_pythons.invoker
