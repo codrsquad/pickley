@@ -364,9 +364,9 @@ def _diagnostics():
     yield "base", CFG.base
     yield "desired python", desired
     python = CFG.find_python(fatal=False)
-    yield "selected python", python.representation()
+    yield "selected python", python
     if python is not CFG.available_pythons.invoker:
-        yield "invoker python", CFG.available_pythons.invoker.representation()
+        yield "invoker python", CFG.available_pythons.invoker
 
     yield "default index", CFG.default_index
     yield "pip.conf", CFG.pip_conf
@@ -409,7 +409,7 @@ def list(border, verbose):
         manifest = pspec.get_manifest()
         if manifest:
             python = CFG.available_pythons.find_python(manifest.python)
-            python = manifest.python if python.problem else python.representation()
+            python = manifest.python if python.problem else python
             table.add_row(pspec.dashed, manifest.version, manifest.delivery, python, manifest.index)
 
     print(table)
