@@ -331,7 +331,7 @@ def test_lock(temp_cfg, logged):
     # Check that lock detects bogus (or dead) PID
     runez.write(lock_path, "0\nbar\n")
     with SoftLock(pspec, give_up=600):
-        lines = runez.readlines(lock_path)
+        lines = list(runez.readlines(lock_path))
         assert lines[0] == str(os.getpid())  # Lock file replaced with correct stuff
 
     assert not os.path.exists(lock_path)  # Lock released

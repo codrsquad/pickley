@@ -127,7 +127,7 @@ class PackageContents(object):
 
         entry_points_txt = self.dist_info.files.get("entry_points.txt")
         if entry_points_txt:
-            metadata = runez.file.ini_to_dict(entry_points_txt, default={})
+            metadata = runez.file.ini_to_dict(entry_points_txt)
             console_scripts = metadata.get("console_scripts")
             if console_scripts:
                 runez.log.trace("Found %s entry points in entry_points.txt" % len(console_scripts))
@@ -190,10 +190,10 @@ class PythonVenv(object):
             (bool): True if 'path' points to a python executable part of this venv
         """
         if runez.is_executable(path):
-            lines = runez.readlines(path, default=None, first=2, errors="ignore")
-            if lines and len(lines) > 1 and lines[0].startswith("#!"):
-                if self.folder in lines[0] or self.folder in lines[1]:  # 2 variants: "#!<folder>/bin/python" or 'exec "<folder>/bin/..."'
-                    return True
+            for line in runez.readlines(path, first=1):
+                if line.startswith("#!"):
+                    if path.startswith(self.folder):
+                        return True
 
     def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""

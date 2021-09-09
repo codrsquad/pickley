@@ -276,7 +276,7 @@ class PackageSpec(object):
             if os.path.getsize(target) == 0 or not runez.is_executable(target):
                 return True  # Empty file or not executable
 
-        for line in runez.readlines(target, default=[], first=5, errors="ignore"):
+        for line in runez.readlines(target, first=5):
             if PICKLEY in line:
                 return True  # Pickley wrapper
 
@@ -419,7 +419,7 @@ class PackageSpec(object):
 def get_default_index(*paths):
     """Configured pypi index from pip.conf"""
     for path in paths:
-        conf = runez.file.ini_to_dict(path, default={})
+        conf = runez.file.ini_to_dict(path)
         index = conf.get("global", {}).get("index-url")
         if index:
             return path, index
@@ -506,7 +506,7 @@ class PickleyConfig(object):
     def _add_config_file(self, path, base=None):
         path = runez.resolved_path(path, base=base)
         if path and all(c.source != path for c in self.configs) and os.path.exists(path):
-            values = runez.read_json(path)
+            values = runez.read_json(path, logger=LOG.warning)
             if values:
                 self.configs.append(RawConfig(self, path, values))
                 included = values.get("include")
@@ -755,7 +755,7 @@ class TrackedVersion(object):
             (TrackedVersion):
         """
         index = index or pspec.index or pspec.cfg.default_index
-        version = PypiStd.latest_pypi_version(pspec.dashed, index=index, include_prerelease=include_prerelease, fatal=False)
+        version = PypiStd.latest_pypi_version(pspec.dashed, index=index, include_prerelease=include_prerelease)
         if not version:
             return cls(index=index, problem="does not exist on %s" % index)
 
@@ -767,7 +767,7 @@ class TrackedVersion(object):
 
     @classmethod
     def from_file(cls, path):
-        data = runez.read_json(path, default=None)
+        data = runez.read_json(path)
         if data:
             return cls(
                 index=data.get("index"),
@@ -810,7 +810,7 @@ class TrackedManifest(object):
 
     @classmethod
     def from_file(cls, path):
-        data = runez.read_json(path, default=None)
+        data = runez.read_json(path)
         if data:
             return cls(
                 path,

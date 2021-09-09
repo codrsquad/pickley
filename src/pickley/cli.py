@@ -81,7 +81,7 @@ class SoftLock(object):
             return None  # Lock file does not exist or invalidation age reached
 
         pid = None
-        for line in runez.readlines(self.lock_path, default=[], errors="ignore"):
+        for line in runez.readlines(self.lock_path):
             if pid is not None:
                 return line  # 2nd line hold CLI args process was invoked with
 

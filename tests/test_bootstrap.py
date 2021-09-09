@@ -48,8 +48,8 @@ def test_bootstrap(cli, monkeypatch):
             assert "Seeding .local/bin/.pickley/config.json with {'pyenv': '~/.pyenv'}" in cli.logged
             assert "Seeding .config/pip/pip.conf with my-mirror" in cli.logged
             assert "pickley version 0.1 is already installed" in cli.logged
-            assert runez.readlines(".config/pip/pip.conf") == ["[global]", "index-url = my-mirror"]
-            assert runez.readlines(".local/bin/.pickley/config.json") == ["{", '  "pyenv": "~/.pyenv"', "}"]
+            assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", "index-url = my-mirror"]
+            assert list(runez.readlines(".local/bin/.pickley/config.json")) == ["{", '  "pyenv": "~/.pyenv"', "}"]
 
             monkeypatch.setenv("PATH", "foo/bar:%s" % os.environ["PATH"])
             runez.ensure_folder("foo/bar", logger=None)
