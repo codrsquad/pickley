@@ -20,7 +20,7 @@ K_LEAVES = {"facultative", "install_timeout", "pyenv", "version", "version_check
 PLATFORM = platform.system().lower()
 
 DEFAULT_PYPI = "https://pypi.org/simple"
-DEFAULT_PYTHONS = "3.7+"
+DEFAULT_PYTHONS = "3.6+"
 
 
 def abort(message):
