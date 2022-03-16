@@ -1,9 +1,7 @@
 import logging
 import os
-import sys
 
 import runez
-import virtualenv.__main__
 
 from pickley import abort, PICKLEY
 from pickley.delivery import DeliveryMethod
@@ -166,7 +164,7 @@ class PythonVenv(object):
             cfg = cfg or pspec.cfg
             python = python or cfg.find_python(pspec=pspec)
             runez.ensure_folder(folder, clean=True, logger=False)
-            runez.run(sys.executable, virtualenv.__main__.__file__, "-p", python.executable, folder)
+            runez.run(python.executable, "-mvenv", folder)
 
     def __repr__(self):
         return runez.short(self.folder)
