@@ -14,8 +14,6 @@ import tempfile
 DRYRUN = False
 HOME = os.path.expanduser("~")
 RUNNING_FROM_VENV = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-# VIRTUALENV_URL = "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz"
-VIRTUALENV_URL = "https://github.com/pypa/get-virtualenv/blob/20.13.3/public/virtualenv.pyz?raw=true"
 TMP_FOLDER = None  # type: str
 
 
@@ -251,9 +249,7 @@ def main(args=None):
                 print("Replacing older pickley %s" % v)
 
         pickley_venv = os.path.join(pickley_base, ".pickley", "pickley", "pickley-%s" % pickley_version)
-        zipapp = os.path.join(TMP_FOLDER, "virtualenv.pyz")
-        download(zipapp, VIRTUALENV_URL)
-        run_program(sys.executable, zipapp, "-q", "--clear", "--download", "-p", python3, pickley_venv)
+        run_program(python3, "-mvenv", "--clear", pickley_venv)
         run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", spec)
         run_program(os.path.join(pickley_venv, "bin", "pickley"), "base", "bootstrap-own-wrapper")
 
