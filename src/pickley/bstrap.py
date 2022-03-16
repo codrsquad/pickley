@@ -15,7 +15,7 @@ DRYRUN = False
 HOME = os.path.expanduser("~")
 RUNNING_FROM_VENV = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
 # VIRTUALENV_URL = "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz"
-VIRTUALENV_URL = "https://github.com/pypa/get-virtualenv/blob/20.10.0/public/virtualenv.pyz?raw=true"
+VIRTUALENV_URL = "https://github.com/pypa/get-virtualenv/blob/20.13.3/public/virtualenv.pyz?raw=true"
 TMP_FOLDER = None  # type: str
 
 
