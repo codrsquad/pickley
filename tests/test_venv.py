@@ -77,14 +77,14 @@ def test_pip_fail(temp_cfg, logged):
     pspec = PackageSpec(temp_cfg, "bogus")
     venv = PythonVenv(pspec, folder="")
     assert str(venv) == ""
-    with patch("pickley.package.PythonVenv._run_pip", return_value=runez.program.RunResult("", "some\nerror", code=1)):
+    with patch("pickley.package.PythonVenv.run_pip", return_value=runez.program.RunResult("", "some\nerror", code=1)):
         with pytest.raises(SystemExit):
             venv.pip_install("foo")
 
         assert "some\nerror" == logged.stdout.pop()
 
     r = runez.program.RunResult("", "foo\nNo matching distribution for ...\nYou should consider upgrading pip", code=1)
-    with patch("pickley.package.PythonVenv._run_pip", return_value=r):
+    with patch("pickley.package.PythonVenv.run_pip", return_value=r):
         with pytest.raises(SystemExit):
             venv.pip_install("foo")
 

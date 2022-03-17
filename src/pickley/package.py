@@ -65,7 +65,7 @@ class PackageContents(object):
             # Is there a better way to detect weird indirections like ansible does?
             name = "ansible-core" if not pspec.version or pspec.version >= "4" else "ansible-base"
 
-        r = venv.run_python("-mpip", "show", "-f", name, fatal=False)
+        r = venv.run_pip("show", "-f", name, fatal=False)
         if not r.succeeded:
             return
 
@@ -159,12 +159,14 @@ class PythonVenv(object):
 
         self.folder = folder
         self.index = index
-        self.py_path = os.path.join(folder, "bin", "python")
+        self.py_path = os.path.join(folder, "bin", "python3")
+        self.pip_path = os.path.join(folder, "bin", "pip3")
         if create and folder:
             cfg = cfg or pspec.cfg
             python = python or cfg.find_python(pspec=pspec)
             runez.ensure_folder(folder, clean=True, logger=False)
             runez.run(python.executable, "-mvenv", folder)
+            self.run_pip("install", "-U", "pip")
 
     def __repr__(self):
         return runez.short(self.folder)
@@ -195,7 +197,7 @@ class PythonVenv(object):
 
     def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""
-        r = self._run_pip("install", "-i", self.index, *args, fatal=False)
+        r = self.run_pip("install", "-i", self.index, *args, fatal=False)
         if r.failed:
             message = "\n".join(simplified_pip_error(r.error, r.output))
             abort(message)
@@ -204,15 +206,15 @@ class PythonVenv(object):
 
     def pip_wheel(self, *args):
         """Allows to not forget to state the -i index..."""
-        return self._run_pip("wheel", "-i", self.index, *args)
+        return self.run_pip("wheel", "-i", self.index, *args)
+
+    def run_pip(self, *args, **kwargs):
+        return runez.run(self.pip_path, *args, **kwargs)
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
-        kwargs.setdefault("short_exe", True)
+        # kwargs.setdefault("short_exe", True)
         return runez.run(self.py_path, *args, **kwargs)
-
-    def _run_pip(self, *args, **kwargs):
-        return self.run_python("-mpip", *args, **kwargs)
 
 
 def simplified_pip_error(error, output):
