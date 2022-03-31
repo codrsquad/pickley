@@ -272,7 +272,7 @@ class PexPackager(Packager):
         runez.ensure_folder(tmp, logger=False)
         runez.ensure_folder(wheels, logger=False)
         pex_venv = PythonVenv(pspec, folder=os.path.join(build_folder, "pex-venv"))
-        pex_venv.pip_install("pex==2.1.47", *requirements)
+        pex_venv.pip_install("pex==2.1.75", *requirements)
         pex_venv.pip_wheel("--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
         contents = PackageContents(pex_venv, pspec)
         if contents.entry_points:

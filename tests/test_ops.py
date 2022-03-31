@@ -138,7 +138,7 @@ def test_dryrun(cli, monkeypatch):
     with patch("pickley.git_clone", side_effect=mock_git_clone):
         cli.run("-n install git@github.com:zsimic/mgit.git")
         assert cli.succeeded
-        assert "Would run: pip install .pickley/.cache/checkout/mgit" in cli.logged
+        assert " install .pickley/.cache/checkout/mgit" in cli.logged
 
     cli.run("-n install mgit")
     assert cli.succeeded
@@ -159,7 +159,7 @@ def test_dryrun(cli, monkeypatch):
     runez.write("setup.py", "import sys\nfrom setuptools import setup\nif sys.argv[1]=='--version': sys.exit(1)\nsetup(name='foo')")
     cli.expect_failure("-n package .", "Could not determine package version")
 
-    cli.expect_success(["-n", "package", cli.project_folder], "Would run: pip install -r requirements.txt")
+    cli.expect_success(["-n", "package", cli.project_folder], "Would run: ...pip... install -r requirements.txt")
 
     cli.expect_failure("-n uninstall", "Specify packages to uninstall, or --all")
     cli.expect_failure("-n uninstall pickley", "Run 'uninstall --all' if you wish to uninstall pickley itself")
@@ -345,7 +345,7 @@ def test_package_pex(cli, monkeypatch):
     cli.run("--dryrun", "-ppex", "package", cli.project_folder)
     assert cli.succeeded
     assert cli.match("Using python: ... invoker", stdout=True)
-    assert "Would run: pex " in cli.logged.stdout
+    assert " -mpex " in cli.logged.stdout
 
 
 def test_package_venv(cli):
