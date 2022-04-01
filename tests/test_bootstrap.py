@@ -29,13 +29,14 @@ def test_bootstrap(cli, monkeypatch):
             runez.write(".local/bin/pickley", "#!/bin/sh\necho 0.1")  # Pretend we have an old pickley
             runez.make_executable(".local/bin/pickley")
 
-            monkeypatch.setenv("__PYVENV_LAUNCHER__", "oh apple, why?")  # macos oddity env var, should be removed
-            cli.run("-n", main=bstrap.main)
-            assert cli.succeeded
-            assert "__PYVENV_LAUNCHER__" not in os.environ
-            assert "Replacing older pickley 0.1" in cli.logged
-            assert "Would run: python virtualenv.pyz" in cli.logged
-            assert "Would run: .local/bin/.pickley/pickley/pickley-" in cli.logged
+            with patch("pickley.bstrap.get_python_version", return_value=(3, 6)):  # urllib fails
+                monkeypatch.setenv("__PYVENV_LAUNCHER__", "oh apple, why?")  # macos oddity env var, should be removed
+                cli.run("-n", main=bstrap.main)
+                assert cli.succeeded
+                assert "__PYVENV_LAUNCHER__" not in os.environ
+                assert "Replacing older pickley 0.1" in cli.logged
+                assert "Would run: python virtualenv.pyz" in cli.logged
+                assert "Would run: .local/bin/.pickley/pickley/pickley-" in cli.logged
 
             # Simulate multiple base candidates given
             cli.run("-n", "-b", "~/.local/bin:foo/bar", main=bstrap.main)
@@ -63,6 +64,11 @@ def test_bootstrap(cli, monkeypatch):
                     cli.run("-n", main=bstrap.main)
                     assert cli.failed
                     assert "Could not find python3 on this machine" in cli.logged
+
+            with patch("pickley.bstrap.get_python_version", return_value=(3, 9)):  # urllib fails
+                cli.run("-n", main=bstrap.main)
+                assert cli.succeeded
+                assert " -mvenv " in cli.logged
 
 
 def test_edge_cases(temp_folder, monkeypatch, logged):

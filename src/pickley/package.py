@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 
 import runez
 
@@ -165,7 +166,14 @@ class PythonVenv(object):
             cfg = cfg or pspec.cfg
             python = python or cfg.find_python(pspec=pspec)
             runez.ensure_folder(folder, clean=True, logger=False)
-            runez.run(python.executable, "-mvenv", folder)
+            if python.version > "3.7":
+                runez.run(python.executable, "-mvenv", folder)
+
+            else:  # pragma: no cover, will be retired eventually
+                import virtualenv
+
+                runez.run(sys.executable, virtualenv.__main__.__file__, "-p", python.executable, folder)
+
             self.run_pip("install", "-U", "pip")
 
     def __repr__(self):

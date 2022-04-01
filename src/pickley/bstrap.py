@@ -5,6 +5,7 @@ Bootstrap pickley
 import argparse
 import json
 import os
+import re
 import shutil
 import ssl
 import subprocess  # nosec
@@ -17,6 +18,7 @@ RUNNING_FROM_VENV = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
 # VIRTUALENV_URL = "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz"
 VIRTUALENV_URL = "https://github.com/pypa/get-virtualenv/blob/20.10.0/public/virtualenv.pyz?raw=true"
 TMP_FOLDER = None  # type: str
+RX_VERSION = re.compile(r"^\D*(\d+)\.(\d+).*$")
 
 
 def abort(message):
@@ -204,6 +206,15 @@ def which(program):
                 return fp
 
 
+def get_python_version(python3):
+    pv = run_program(python3, "--version", capture=True, dryrun=False)
+    m = RX_VERSION.match(pv)
+    if m:
+        major = int(m.group(1))
+        minor = int(m.group(2))
+        return major, minor
+
+
 def main(args=None):
     """Bootstrap pickley"""
     global DRYRUN
@@ -251,9 +262,15 @@ def main(args=None):
                 print("Replacing older pickley %s" % v)
 
         pickley_venv = os.path.join(pickley_base, ".pickley", "pickley", "pickley-%s" % pickley_version)
-        zipapp = os.path.join(TMP_FOLDER, "virtualenv.pyz")
-        download(zipapp, VIRTUALENV_URL)
-        run_program(sys.executable, zipapp, "-q", "--clear", "--download", "-p", python3, pickley_venv)
+        pv = get_python_version(python3)
+        if pv and pv > (3, 7):
+            run_program(python3, "-mvenv", "--clear", pickley_venv)
+
+        else:
+            zipapp = os.path.join(TMP_FOLDER, "virtualenv.pyz")
+            download(zipapp, VIRTUALENV_URL)
+            run_program(sys.executable, zipapp, "-q", "--clear", "--download", "-p", python3, pickley_venv)
+
         run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", spec)
         run_program(os.path.join(pickley_venv, "bin", "pickley"), "base", "bootstrap-own-wrapper")
 
