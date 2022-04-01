@@ -223,7 +223,7 @@ def clean_env_vars(*keys):
 @runez.click.group()
 @click.pass_context
 @runez.click.version(message="%(version)s", version=__version__)
-@runez.click.debug()
+@runez.click.debug("-v")
 @runez.click.dryrun("-n")
 @runez.click.color()
 @click.option("--config", "-c", metavar="PATH", help="Optional additional configuration to use")
