@@ -169,7 +169,7 @@ class PythonVenv(object):
             if python.version > "3.7":
                 runez.run(python.executable, "-mvenv", folder)
 
-            else:  # pragma: no cover, will be retired eventually
+            else:
                 import virtualenv.__main__
 
                 runez.run(sys.executable, virtualenv.__main__.__file__, "-p", python.executable, folder)
