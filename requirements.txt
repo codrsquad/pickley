@@ -1,5 +1,5 @@
 # pinned
-click==8.1.2
+click==8.0.4
 requests==2.27.1
 runez==3.5.4
 virtualenv==20.13.3
