@@ -170,7 +170,7 @@ class PythonVenv(object):
                 runez.run(python.executable, "-mvenv", folder)
 
             else:  # pragma: no cover, will be retired eventually
-                import virtualenv
+                import virtualenv.__main__
 
                 runez.run(sys.executable, virtualenv.__main__.__file__, "-p", python.executable, folder)
 
