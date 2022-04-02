@@ -205,8 +205,9 @@ class PythonVenv(object):
 
     def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""
-        bin_marker = ":all:" if runez.SYS_INFO.platform_id.is_macos and runez.SYS_INFO.platform_id.arch == "arm64" else None
-        r = self.run_pip("install", "-i", self.index, "--no-binary", bin_marker, *args, fatal=False)
+        # bin_marker = ":all:" if runez.SYS_INFO.platform_id.is_macos and runez.SYS_INFO.platform_id.arch == "arm64" else None
+        # r = self.run_pip("install", "-i", self.index, "--no-binary", bin_marker, *args, fatal=False)
+        r = self.run_pip("install", "-i", self.index, *args, fatal=False)
         if r.failed:
             message = "\n".join(simplified_pip_error(r.error, r.output))
             abort(message)
