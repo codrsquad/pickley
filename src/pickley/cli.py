@@ -130,7 +130,7 @@ class SoftLock(object):
         runez.delete(self.lock_path, logger=False)
 
 
-def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
+def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary=None):
     """
     Args:
         pspec (PackageSpec): Package spec to install
@@ -170,7 +170,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False):
             return manifest
 
         setup_audit_log()
-        manifest = PACKAGER.install(pspec)
+        manifest = PACKAGER.install(pspec, no_binary=no_binary)
         if manifest and not quiet:
             note = " in %s" % runez.represented_duration(time.time() - started)
             action = "Upgraded" if is_upgrade else "Installed"
@@ -381,13 +381,14 @@ def diagnostics():
 
 @main.command()
 @click.option("--force", "-f", is_flag=True, help="Force installation, even if already installed")
+@click.option("--no-binary", help="Passed-through to pip install")
 @click.argument("packages", nargs=-1, required=True)
-def install(force, packages):
+def install(force, no_binary, packages):
     """Install a package from pypi"""
     setup_audit_log()
     specs = CFG.package_specs(packages, include_pickley=packages and packages[0].startswith("bundle:"))
     for pspec in specs:
-        perform_install(pspec, is_upgrade=False, force=force, quiet=False)
+        perform_install(pspec, is_upgrade=False, force=force, quiet=False, no_binary=no_binary)
 
 
 @main.command()

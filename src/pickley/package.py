@@ -205,8 +205,6 @@ class PythonVenv(object):
 
     def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""
-        # bin_marker = ":all:" if runez.SYS_INFO.platform_id.is_macos and runez.SYS_INFO.platform_id.arch == "arm64" else None
-        # r = self.run_pip("install", "-i", self.index, "--no-binary", bin_marker, *args, fatal=False)
         r = self.run_pip("install", "-i", self.index, *args, fatal=False)
         if r.failed:
             message = "\n".join(simplified_pip_error(r.error, r.output))
@@ -308,15 +306,23 @@ class VenvPackager(Packager):
     """Install in a virtualenv"""
 
     @staticmethod
-    def install(pspec, ping=True):
+    def install(pspec, ping=True, no_binary=None):
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
         delivery.ping = ping
-        args = [pspec.specced]
-        if pspec.folder:
-            args = [pspec.folder]
+        args = []
+        if no_binary:
+            args.append("--no-binary")
+            args.append(no_binary)
 
-        elif pspec._pickley_dev_mode:
-            args = ["-e", pspec._pickley_dev_mode]  # pragma: no cover, convenience case for running pickley from .venv/
+        if pspec.folder:
+            args.append(pspec.folder)
+
+        elif pspec._pickley_dev_mode:  # pragma: no cover, convenience case for running pickley from .venv/
+            args.append("-e")
+            args.append(pspec._pickley_dev_mode)
+
+        else:
+            args.append(pspec.specced)
 
         venv = PythonVenv(pspec)
         venv.pip_install(*args)
