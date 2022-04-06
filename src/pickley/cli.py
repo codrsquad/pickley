@@ -465,8 +465,9 @@ def uninstall(all, packages):
 
 
 @main.command()
+@click.option("--system", is_flag=True, help="Look at system PATH (not just pickley installs)")
 @click.argument("programs", nargs=-1)
-def version_check(programs):
+def version_check(system, programs):
     """Check that programs are present with a minimum version"""
     if not programs:
         runez.abort("Specify at least one program to check")
@@ -486,9 +487,14 @@ def version_check(programs):
             runez.run(program, "--version")
             continue
 
-        full_path = runez.which(program)
-        if not full_path:
-            runez.abort("%s is not installed" % program)
+        if system:
+            full_path = runez.which(program)
+            if not full_path:
+                runez.abort("%s is not installed" % program)
+
+        else:
+            pspec = PackageSpec(CFG, program)
+            full_path = pspec.exe_path(program)
 
         r = runez.run(full_path, "--version", fatal=False, logger=None)
         if not r.succeeded:

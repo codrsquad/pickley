@@ -285,9 +285,11 @@ class PackageSpec(object):
 
     def is_healthily_installed(self):
         """Double-check that current venv is still usable"""
-        py_path = self.cfg.available_pythons.resolved_python_exe(self.install_path)
-        if py_path:
-            return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
+        main_exe = self.exe_path(self.dashed)
+        if runez.is_executable(main_exe):
+            py_path = self.cfg.available_pythons.resolved_python_exe(self.install_path)
+            if py_path:
+                return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
     def find_wheel(self, folder, fatal=True):
         """list[str]: Wheel for this package found in 'folder', if any"""

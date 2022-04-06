@@ -166,10 +166,10 @@ class PythonVenv(object):
             cfg = cfg or pspec.cfg
             python = python or cfg.find_python(pspec=pspec)
             runez.ensure_folder(folder, clean=True, logger=False)
-            if python.version > "3.7":
+            if python.version > "3.6":
                 runez.run(python.executable, "-mvenv", folder)
 
-            else:
+            else:  # pragma: no cover
                 import virtualenv.__main__
 
                 runez.run(sys.executable, virtualenv.__main__.__file__, "-p", python.executable, folder)
@@ -280,7 +280,7 @@ class PexPackager(Packager):
         runez.ensure_folder(tmp, logger=False)
         runez.ensure_folder(wheels, logger=False)
         pex_venv = PythonVenv(pspec, folder=os.path.join(build_folder, "pex-venv"))
-        pex_venv.pip_install("pex==2.1.75", *requirements)
+        pex_venv.pip_install("pex==2.1.77", *requirements)
         pex_venv.pip_wheel("--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
         contents = PackageContents(pex_venv, pspec)
         if contents.entry_points:

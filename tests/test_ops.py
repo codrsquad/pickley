@@ -374,10 +374,10 @@ def test_version_check(cli):
     assert cli.succeeded
     assert cli.match("Would run: .../python --version")
 
-    cli.run("version-check", "python:1.0")
+    cli.run("version-check", "--system", "python:1.0")
     assert cli.succeeded
 
-    cli.run("version-check", "python:100.0")
+    cli.run("version-check", "--system", "python:100.0")
     assert cli.failed
     assert "python version too low" in cli.logged
 
@@ -387,6 +387,6 @@ def test_version_check(cli):
         assert "--version failed" in cli.logged
 
     with patch("runez.which", return_value=None):
-        cli.run("version-check", "python:1.0")
+        cli.run("version-check", "--system", "python:1.0")
         assert cli.failed
         assert "not installed" in cli.logged
