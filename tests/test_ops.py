@@ -140,7 +140,7 @@ def test_dryrun(cli, monkeypatch):
         assert cli.succeeded
         assert " install .pickley/.cache/checkout/mgit" in cli.logged
 
-    cli.run("-n install --no-binary :all: mgit")
+    cli.run("-n -Pinvoker install --no-binary :all: mgit")
     assert cli.succeeded
     assert " --no-binary :all: mgit" in cli.logged
     assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))

@@ -263,7 +263,7 @@ def main(args=None):
 
         pickley_venv = os.path.join(pickley_base, ".pickley", "pickley", "pickley-%s" % pickley_version)
         pv = get_python_version(python3)
-        if pv and pv > (3, 7):
+        if pv and pv >= (3, 7):
             run_program(python3, "-mvenv", "--clear", pickley_venv)
 
         else:

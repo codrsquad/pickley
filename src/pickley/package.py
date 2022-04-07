@@ -166,10 +166,10 @@ class PythonVenv(object):
             cfg = cfg or pspec.cfg
             python = python or cfg.find_python(pspec=pspec)
             runez.ensure_folder(folder, clean=True, logger=False)
-            if python.version > "3.6":
+            if python.version >= "3.7":
                 runez.run(python.executable, "-mvenv", folder)
 
-            else:  # pragma: no cover
+            else:
                 import virtualenv.__main__
 
                 runez.run(sys.executable, virtualenv.__main__.__file__, "-p", python.executable, folder)
