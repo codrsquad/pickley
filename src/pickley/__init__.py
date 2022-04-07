@@ -9,7 +9,7 @@ import runez
 from runez.pyenv import PypiStd, PythonDepot, PythonInstallationScanner, Version
 
 
-__version__ = "3.1.5"
+__version__ = "3.1.6"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
 DOT_META = ".pickley"
