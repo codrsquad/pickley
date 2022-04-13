@@ -182,7 +182,12 @@ class PythonVenv(object):
             else:
                 runez.run(python.executable, "-mvenv", folder)
 
-            self.run_pip("install", "-U", "pip")
+            pip = "pip"
+            if python.version and python.version < "3.7":
+                # pip started bundling 'rich', which doesn't work with 3.6
+                pip += "<22"
+
+            self.run_pip("install", "-U", pip)
 
     def __repr__(self):
         return runez.short(self.folder)

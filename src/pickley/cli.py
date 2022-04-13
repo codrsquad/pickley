@@ -217,6 +217,7 @@ def clean_env_vars(*keys):
     """Ensure given env vars are removed if present"""
     for key in keys:
         if key in os.environ:
+            runez.log.trace("Unsetting env var %s" % key)
             del os.environ[key]
 
 
@@ -237,19 +238,10 @@ def main(ctx, debug, config, index, python, delivery, packager, virtualenv):
     global PACKAGER
     PACKAGER = PexPackager if packager == "pex" else VenvPackager
     runez.system.AbortException = SystemExit
-    clean_env_vars("__PYVENV_LAUNCHER__", "PYTHONPATH", "VIRTUAL_ENV")  # See https://github.com/python/cpython/pull/9516
-    if runez.SYS_INFO.platform_id.is_macos and "ARCHFLAGS" not in os.environ and runez.SYS_INFO.platform_id.arch:
-        # Ensure the proper platform is used on macos
-        os.environ["ARCHFLAGS"] = "-arch %s" % runez.SYS_INFO.platform_id.arch
-
     level = logging.WARNING
     if ctx.invoked_subcommand == "package":
         level = logging.INFO
         python = python or "invoker"  # Default to using invoker for 'package' subcommand
-
-    CFG.set_cli(config, delivery, index, python, virtualenv)
-    if ctx.invoked_subcommand != "package":
-        CFG.set_base(find_base())
 
     runez.log.setup(
         debug=debug or os.environ.get("PICKLEY_TRACE"),
@@ -259,6 +251,16 @@ def main(ctx, debug, config, index, python, delivery, packager, virtualenv):
         locations=None,
         trace="PICKLEY_TRACE",
     )
+    clean_env_vars("__PYVENV_LAUNCHER__", "PYTHONPATH")  # See https://github.com/python/cpython/pull/9516
+    if runez.SYS_INFO.platform_id.is_macos and "ARCHFLAGS" not in os.environ and runez.SYS_INFO.platform_id.arch:
+        # Ensure the proper platform is used on macos
+        archflags = "-arch %s" % runez.SYS_INFO.platform_id.arch
+        runez.log.trace("Setting ARCHFLAGS=%s" % archflags)
+        os.environ["ARCHFLAGS"] = archflags
+
+    CFG.set_cli(config, delivery, index, python, virtualenv)
+    if ctx.invoked_subcommand != "package":
+        CFG.set_base(find_base())
 
 
 @main.command(name="auto-upgrade")
