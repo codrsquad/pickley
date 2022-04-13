@@ -38,7 +38,11 @@ def test_edge_cases(temp_cfg, logged):
     runez.touch(".pickley/.cache/virtualenv-20.13.0.pyz")
     with patch("runez.run", return_value=runez.program.RunResult(code=0)):
         cmd = venv._create_virtualenv(pspec, cfg=temp_cfg, runner=lambda *x: x)
-        assert cmd[4] == "--download"
+        if temp_cfg.available_pythons.invoker.version < "3.7":
+            assert cmd[4] == "--pip"
+
+        else:
+            assert cmd[4] == "--download"
 
 
 def simulated_run(*args, **_):
