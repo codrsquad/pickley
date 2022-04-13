@@ -1,8 +1,8 @@
 import os
+from unittest.mock import MagicMock, patch
 
 import pytest
 import runez
-from mock import MagicMock, patch
 
 from pickley import __version__, PackageSpec, PICKLEY, PickleyConfig
 from pickley.delivery import auto_uninstall, DeliveryMethod

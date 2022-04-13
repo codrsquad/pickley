@@ -15,8 +15,6 @@ import tempfile
 DRYRUN = False
 HOME = os.path.expanduser("~")
 RUNNING_FROM_VENV = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-# VIRTUALENV_URL = "https://bootstrap.pypa.io/virtualenv/virtualenv.pyz"
-VIRTUALENV_URL = "https://github.com/pypa/get-virtualenv/blob/20.10.0/public/virtualenv.pyz?raw=true"
 TMP_FOLDER = None  # type: str
 RX_VERSION = re.compile(r"^\D*(\d+)\.(\d+).*$")
 
@@ -215,6 +213,52 @@ def get_python_version(python3):
         return major, minor
 
 
+def pip_version(python_version):
+    """
+    Args:
+        python_version (tuple): Target python version
+
+    Returns:
+        (str | None): Pinned pip version to use, if applicable
+    """
+    if python_version and python_version < (3, 7):
+        return "21.3.1"
+
+
+def create_virtualenv(tmp_folder, python_version, python_exe, venv_folder, virtualenv_version="20.10.0", runner=run_program):
+    """
+    Args:
+        tmp_folder (str): Temp folder to use, virtualenv.pyz is downloaded there
+        python_version (tuple): Target python version
+        python_exe (str): Target python executable
+        venv_folder (str): Target venv folder
+        virtualenv_version (str): Virtualenv version to use
+        runner (callable): Function to use to run virtualenv
+    """
+    zipapp = os.path.join(tmp_folder, "virtualenv-%s.pyz" % virtualenv_version)
+    if not os.path.exists(zipapp):
+        download(zipapp, "https://github.com/pypa/get-virtualenv/blob/%s/public/virtualenv.pyz?raw=true" % virtualenv_version)
+
+    cmd = virtualenv_cmd(zipapp, python_version, python_exe, venv_folder)
+    return runner(*cmd)
+
+
+def virtualenv_cmd(virtualenv_path, python_version, python_exe, venv_folder):
+    cmd = [sys.executable, virtualenv_path, "-q", "--clear"]
+    pv = pip_version(python_version)
+    if pv:
+        cmd.append("--pip")
+        cmd.append(pv)
+
+    else:
+        cmd.append("--download")
+
+    cmd.append("-p")
+    cmd.append(python_exe)
+    cmd.append(venv_folder)
+    return cmd
+
+
 def main(args=None):
     """Bootstrap pickley"""
     global DRYRUN
@@ -267,9 +311,9 @@ def main(args=None):
             run_program(python3, "-mvenv", "--clear", pickley_venv)
 
         else:
-            zipapp = os.path.join(TMP_FOLDER, "virtualenv.pyz")
-            download(zipapp, VIRTUALENV_URL)
-            run_program(sys.executable, zipapp, "-q", "--clear", "--pip", "21.3.1", "-p", python3, pickley_venv)
+            # For py3.6, use old virtualenv because some venv stdlib modules back then didn't come with pip
+            # Pin versions to "known goods" as py3.6 is EOL
+            create_virtualenv(TMP_FOLDER, pv, python3, pickley_venv)
 
         run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", spec)
         run_program(os.path.join(pickley_venv, "bin", "pickley"), "base", "bootstrap-own-wrapper")

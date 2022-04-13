@@ -35,7 +35,7 @@ def test_bootstrap(cli, monkeypatch):
                 assert cli.succeeded
                 assert "__PYVENV_LAUNCHER__" not in os.environ
                 assert "Replacing older pickley 0.1" in cli.logged
-                assert "Would run: python virtualenv.pyz -q --clear --pip 21.3.1 -p " in cli.logged
+                assert "Would run: python virtualenv-20.10.0.pyz -q --clear --pip 21.3.1 -p " in cli.logged
                 assert "Would run: .local/bin/.pickley/pickley/pickley-" in cli.logged
 
             # Simulate multiple base candidates given
@@ -72,7 +72,13 @@ def test_bootstrap(cli, monkeypatch):
 
 
 def test_edge_cases(temp_folder, monkeypatch, logged):
-    bstrap.DRYRUN = False
+    monkeypatch.setattr(bstrap, "DRYRUN", True)
+    cmd = bstrap.virtualenv_cmd("vv", (3, 6), "pyexe", "venv")
+    assert cmd == [sys.executable, "vv", "-q", "--clear", "--pip", "21.3.1", "-p", "pyexe", "venv"]
+    cmd = bstrap.virtualenv_cmd("vv", (3, 7), "pyexe", "venv")
+    assert cmd == [sys.executable, "vv", "-q", "--clear", "--download", "-p", "pyexe", "venv"]
+
+    monkeypatch.setattr(bstrap, "DRYRUN", False)
     assert bstrap.which("python3")  # Check that which() works
 
     monkeypatch.setattr(bstrap, "RUNNING_FROM_VENV", False)

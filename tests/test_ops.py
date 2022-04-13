@@ -1,10 +1,10 @@
 import os
 import sys
 import time
+from unittest.mock import patch
 
 import pytest
 import runez
-from mock import patch
 from runez.http import GlobalHttpCalls
 
 from pickley import __version__, get_program_path, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest
@@ -262,6 +262,14 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
 
     cli.expect_success("--debug auto-upgrade %s" % package, "Skipping auto-upgrade, checked recently")
     cli.expect_success("install %s" % package, "is already installed")
+    if simulate_version:
+        # Edge case: simulated user manually deletes the installed wrapper or symlink
+        assert os.path.exists(package)
+        os.unlink(package)
+        cli.run("--debug", "-d%s" % delivery, "install", package)
+        assert cli.succeeded
+        assert cli.match("Installed %s" % package)
+
     cli.expect_success("check", "is installed")
     cli.expect_success("list", package)
     cli.expect_success("upgrade", "is already up-to-date")

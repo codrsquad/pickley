@@ -1,10 +1,10 @@
 import logging
 import os
-import sys
 
 import runez
 
 from pickley import abort, PackageSpec, PICKLEY
+from pickley.bstrap import create_virtualenv, pip_version
 from pickley.delivery import DeliveryMethod
 
 
@@ -161,36 +161,39 @@ class PythonVenv(object):
         self.folder = folder
         self.index = index
         if create and folder:
-            cfg = cfg or pspec.cfg
-            python = python or cfg.find_python(pspec=pspec)
-            runez.ensure_folder(folder, clean=True, logger=False)
-            vv = pspec.cfg.get_virtualenv(pspec)
-            if vv:
-                from pickley.bstrap import download
-
-                if vv == "latest":
-                    vv = PackageSpec(pspec.cfg, "virtualenv")
-                    vv = vv.get_desired_version_info().version
-
-                zipapp = pspec.cfg.cache.full_path("virtualenv-%s.pyz" % vv)
-                if not os.path.exists(zipapp):
-                    url = "https://github.com/pypa/get-virtualenv/blob/%s/public/virtualenv.pyz?raw=true" % vv
-                    download(zipapp, url, dryrun=runez.DRYRUN)
-
-                runez.run(sys.executable, zipapp, "-q", "--clear", "--download", "-p", python.executable, folder)
-
-            else:
-                runez.run(python.executable, "-mvenv", folder)
-
-            pip = "pip"
-            if python.version and python.version < "3.7":
-                # pip started bundling 'rich', which doesn't work with 3.6
-                pip += "<22"
-
-            self.run_pip("install", "-U", pip)
+            self._create_virtualenv(pspec, cfg=cfg, python=python, vv=pspec.cfg.get_virtualenv(pspec))
 
     def __repr__(self):
         return runez.short(self.folder)
+
+    def _create_virtualenv(self, pspec, cfg=None, python=None, runner=runez.run, vv=None):
+        cfg = cfg or pspec.cfg
+        python = python or cfg.find_python(pspec=pspec)
+        runez.ensure_folder(self.folder, clean=True, logger=False)
+        if vv:
+            return self._old_virtualenv(pspec, python, self.folder, runner, vv)
+
+        runez.run(python.executable, "-mvenv", self.folder)
+        if not runez.DRYRUN and not self.pip_path:
+            return self._old_virtualenv(pspec, python, self.folder, runner, "latest")
+
+        pip_spec = pip_version(python.version.components)
+        pip_spec = "pip==%s" % pip_spec if pip_spec else "pip"
+        return self.run_pip("install", "-U", pip_spec)
+
+    @staticmethod
+    def _old_virtualenv(pspec, python, folder, runner, vv):
+        """Create a virtualenv using old virtualenv module"""
+        pv = python.version.components
+        if not vv or vv == "latest":
+            vv = PackageSpec(pspec.cfg, "virtualenv")
+            vv = vv.get_desired_version_info().version
+
+        return create_virtualenv(pspec.cfg.cache.path, pv, python.executable, folder, virtualenv_version=vv, runner=runner)
+
+    @property
+    def pip_path(self):
+        return self.bin_path("pip", try_variant=True)
 
     def bin_path(self, name, try_variant=False):
         """
@@ -237,8 +240,7 @@ class PythonVenv(object):
         return self.run_pip("wheel", "-i", self.index, *args)
 
     def run_pip(self, *args, **kwargs):
-        exe = self.bin_path("pip", try_variant=True)
-        return runez.run(exe, *args, **kwargs)
+        return runez.run(self.pip_path, *args, **kwargs)
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""

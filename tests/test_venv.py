@@ -1,10 +1,10 @@
 import os
+from unittest.mock import patch
 
 import pytest
 import runez
-from mock import patch
 
-from pickley import PackageSpec
+from pickley import PackageSpec, RawConfig
 from pickley.package import PackageContents, PythonVenv
 
 
@@ -23,10 +23,22 @@ Files:
 
 
 def test_edge_cases(temp_cfg, logged):
+    temp_cfg.configs.append(RawConfig(None, "test", {"pinned": {"virtualenv": {"version": "20.13.0"}}}))
     runez.touch("dummy.whl")
     runez.ensure_folder(".", clean=True)
     assert "Cleaned 1 file from" in logged.pop()
     assert not os.path.exists("dummy.whl")
+
+    pspec = PackageSpec(temp_cfg, "mgit==1.3.0")
+    venv = PythonVenv(pspec=pspec, folder="venv", create=False)
+    assert not venv.pip_path
+    runez.touch("venv/bin/pip3")
+    assert venv.pip_path == "venv/bin/pip3"
+
+    runez.touch(".pickley/.cache/virtualenv-20.13.0.pyz")
+    with patch("runez.run", return_value=runez.program.RunResult(code=0)):
+        cmd = venv._create_virtualenv(pspec, cfg=temp_cfg, runner=lambda *x: x)
+        assert cmd[4] == "--download"
 
 
 def simulated_run(*args, **_):
