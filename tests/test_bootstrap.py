@@ -35,9 +35,8 @@ def test_bootstrap(cli, monkeypatch):
                 assert cli.succeeded
                 assert "__PYVENV_LAUNCHER__" not in os.environ
                 assert "Replacing older pickley 0.1" in cli.logged
-                assert "python3 -mvenv --clear" in cli.logged
+                assert "Would run: python virtualenv.pyz -q --clear --pip 21.3.1 -p " in cli.logged
                 assert "Would run: .local/bin/.pickley/pickley/pickley-" in cli.logged
-                assert "pip -q install -U pip<22" in cli.logged
 
             # Simulate multiple base candidates given
             cli.run("-n", "-b", "~/.local/bin:foo/bar", main=bstrap.main)

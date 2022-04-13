@@ -263,19 +263,13 @@ def main(args=None):
 
         pickley_venv = os.path.join(pickley_base, ".pickley", "pickley", "pickley-%s" % pickley_version)
         pv = get_python_version(python3)
-        if pv and pv >= (3, 6):
+        if pv and pv >= (3, 7):
             run_program(python3, "-mvenv", "--clear", pickley_venv)
-            pip = "pip"
-            if pv[1] == 6:
-                # pip started bundling 'rich', which doesn't work with 3.6
-                pip += "<22"
 
-            run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", "-U", pip)
-
-        else:  # pragma: no cover, deprecated: using virtualenv only for ancient versions of python
+        else:
             zipapp = os.path.join(TMP_FOLDER, "virtualenv.pyz")
             download(zipapp, VIRTUALENV_URL)
-            run_program(sys.executable, zipapp, "-q", "--clear", "--download", "-p", python3, pickley_venv)
+            run_program(sys.executable, zipapp, "-q", "--clear", "--pip", "21.3.1", "-p", python3, pickley_venv)
 
         run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", spec)
         run_program(os.path.join(pickley_venv, "bin", "pickley"), "base", "bootstrap-own-wrapper")
