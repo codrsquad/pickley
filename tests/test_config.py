@@ -52,7 +52,7 @@ def grab_sample(name):
     cfg = PickleyConfig()
     path = runez.DEV.tests_path("samples", name)
     runez.copy(path, DOT_META)
-    cfg.set_cli("config.json", None, None, None)
+    cfg.set_cli("config.json", None, None, None, None)
     cfg.set_base(".")
     assert str(cfg.configs[0]) == "cli (0 values)"
     return cfg

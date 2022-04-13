@@ -12,7 +12,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig, PLATFORM
+from pickley import __version__, abort, DOT_META, inform, PackageSpec, PickleyConfig
 from pickley.delivery import PICKLEY
 from pickley.package import PexPackager, PythonVenv, VenvPackager
 
@@ -231,22 +231,23 @@ def clean_env_vars(*keys):
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", help="Delivery method to use")
 @click.option("--packager", "-p", type=click.Choice(["pex", "venv"]), help="Packager to use")
-def main(ctx, debug, config, index, python, delivery, packager):
+@click.option("--virtualenv", help="Version of virtualenv to use (instead of built-in 'venv' module)")
+def main(ctx, debug, config, index, python, delivery, packager, virtualenv):
     """Package manager for python CLIs"""
     global PACKAGER
     PACKAGER = PexPackager if packager == "pex" else VenvPackager
     runez.system.AbortException = SystemExit
-    clean_env_vars("__PYVENV_LAUNCHER__", "PYTHONPATH")  # See https://github.com/python/cpython/pull/9516
-    if PLATFORM == "darwin" and "ARCHFLAGS" not in os.environ:
-        # Avoid issue on some OSX installations where ARM support seems to have been enabled too early
-        os.environ["ARCHFLAGS"] = "-arch x86_64"
+    clean_env_vars("__PYVENV_LAUNCHER__", "PYTHONPATH", "VIRTUAL_ENV")  # See https://github.com/python/cpython/pull/9516
+    if runez.SYS_INFO.platform_id.is_macos and "ARCHFLAGS" not in os.environ and runez.SYS_INFO.platform_id.arch:
+        # Ensure the proper platform is used on macos
+        os.environ["ARCHFLAGS"] = "-arch %s" % runez.SYS_INFO.platform_id.arch
 
     level = logging.WARNING
     if ctx.invoked_subcommand == "package":
         level = logging.INFO
         python = python or "invoker"  # Default to using invoker for 'package' subcommand
 
-    CFG.set_cli(config, delivery, index, python)
+    CFG.set_cli(config, delivery, index, python, virtualenv)
     if ctx.invoked_subcommand != "package":
         CFG.set_base(find_base())
 

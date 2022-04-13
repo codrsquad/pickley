@@ -4,7 +4,7 @@ import sys
 
 import runez
 
-from pickley import abort, PICKLEY
+from pickley import abort, PackageSpec, PICKLEY
 from pickley.delivery import DeliveryMethod
 
 
@@ -160,26 +160,34 @@ class PythonVenv(object):
 
         self.folder = folder
         self.index = index
-        self.py_path = os.path.join(folder, "bin", "python3")
-        self.pip_path = os.path.join(folder, "bin", "pip3")
         if create and folder:
             cfg = cfg or pspec.cfg
             python = python or cfg.find_python(pspec=pspec)
             runez.ensure_folder(folder, clean=True, logger=False)
-            if python.version >= "3.7":
-                runez.run(python.executable, "-mvenv", folder)
+            vv = pspec.cfg.get_virtualenv(pspec)
+            if vv:
+                from pickley.bstrap import download
+
+                if vv == "latest":
+                    vv = PackageSpec(pspec.cfg, "virtualenv")
+                    vv = vv.get_desired_version_info().version
+
+                zipapp = pspec.cfg.cache.full_path("virtualenv-%s.pyz" % vv)
+                if not os.path.exists(zipapp):
+                    url = "https://github.com/pypa/get-virtualenv/blob/%s/public/virtualenv.pyz?raw=true" % vv
+                    download(zipapp, url, dryrun=runez.DRYRUN)
+
+                runez.run(sys.executable, zipapp, "-q", "--clear", "--download", "-p", python.executable, folder)
 
             else:
-                import virtualenv.__main__
-
-                runez.run(sys.executable, virtualenv.__main__.__file__, "-p", python.executable, folder)
+                runez.run(python.executable, "-mvenv", folder)
 
             self.run_pip("install", "-U", "pip")
 
     def __repr__(self):
         return runez.short(self.folder)
 
-    def bin_path(self, name):
+    def bin_path(self, name, try_variant=False):
         """
         Args:
             name (str): File name
@@ -187,7 +195,14 @@ class PythonVenv(object):
         Returns:
             (str): Full path to this <venv>/bin/<name>
         """
-        return os.path.join(self.folder, "bin", name)
+        path = os.path.join(self.folder, "bin", name)
+        if runez.DRYRUN or os.path.exists(path):
+            return path
+
+        if try_variant:
+            path = os.path.join(self.folder, "bin", "%s3" % name)
+            if os.path.exists(path):
+                return path
 
     def is_venv_exe(self, path):
         """
@@ -217,12 +232,14 @@ class PythonVenv(object):
         return self.run_pip("wheel", "-i", self.index, *args)
 
     def run_pip(self, *args, **kwargs):
-        return runez.run(self.pip_path, *args, **kwargs)
+        exe = self.bin_path("pip", try_variant=True)
+        return runez.run(exe, *args, **kwargs)
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
         # kwargs.setdefault("short_exe", True)
-        return runez.run(self.py_path, *args, **kwargs)
+        exe = self.bin_path("python", try_variant=True)
+        return runez.run(exe, *args, **kwargs)
 
 
 def simplified_pip_error(error, output):

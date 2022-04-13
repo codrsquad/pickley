@@ -140,7 +140,7 @@ def test_dryrun(cli, monkeypatch):
         assert cli.succeeded
         assert " install .pickley/.cache/checkout/mgit" in cli.logged
 
-    cli.run("-n -Pinvoker install --no-binary :all: mgit")
+    cli.run("-n --virtualenv latest -Pinvoker install --no-binary :all: mgit")
     assert cli.succeeded
     assert " --no-binary :all: mgit" in cli.logged
     assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
@@ -160,7 +160,9 @@ def test_dryrun(cli, monkeypatch):
     runez.write("setup.py", "import sys\nfrom setuptools import setup\nif sys.argv[1]=='--version': sys.exit(1)\nsetup(name='foo')")
     cli.expect_failure("-n package .", "Could not determine package version")
 
-    cli.expect_success(["-n", "package", cli.project_folder], "Would run: ...pip... install -r requirements.txt")
+    cli.run("-n", "package", cli.project_folder)
+    assert cli.succeeded
+    cli.match("Would run: ...pip...install -r requirements.txt")
 
     cli.expect_failure("-n uninstall", "Specify packages to uninstall, or --all")
     cli.expect_failure("-n uninstall pickley", "Run 'uninstall --all' if you wish to uninstall pickley itself")

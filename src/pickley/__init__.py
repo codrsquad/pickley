@@ -171,6 +171,7 @@ class PackageSpec(object):
             delivery=self.cfg.delivery_method(self),
             index=self.cfg.index(self) or self.cfg.default_index,
             python=self.python.executable,
+            virtualenv=self.cfg.get_virtualenv(self),
         )
 
     def resolved_name_version(self):
@@ -285,11 +286,16 @@ class PackageSpec(object):
 
     def is_healthily_installed(self):
         """Double-check that current venv is still usable"""
-        main_exe = self.exe_path(self.dashed)
-        if runez.is_executable(main_exe):
-            py_path = self.cfg.available_pythons.resolved_python_exe(self.install_path)
-            if py_path:
-                return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
+        m = self.get_manifest()
+        if m and m.entrypoints:
+            for name in m.entrypoints:
+                exe_path = self.exe_path(name)
+                if not runez.is_executable(exe_path):
+                    return False
+
+        py_path = self.cfg.available_pythons.resolved_python_exe(self.install_path)
+        if py_path:
+            return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
     def find_wheel(self, folder, fatal=True):
         """list[str]: Wheel for this package found in 'folder', if any"""
@@ -494,7 +500,7 @@ class PickleyConfig(object):
         defaults = dict(delivery="wrap", install_timeout=1800, python=DEFAULT_PYTHONS, version_check_delay=300)
         self.configs.append(RawConfig(self, "defaults", defaults))
 
-    def set_cli(self, config_path, delivery, index, python):
+    def set_cli(self, config_path, delivery, index, python, virtualenv):
         """
         Args:
             config_path (str | None): Optional configuration to use
@@ -503,7 +509,7 @@ class PickleyConfig(object):
             python (str | None): Optional python interpreter to use
         """
         self.config_path = config_path
-        self.cli = TrackedSettings(delivery, index, python)
+        self.cli = TrackedSettings(delivery, index, python, virtualenv)
 
     def _add_config_file(self, path, base=None):
         path = runez.resolved_path(path, base=base)
@@ -704,6 +710,16 @@ class PickleyConfig(object):
         """
         return self.get_value("version_check_delay", pspec=pspec, validator=runez.to_int)
 
+    def get_virtualenv(self, pspec):
+        """
+        Args:
+            pspec (PackageSpec | None): Package spec, when applicable
+
+        Returns:
+            (str): Virtualenv version to use for this package spec (default: stdlib venv module)
+        """
+        return self.get_value("virtualenv", pspec=pspec)
+
     @staticmethod
     def colored_key(key, indent):
         if (key in K_CLI or key in K_LEAVES) and indent in (1, 3):
@@ -882,11 +898,13 @@ class TrackedSettings(object):
     delivery = None  # type: str # Delivery method name
     index = None  # type: str # Pypi url used
     python = None  # type: str # Desired python
+    virtualenv = None  # type: str # Desired virtualenv version
 
-    def __init__(self, delivery, index, python):
+    def __init__(self, delivery, index, python, virtualenv):
         self.delivery = delivery
         self.index = index
         self.python = runez.short(python) if python else None
+        self.virtualenv = virtualenv
 
     @classmethod
     def from_manifest_data(cls, data):
@@ -896,10 +914,10 @@ class TrackedSettings(object):
     @classmethod
     def from_dict(cls, data):
         if data:
-            return cls(delivery=data.get("delivery"), index=data.get("index"), python=data.get("python"))
+            return cls(delivery=data.get("delivery"), index=data.get("index"), python=data.get("python"), virtualenv=data.get("virtualenv"))
 
     def to_dict(self):
-        return dict(delivery=self.delivery, index=self.index, python=self.python)
+        return dict(delivery=self.delivery, index=self.index, python=self.python, virtualenv=self.virtualenv)
 
 
 class FolderBase(object):
