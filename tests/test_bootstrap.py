@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from unittest.mock import patch
@@ -13,6 +14,10 @@ def mocked_expanduser(path):
         path = path[2:]
 
     return path
+
+
+def mocked_logged_run(program, *args, **__):
+    logging.info("Running %s %s" % (program, " ".join(args)))
 
 
 def mocked_run(program, *_, **__):
@@ -58,6 +63,15 @@ def test_bootstrap(cli, monkeypatch):
             assert cli.succeeded
             assert "base: foo/bar" in cli.logged
 
+            with patch("pickley.bstrap.built_in_download"):
+                with patch("pickley.bstrap.get_python_version", return_value=(3, 10)):
+                    with patch("pickley.bstrap.run_program", side_effect=mocked_logged_run):
+                        # Verify that a python without ensurepip still works
+                        cli.run("1.0", main=bstrap.main)
+                        assert cli.succeeded
+                        assert " -mvenv --clear " in cli.logged
+                        assert "virtualenv-20.10.0.pyz -q --clear --download -p " in cli.logged
+
             with patch("pickley.bstrap.which", return_value=None):
                 with patch("pickley.bstrap.is_executable", return_value=False):
                     # Simulate no python 3
@@ -65,7 +79,7 @@ def test_bootstrap(cli, monkeypatch):
                     assert cli.failed
                     assert "Could not find python3 on this machine" in cli.logged
 
-            with patch("pickley.bstrap.get_python_version", return_value=(3, 9)):  # urllib fails
+            with patch("pickley.bstrap.get_python_version", return_value=(3, 9)):
                 cli.run("-n", main=bstrap.main)
                 assert cli.succeeded
                 assert " -mvenv " in cli.logged
