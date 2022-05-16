@@ -503,13 +503,22 @@ def version_check(system, programs):
         if not r.succeeded:
             runez.abort("%s --version failed: %s" % (runez.short(full_path), runez.short(r.full_output)))
 
-        version = Version.from_text(r.full_output)
+        version = parsed_version(r.full_output)
         if not version or version < min_version:
             runez.abort("%s version too low: %s (need %s+)" % (runez.short(full_path), version, min_version))
 
         overview.append("%s %s" % (program, version))
 
     print(runez.short(runez.joined(overview, delimiter=" ; ")))
+
+
+def parsed_version(text):
+    """Parse --version from text, in reverse order to avoid being fulled by warnings..."""
+    if text:
+        for line in reversed(text.splitlines()):
+            version = Version.from_text(line)
+            if version:
+                return version
 
 
 @main.command()
