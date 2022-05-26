@@ -26,7 +26,7 @@ See: `major changes in v3.0 <https://github.com/codrsquad/pickley/discussions/9>
 **pickley** allows to install and keep up-to-date standalone pip-installable python CLIs
 such as tox_, twine_, etc. A bit like brew_ or apt_, but based solely on pypi_
 
-It is similar to pipx_, but supports any python (including py2, up to version 2.4.6), offers self-auto-upgrade, and
+It is similar to pipx_, but supports any python (including py2), offers self-auto-upgrade, and
 can ``package`` folders as well (for deployment, as venv or pex_ currently).
 
 It can work out of the box, **without any configuration**:

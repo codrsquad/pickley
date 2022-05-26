@@ -49,7 +49,7 @@ def test_base(cli, monkeypatch):
 
 
 def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
-    p = PackageFinalizer("foo", dist, symlink)
+    p = PackageFinalizer("foo", dist, symlink, None, None)
     p.resolve()
     assert p.pspec.dashed == "foo"
     return p

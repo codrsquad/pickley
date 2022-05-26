@@ -529,14 +529,14 @@ def parsed_version(text):
 @click.option("--sanity-check", default=None, show_default=True, help="Args to invoke produced package as a sanity check")
 @click.option("--requirement", "-r", multiple=True, help="Install from the given requirements file (can be used multiple times)")
 @click.argument("project", required=True)
-def package(build, dist, symlink, no_compile, sanity_check, project, requirement):
+@click.argument("additional", nargs=-1)
+def package(build, dist, symlink, no_compile, sanity_check, project, requirement, additional):
     """Package a project from source checkout"""
     started = time.time()
     runez.log.spec.default_logger = LOG.info
     CFG.set_base(runez.resolved_path(build))
-    finalizer = PackageFinalizer(project, dist, symlink)
+    finalizer = PackageFinalizer(project, dist, symlink, requirement, additional)
     finalizer.sanity_check = sanity_check
-    finalizer.requirements = requirement
     finalizer.compile = not no_compile
     finalizer.resolve()
     report = finalizer.finalize()
@@ -556,20 +556,28 @@ class PackageFinalizer(object):
 
     pspec = None  # type: PackageSpec
 
-    def __init__(self, project, dist, symlink):
+    def __init__(self, project, dist, symlink, requirement_files, additional):
         """
         Args:
             project (str): Folder where project to be packaged resides (must have a setup.py)
             dist (str): Relative path to folder to use as 'dist' (where to deliver package)
-            symlink (str | None): Synlink specification, of the form 'root:root/...'
+            symlink (str | None): Symlink specification, of the form 'root:root/...'
+            requirement_files (list | tuple): Requirement files to use
+            additional (list | tuple): Additional requirements
         """
         self.folder = runez.resolved_path(project)
         self.dist = dist
         self.symlink = Symlinker(symlink) if symlink else None
         self.sanity_check = None
-        self.requirements = []
         self.compile = True
         self.border = "reddit"
+        if not requirement_files:
+            default_req = runez.resolved_path("requirements.txt", base=self.folder)
+            if os.path.exists(default_req):
+                requirement_files = default_req
+
+        requirement_files = [("-r", runez.resolved_path(r, base=self.folder)) for r in runez.flattened(requirement_files)]
+        self.requirements = runez.flattened(requirement_files, additional, self.folder, unique=True)
 
     @staticmethod
     def validate_sanity_check(exe, sanity_check):
@@ -589,18 +597,6 @@ class PackageFinalizer(object):
         if not os.path.isdir(self.folder):
             abort("Folder %s does not exist" % runez.red(runez.short(self.folder)))
 
-        req = self.requirements
-        if not req:
-            default_req = runez.resolved_path("requirements.txt", base=self.folder)
-            if os.path.exists(default_req):
-                req = [default_req]
-
-        if req:
-            req = [("-r", runez.resolved_path(r, base=self.folder)) for r in req]
-
-        req = runez.flattened(req, shellify=True)
-        req.append(self.folder)
-        self.requirements = req
         self.pspec = PackageSpec(CFG, self.folder)
         LOG.info("Using python: %s" % self.pspec.python)
         if self.dist.startswith("root/"):
