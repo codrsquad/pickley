@@ -16,11 +16,12 @@ DOT_META = ".pickley"
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
-K_LEAVES = {"facultative", "install_timeout", "pyenv", "version", "version_check_delay"}
+K_LEAVES = {
+    "facultative", "install_timeout", "min_python", "preferred_min_python", "preferred_pythons", "pyenv", "version", "version_check_delay"
+}
 PLATFORM = platform.system().lower()
 
 DEFAULT_PYPI = "https://pypi.org/simple"
-DEFAULT_PYTHONS = "3.6+"
 
 
 def abort(message):
@@ -473,7 +474,13 @@ class PickleyConfig(object):
     def available_pythons(self):
         pyenv = self.pyenv()
         scanner = PythonInstallationScanner(pyenv) if pyenv else None
-        return PythonDepot(scanner=scanner)
+        depot = PythonDepot(scanner=scanner)
+        depot.find_preferred_python(
+            self.get_value("preferred_pythons"),
+            min_python=self.get_value("min_python"),
+            preferred_min_python=self.get_value("preferred_min_python")
+        )
+        return depot
 
     @classmethod
     def pickley_dev_path(cls):
@@ -497,7 +504,14 @@ class PickleyConfig(object):
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
-        defaults = dict(delivery="wrap", install_timeout=1800, python=DEFAULT_PYTHONS, version_check_delay=300)
+        defaults = dict(
+            delivery="wrap",
+            install_timeout=1800,
+            min_python="3.6",
+            preferred_min_python="3.7",
+            preferred_pythons="/usr/bin/python3,/usr/bin/python",
+            version_check_delay=300
+        )
         self.configs.append(RawConfig(self, "defaults", defaults))
 
     def set_cli(self, config_path, delivery, index, python, virtualenv):
@@ -546,13 +560,13 @@ class PickleyConfig(object):
             (runez.pyenv.PythonInstallation): Object representing python installation
         """
         desired = self.get_value("python", pspec=pspec)
-        desired = runez.flattened(desired, split=",")
         if not desired:
-            # Edge case: configured empty python... just use invoker in that case
-            return self.available_pythons.invoker
+            # Most common case: use configured preferred python (will be 'invoker' by default)
+            return self.available_pythons.find_python(None)
 
         issues = []
         python = None
+        desired = runez.flattened(desired, split=",")
         for d in desired:
             python = self.available_pythons.find_python(d)
             if not python.problem:

@@ -2,7 +2,7 @@ import pytest
 import runez
 from runez.pyenv import PypiStd
 
-from pickley import __version__, DEFAULT_PYTHONS, despecced, DOT_META, get_default_index, PackageSpec
+from pickley import __version__, despecced, DOT_META, get_default_index, PackageSpec
 from pickley import PickleyConfig, pypi_name_problem, specced
 
 
@@ -43,7 +43,9 @@ cli:  # empty
 defaults:
   delivery: wrap
   install_timeout: 1800
-  python: {DEFAULT_PYTHONS}
+  min_python: 3.6
+  preferred_min_python: 3.7
+  preferred_pythons: /usr/bin/python3,/usr/bin/python
   version_check_delay: 300
 """
 
@@ -69,7 +71,6 @@ def test_bogus_config(temp_folder, logged):
     expected = SAMPLE_CONFIG.strip().format(
         base=runez.short(cfg.base),
         meta=runez.short(cfg.meta),
-        DEFAULT_PYTHONS=DEFAULT_PYTHONS,
     )
     assert actual == expected
 
