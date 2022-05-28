@@ -33,8 +33,8 @@ cli:  # empty
   delivery: wrap
   foo: bar
   include:
-    - bogus.json
-    - /dev/null/non-existent-config-file.json
+   - bogus.json
+   - /dev/null/non-existent-config-file.json
   install_timeout: 250
   pyenv: /dev/null
   python: /dev/null, /dev/null/foo
@@ -115,7 +115,7 @@ def test_good_config(temp_folder, logged):
 
     assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
 
-    mgit = PackageSpec(cfg, "mgit", "1.0.0")
+    mgit = PackageSpec(cfg, "mgit==1.0.0")
     pickley = PackageSpec(cfg, "pickley")
     assert mgit < pickley  # Ordering based on package name, then version
     assert str(mgit) == "mgit==1.0.0"
@@ -123,25 +123,21 @@ def test_good_config(temp_folder, logged):
     assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
     logged.clear()
 
-    d = pickley.get_desired_version_info()
-    assert d.source == "current"
-    assert d.version == __version__
+    assert pickley.desired_track.source == "current"
+    assert pickley.desired_track.version == __version__
 
-    d = mgit.get_desired_version_info()
-    assert d.source == "explicit"
-    assert d.version == "1.0.0"
+    assert mgit.desired_track.source == "explicit"
+    assert mgit.desired_track.version == "1.0.0"
 
     # Verify latest when no pins configured
     p = PackageSpec(cfg, "foo")
-    d = p.get_desired_version_info()
-    assert d.version == "0.1.2"
-    assert d.source == "latest"
+    assert p.desired_track.version == "0.1.2"
+    assert p.desired_track.source == "latest"
 
     # Verify pinned versions in samples/.../config.json are respected
     p = PackageSpec(cfg, "mgit")
-    d = p.get_desired_version_info()
-    assert d.version == "1.2.1"
-    assert d.source == "pinned"
+    assert p.desired_track.version == "1.2.1"
+    assert p.desired_track.source == "pinned"
 
 
 def test_speccing():

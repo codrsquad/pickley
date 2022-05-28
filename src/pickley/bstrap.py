@@ -228,7 +228,7 @@ def pip_version(python_version):
         return "21.3.1"
 
 
-def create_virtualenv(tmp_folder, python_version, python_exe, venv_folder, virtualenv_version="20.10.0", runner=None):
+def create_virtualenv(tmp_folder, python_version, python_exe, venv_folder, virtualenv_version="20.10.0", runner=None, dryrun=None):
     """
     Args:
         tmp_folder (str): Temp folder to use, virtualenv.pyz is downloaded there
@@ -240,7 +240,8 @@ def create_virtualenv(tmp_folder, python_version, python_exe, venv_folder, virtu
     """
     zipapp = os.path.join(tmp_folder, "virtualenv-%s.pyz" % virtualenv_version)
     if not os.path.exists(zipapp):
-        download(zipapp, "https://github.com/pypa/get-virtualenv/blob/%s/public/virtualenv.pyz?raw=true" % virtualenv_version)
+        url = "https://github.com/pypa/get-virtualenv/blob/%s/public/virtualenv.pyz?raw=true" % virtualenv_version
+        download(zipapp, url, dryrun=dryrun)
 
     cmd = virtualenv_cmd(zipapp, python_version, python_exe, venv_folder)
     if runner is None:

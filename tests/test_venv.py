@@ -30,14 +30,14 @@ def test_edge_cases(temp_cfg, logged):
     assert not os.path.exists("dummy.whl")
 
     pspec = PackageSpec(temp_cfg, "mgit==1.3.0")
-    venv = PythonVenv(pspec=pspec, folder="venv", create=False)
+    venv = PythonVenv("venv", pspec, create=False)
     assert not venv.pip_path
     runez.touch("venv/bin/pip3")
     assert venv.pip_path == "venv/bin/pip3"
 
     runez.touch(".pickley/.cache/virtualenv-20.13.0.pyz")
     with patch("runez.run", return_value=runez.program.RunResult(code=0)):
-        cmd = venv._create_virtualenv(pspec, cfg=temp_cfg, runner=lambda *x: x)
+        cmd = venv._create_virtualenv(runner=lambda *x: x)
         if temp_cfg.available_pythons.invoker.version < "3.7":
             assert cmd[4] == "--pip"
 
@@ -56,19 +56,18 @@ def simulated_run(*args, **_):
 
 
 def test_entry_points(temp_cfg):
-    venv = PythonVenv(folder="", cfg=temp_cfg)
     with runez.CaptureOutput(dryrun=True):
         pspec = PackageSpec(temp_cfg, "mgit")
-        contents = PackageContents(venv, pspec)
+        contents = PackageContents(PythonVenv("", pspec, create=False))
         assert str(contents) == "mgit [None]"
         assert str(contents.bin) == "bin [1 files]"
         assert contents.entry_points == {"mgit": "dryrun"}
 
     runez.write("ansible.dist-info/metadata.json", '{"extensions": {"python.commands": {"wrap_console": ["ansible"]}}}')
     with patch("runez.run", side_effect=simulated_run):
-        pspec = PackageSpec(temp_cfg, "ansible")  # Used to trigger ansible edge case
-        contents = PackageContents(venv, pspec)
-        assert str(contents) == "ansible [.]"
+        pspec = PackageSpec(temp_cfg, "ansible==5.0")  # Used to trigger ansible edge case
+        contents = PackageContents(PythonVenv("", pspec, create=False))
+        assert str(contents) == "ansible==5.0 [.]"
         assert str(contents.bin) == "bin [0 files]"
         assert str(contents.completers) == "bin [1 files]"
         assert str(contents.dist_info) == "ansible.dist-info [1 files]"
@@ -77,21 +76,19 @@ def test_entry_points(temp_cfg):
         assert contents.files.files.get("foo/bar.py")
         assert contents.info == {"Name": "ansible", "Version": "1.0.0", "Location": "."}
         assert contents.location == "."
-        assert contents.pspec is pspec
-        assert contents.venv is venv
 
-        contents = PackageContents(venv, PackageSpec(temp_cfg, "no-location"))
+        contents = PackageContents(PythonVenv("", PackageSpec(temp_cfg, "no-location"), create=False))
         assert contents.files is None
         assert contents.entry_points is None
 
-        contents = PackageContents(venv, PackageSpec(temp_cfg, "no-such-package"))
+        contents = PackageContents(PythonVenv("", PackageSpec(temp_cfg, "no-such-package"), create=False))
         assert contents.files is None
         assert contents.entry_points is None
 
 
 def test_pip_fail(temp_cfg, logged):
     pspec = PackageSpec(temp_cfg, "bogus")
-    venv = PythonVenv(pspec, folder="")
+    venv = PythonVenv("", pspec, create=False)
     assert str(venv) == ""
     with patch("pickley.package.PythonVenv.run_pip", return_value=runez.program.RunResult("", "some\nerror", code=1)):
         with pytest.raises(SystemExit):

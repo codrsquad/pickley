@@ -37,19 +37,19 @@ def brew_realpath(path):
 
 
 def test_edge_cases(temp_folder, logged):
-    venv = MagicMock(bin_path=lambda x: os.path.join("some-package/bin", x))
-    entry_points = {"some-source": ""}
     cfg = PickleyConfig()
+    pspec = PackageSpec(cfg, "mgit==1.0.0")
+    venv = MagicMock(pspec=pspec, bin_path=lambda x: os.path.join("some-package/bin", x))
+    entry_points = {"some-source": ""}
     cfg.set_base(".")
-    pspec = PackageSpec(cfg, "mgit", "1.0.0")
     d = DeliveryMethod()
     with pytest.raises(SystemExit):
-        d.install(pspec, venv, entry_points)
+        d.install(venv, entry_points)
     assert "Can't deliver some-source -> some-package/bin/some-source: source does not exist" in logged.pop()
 
     runez.touch("some-package/bin/some-source")
     with pytest.raises(SystemExit):
-        d.install(pspec, venv, entry_points)
+        d.install(venv, entry_points)
     assert "Failed to deliver" in logged.pop()
 
 
@@ -60,17 +60,17 @@ def test_uninstall_brew(*_):
     with runez.CaptureOutput() as logged:
         with patch("runez.run", return_value=runez.program.RunResult(code=0)):
             # Simulate successful uninstall
-            auto_uninstall("%s/tox" % BREW_INSTALL)
+            auto_uninstall(f"{BREW_INSTALL}/tox")
             assert "Auto-uninstalled brew formula 'tox'" in logged.pop()
 
         with patch("runez.run", return_value=runez.program.RunResult(code=1)):
             # Simulate failed uninstall
             with pytest.raises(SystemExit):
-                auto_uninstall("%s/twine" % BREW_INSTALL)
+                auto_uninstall(f"{BREW_INSTALL}/twine")
             assert "brew uninstall twine' failed, please check" in logged.pop()
 
         with pytest.raises(SystemExit):
-            auto_uninstall("%s/wget" % BREW_INSTALL)
+            auto_uninstall(f"{BREW_INSTALL}/wget")
         assert "Can't automatically uninstall" in logged.pop()
 
 
@@ -80,16 +80,17 @@ class SimulatedInstallation:
         self.name = name
         self.version = version
         self.entry_points = {name: name}
-        self.pspec = PackageSpec(cfg, name, version=version)
+        self.pspec = PackageSpec(cfg, f"{name}=={version}")
         self.pspec.save_manifest(self.entry_points)
-        self.venv = PythonVenv(self.pspec, create=False)
-        self.venv_exe = os.path.join(self.pspec.install_path, "bin", name)
-        runez.write(self.venv_exe, "#!/bin/bash\necho %s" % version)
-        runez.make_executable(self.venv_exe)
+        folder = self.pspec.get_install_path(version)
+        self.venv = PythonVenv(folder, self.pspec, create=False)
+        venv_exe = os.path.join(folder, "bin", name)
+        runez.write(venv_exe, f"#!/bin/bash\n\necho {version}\n")
+        runez.make_executable(venv_exe)
 
     def check_wrap(self, wrap_method):
         impl = DeliveryMethod.delivery_method_by_name(wrap_method)
-        impl.install(self.pspec, self.venv, self.entry_points)
+        impl.install(self.venv, self.entry_points)
         exe = runez.resolved_path(self.name)
         r = runez.run(exe, "--version", fatal=False)
         assert r.succeeded
@@ -97,11 +98,11 @@ class SimulatedInstallation:
 
     def check_alternating(self, logged):
         self.check_wrap("wrap")
-        assert "Wrapped %s -> " % self.name in logged.pop()
+        assert f"Wrapped {self.name} -> " in logged.pop()
         self.check_wrap("symlink")
-        assert "Symlinked %s -> " % self.name in logged.pop()
+        assert f"Symlinked {self.name} -> " in logged.pop()
         self.check_wrap("wrap")
-        assert "Wrapped %s -> " % self.name in logged.pop()
+        assert f"Wrapped {self.name} -> " in logged.pop()
 
 
 def test_wrapper(temp_cfg, logged):

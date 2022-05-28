@@ -48,16 +48,16 @@ def test_base(cli, monkeypatch):
     assert find_base() == "foo"
 
 
-def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
-    p = PackageFinalizer("foo", dist, symlink, None, None)
+def dummy_finalizer(cfg, dist, symlink="root:root/usr/local/bin"):
+    p = PackageFinalizer("foo", dist, symlink, None, None, cfg=cfg)
     p.resolve()
     assert p.pspec.dashed == "foo"
     return p
 
 
-def test_debian_mode(temp_folder, logged):
+def test_debian_mode(temp_cfg, logged):
     runez.write("foo/setup.py", "import setuptools\nsetuptools.setup(name='foo', version='1.0')")
-    p = dummy_finalizer("root/apps")
+    p = dummy_finalizer(temp_cfg, "root/apps")
     assert p.dist == "root/apps/foo"
     assert p.requirements == [runez.resolved_path("foo")]
     assert "Using python:" in logged.pop()
@@ -78,7 +78,7 @@ def test_debian_mode(temp_folder, logged):
     assert os.path.islink("root/usr/local/bin/foo")
 
     with patch("os.path.isdir", return_value=True):  # pretend /apps exists
-        p = dummy_finalizer("root/apps")
+        p = dummy_finalizer(temp_cfg, "root/apps")
         assert "debian mode" in logged.pop()
         assert p.dist == "/apps/foo"
 
@@ -130,22 +130,16 @@ def test_dryrun(cli, monkeypatch):
     runez.delete(dot_meta("mgit"))
 
     cli.expect_success("-n -Pfoo diagnostics", "desired python : foo", "foo [not available]", "sys.executable")
-    with patch("runez.run", return_value=runez.program.RunResult("failed")):
-        cli.run("-n install git@github.com:zsimic/mgit.git")
-        assert cli.failed
-        assert cli.match("No setup.py")
-
-    with patch("pickley.git_clone", side_effect=mock_git_clone):
-        cli.run("-n install git@github.com:zsimic/mgit.git")
-        assert cli.succeeded
-        assert " install .pickley/.cache/checkout/mgit" in cli.logged
-
-    cli.run("-n --virtualenv latest -Pinvoker install --no-binary :all: mgit")
+    cli.run("-n install git@github.com:zsimic/mgit.git")
     assert cli.succeeded
-    assert " --no-binary :all: mgit" in cli.logged
+    assert "pip install .pickley/.cache/checkout/git-github-com-zsimic-mgit-git" in cli.logged
+
+    cli.run("-n --virtualenv latest -Pinvoker install --no-binary :all: mgit==1.3.0")
+    assert cli.succeeded
+    assert " --no-binary :all: mgit==1.3.0" in cli.logged
     assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
     assert cli.match("Would save %s" % dot_meta("mgit/.manifest.json"))
-    assert cli.match("Would state: Installed mgit v")
+    assert cli.match("Would state: Installed mgit v1.3.0")
 
     cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
 
@@ -178,7 +172,6 @@ def test_edge_cases(temp_cfg, monkeypatch, logged):
     monkeypatch.setattr(PickleyConfig, "_pickley_dev_path", None)
     pspec = PackageSpec(temp_cfg, PICKLEY)
     assert pspec._pickley_dev_mode == runez.DEV.project_folder
-    assert pspec.install_path.endswith("%s-dev" % PICKLEY)
 
     assert pspec.find_wheel(".", fatal=False) is None
     assert "Expecting 1 wheel" in logged.pop()

@@ -2,7 +2,6 @@ import logging
 import os
 
 import runez
-from runez import short
 
 from pickley import abort, PICKLEY
 
@@ -74,51 +73,52 @@ class DeliveryMethod(object):
         if name == "symlink":
             return DeliveryMethodSymlink()
 
-        return abort("Unknown delivery method '%s'" % runez.red(name))
+        return abort(f"Unknown delivery method '{runez.red(name)}'")
 
-    def install(self, pspec, venv, entry_points):
+    def install(self, venv, entry_points):
         """
         Args:
-            pspec (pickley.PackageSpec): Package spec this installation is for
             venv (pickley.package.PythonVenv): Virtual env where executables reside (DOT_META/<package>/...)
             entry_points (dict | list): Full path of executable to deliver (<base>/<entry_point>)
         """
-        if not pspec.is_clear_for_installation():
-            auto_uninstall(pspec.exe_path(pspec.dashed))
+        if not venv.pspec.is_clear_for_installation():
+            auto_uninstall(venv.pspec.exe_path(venv.pspec.dashed))
 
         try:
-            prev_manifest = pspec.get_manifest()
+            prev_manifest = venv.pspec.manifest
             for name in entry_points:
                 src = venv.bin_path(name)
-                dest = pspec.exe_path(name)
+                dest = venv.pspec.exe_path(name)
+                ssrc = runez.short(src)
+                sdest = runez.short(dest)
                 if runez.DRYRUN:
-                    print("Would %s %s -> %s" % (self.short_name, short(dest), short(src)))
+                    print(f"Would {self.short_name} {sdest} -> {ssrc}")
                     continue
 
                 if not os.path.exists(src):
-                    abort("Can't %s %s -> %s: source does not exist" % (self.short_name, short(dest), runez.red(short(src))))
+                    abort(f"Can't {self.short_name} {sdest} -> {runez.red(ssrc)}: source does not exist")
 
-                LOG.debug("%s %s -> %s" % (self.action, short(dest), short(src)))
-                self._install(pspec, dest, src)
+                LOG.debug(f"{self.action} {sdest} -> {ssrc}")
+                self._install(venv.pspec, dest, src)
 
-            manifest = pspec.save_manifest(entry_points)
+            manifest = venv.pspec.save_manifest(entry_points)
             if not runez.DRYRUN and prev_manifest and prev_manifest.entrypoints:
                 for old_ep in prev_manifest.entrypoints:
                     if old_ep and old_ep not in entry_points:
                         # Remove old entry points that are not in new manifest any more
-                        runez.delete(pspec.exe_path(old_ep))
+                        runez.delete(venv.pspec.exe_path(old_ep))
 
             if self.ping:
                 # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-                runez.touch(pspec.ping_path)
+                runez.touch(venv.pspec.ping_path)
 
             return manifest
 
         except Exception as e:
-            abort("Failed to %s %s: %s" % (self.short_name, short(pspec), runez.red(e)))
+            abort(f"Failed to {self.short_name} {venv.pspec}: {runez.red(e)}")
 
     def _install(self, pspec, target, source):
-        raise NotImplementedError("%s is not implemented" % self.__class__.__name__)
+        raise NotImplementedError(f"{self.__class__.__name__} is not implemented")
 
 
 class DeliveryMethodSymlink(DeliveryMethod):
@@ -154,15 +154,7 @@ class DeliveryMethodWrap(DeliveryMethod):
 
     def _install(self, pspec, target, source):
         pickley = pspec.cfg.base.full_path(PICKLEY)
-        if pspec.dashed == PICKLEY:
-            wrapper = PICKLEY_WRAPPER
-
-        else:
-            wrapper = GENERIC_WRAPPER
-            if runez.DEV.project_folder and not os.path.exists(pickley):
-                # We're running from development venv
-                pickley = pspec.cfg.program_path
-
+        wrapper = PICKLEY_WRAPPER if pspec.dashed == PICKLEY else GENERIC_WRAPPER
         contents = wrapper.lstrip().format(
             hook=self.hook,
             bg=self.bg,
@@ -187,13 +179,13 @@ def auto_uninstall(target):
     if brew and name:
         result = runez.run(brew, "uninstall", "-f", name, fatal=False, logger=LOG.info)
         if result.succeeded:
-            LOG.info("Auto-uninstalled brew formula '%s'" % name)
-            return  #
+            LOG.info(f"Auto-uninstalled brew formula '{name}'")
+            return
 
-        command = "%s uninstall %s" % (brew, name)
-        abort("'%s' failed, please check" % runez.bold(command))
+        command = f"{brew} uninstall {name}"
+        abort(f"'{runez.bold(command)}' failed, please check")
 
-    abort("Can't automatically uninstall %s" % runez.short(target))
+    abort(f"Can't automatically uninstall {runez.short(target)}")
 
 
 def find_brew_name(target):

@@ -1,6 +1,7 @@
 import logging
 import os
 import platform
+import re
 import sys
 import time
 from datetime import datetime
@@ -53,10 +54,10 @@ def despecced(text):
     if text and "==" in text:
         text = text.strip()
         i = text.index("==")
-        version = text[i + 2:].strip()
+        version = text[i + 2:].strip() or None
         text = text[:i].strip()
 
-    return text, version or None
+    return text, version
 
 
 def specced(name, version):
@@ -70,7 +71,7 @@ def specced(name, version):
     """
     name = name.strip()
     if version and version.strip():
-        return "%s==%s" % (name, version.strip())
+        return f"{name}=={version.strip()}"
 
     return name
 
@@ -78,32 +79,66 @@ def specced(name, version):
 def pypi_name_problem(name):
     if not PypiStd.is_acceptable(name):
         note = None
-        problem = "'%s' is not a valid pypi package name" % runez.red(name)
+        problem = f"'{runez.red(name)}' is not a valid pypi package name"
         if name and not name[0].isalpha():
             note = "\npickley intentionally refuses to look at names that don't start with a letter"
 
         if note:
             note += "\nIf you think this name is legit, please submit an issue https://github.com/codrsquad/pickley/issues"
-            problem = "%s\n%s" % (problem, note)
+            problem = runez.joined(problem, note, delimiter="\n")
 
         return problem
 
 
-def validate_pypi_name(name):
-    problem = pypi_name_problem(name)
-    if problem:
-        abort(problem)
+def _dynamic_resolver(cfg, name_or_url):
+    package_name, package_version = despecced(name_or_url)
+    if package_version:
+        return package_name, package_version, None
 
-    if name != PypiStd.std_package_name(name):
-        logging.warning("'%s' is not pypi canonical, use dashes only, and lowercase" % name)
+    cached_resolved = None
+    folder = None
+    is_git = "://" in name_or_url or name_or_url.endswith(".git")
+    if is_git or "/" in name_or_url:
+        safe_name = re.sub(r"\W+", "-", name_or_url).strip("-")
+        folder = name_or_url if not is_git else cfg.cache.full_path("checkout", safe_name)
+        cached_resolved = cfg.cache.full_path(f"{safe_name}.rlv")
+        info = runez.read_json(cached_resolved)
+        if info and "resolved" in info:
+            package_name, package_version = info["resolved"]
+            return package_name, package_version, folder
 
+        if is_git and not os.path.isdir(folder):
+            runez.ensure_folder(folder, clean=True)
+            if runez.DRYRUN:
+                package_name = os.path.basename(name_or_url)
+                if package_name.endswith(".git"):
+                    package_name = package_name[:-4]
 
-def git_clone(pspec):
-    basename = runez.basename(pspec.original)
-    pspec.folder = pspec.cfg.cache.full_path("checkout", basename)
-    runez.ensure_folder(pspec.folder, clean=True, dryrun=False)
-    logger = LOG.info if runez.DRYRUN else runez.UNSET
-    runez.run("git", "clone", pspec.original, pspec.folder, dryrun=False, logger=logger)
+                return package_name, "1.0", folder
+
+            runez.run("git", "clone", name_or_url, folder)
+
+    if folder:
+        setup_py = os.path.join(folder, "setup.py")
+        if not os.path.exists(setup_py):
+            abort(f"No setup.py in '{runez.red(runez.short(folder))}'")
+
+        with runez.CurrentFolder(folder):
+            # Some setup.py's assume current folder is the one with their setup.py
+            r = runez.run(sys.executable, "setup.py", "--name", dryrun=False, fatal=False, logger=False)
+            package_name = r.output
+            if r.failed or not package_name:
+                abort(f"Could not determine package name from '{runez.red(runez.short(setup_py))}'")
+
+            r = runez.run(sys.executable, "setup.py", "--version", dryrun=False, fatal=False, logger=False)
+            package_version = r.output
+            if r.failed or not package_version:
+                abort("Could not determine package version from setup.py")
+
+            runez.save_json(dict(resolved=[package_name, package_version]), cached_resolved)
+            return package_name, package_version, folder
+
+    return package_name, package_version, None
 
 
 class PackageSpec(object):
@@ -117,54 +152,30 @@ class PackageSpec(object):
 
     # The following fields become available after a call to resolve()
     name = None  # type: str
-    version = None  # type: str
     folder = None  # type: str
     dashed = None  # type: str
     wheelified = None  # type: str
     python = None  # type: runez.pyenv.PythonInstallation
     pinned = None  # type: str
     settings = None  # type: TrackedSettings
+    _desired_track = None  # type: TrackedVersion
+    _latest = None  # type: TrackedVersion
+    _manifest = None  # type: TrackedManifest
 
-    def __init__(self, cfg, name_or_url, version=None):
+    def __init__(self, cfg, name_or_url):
         """
         Args:
             cfg (PickleyConfig): Associated configuration
             name_or_url (str): Provided package reference (either name, folder or git url)
-            version (str | None): Optional version spec
         """
         self.cfg = cfg
         self.original = name_or_url
-        self.version = version
-        self._delayed_resolver = self._get_delayed_resolver()
-        if self._delayed_resolver is None:
-            self.resolve()
-
-    def __repr__(self):
-        return self.specced or self.dashed or self.original
-
-    def __lt__(self, other):
-        return str(self) < str(other)
-
-    def _get_delayed_resolver(self):
-        if "://" in self.original or self.original.endswith(".git"):
-            return git_clone
-
-        if "/" in self.original:
-            folder = runez.resolved_path(self.original)
-            if os.path.isdir(folder):
-                self.folder = folder
-
-    def resolve(self):
-        if self.name:
-            return
-
-        if self._delayed_resolver is not None:
-            self._delayed_resolver(self)
-            self._delayed_resolver = None
-
-        self.name, self.version = self.resolved_name_version()
-        validate_pypi_name(self.name)
+        self.name, self.given_version, self.folder = _dynamic_resolver(cfg, name_or_url)
+        runez.abort_if(pypi_name_problem(self.name))
         self.dashed = PypiStd.std_package_name(self.name)
+        if self.name != self.dashed:
+            logging.warning(f"'{runez.red(self.name)}' is not pypi canonical, use dashes only and lowercase")
+
         self.wheelified = PypiStd.std_wheel_basename(self.name)
         self.pinned = self.cfg.pinned_version(self)
         self.python = self.cfg.find_python(self)
@@ -175,31 +186,11 @@ class PackageSpec(object):
             virtualenv=self.cfg.get_virtualenv(self),
         )
 
-    def resolved_name_version(self):
-        if not self.folder:
-            if self.version:
-                return self.original, self.version
+    def __repr__(self):
+        return specced(self.dashed, self.given_version)
 
-            return despecced(self.original)
-
-        setup_py = os.path.join(self.folder, "setup.py")
-        if not os.path.exists(setup_py):
-            abort("No setup.py in %s" % self.folder)
-
-        with runez.CurrentFolder(self.folder):
-            # Some setup.py's assume current folder is the one with their setup.py
-            r = runez.run(sys.executable, "setup.py", "--name", dryrun=False, fatal=False, logger=False)
-            package_name = r.output
-            if r.failed or not package_name:
-                abort("Could not determine package name from %s" % setup_py)
-
-            validate_pypi_name(package_name)
-            r = runez.run(sys.executable, "setup.py", "--version", dryrun=False, fatal=False, logger=False)
-            package_version = r.output
-            if r.failed or not package_version:
-                abort("Could not determine package version from setup.py")
-
-        return package_name, package_version
+    def __lt__(self, other):
+        return str(self) < str(other)
 
     @runez.cached_property
     def _pickley_dev_mode(self):
@@ -209,48 +200,76 @@ class PackageSpec(object):
             if dev_path:
                 return dev_path
 
-    @property
-    def specced(self):
-        if self.name and self.version:
-            return specced(self.dashed, self.version)
-
-    @property
+    @runez.cached_property
     def index(self):
         """Index to use for this package spec"""
         return self.cfg.index(self)
 
     @property
-    def install_path(self):
-        if self.name:
-            if self._pickley_dev_mode:
-                return self.cfg.meta.full_path(PICKLEY, "%s-dev" % PICKLEY)
+    def desired_track(self):
+        if self._desired_track is None:
+            if self.given_version:
+                self._desired_track = TrackedVersion(source="explicit", version=self.given_version)
 
-            if self.version:
-                return self.cfg.meta.full_path(self.dashed, "%s-%s" % (self.dashed, self.version))
+            elif self.pinned:
+                self._desired_track = TrackedVersion(source="pinned", version=self.pinned)
+
+            else:
+                self._desired_track = self.get_latest()  # By default, the latest is desired
+                candidates = []
+                if self.manifest and self.manifest.version:
+                    candidates.append(TrackedVersion.from_manifest(self.manifest))
+
+                if self.dashed == PICKLEY:
+                    candidates.append(TrackedVersion(source="current", version=__version__))
+
+                for candidate in candidates:
+                    if candidate and candidate.version:
+                        dt = self._desired_track
+                        if not dt or not dt.version or Version(candidate.version) > Version(dt.version):
+                            self._desired_track = candidate
+
+        return self._desired_track
 
     @property
+    def is_up_to_date(self):
+        return self.manifest and self.manifest.version == self.desired_track.version and self.is_healthily_installed()
+
+    @property
+    def manifest(self):
+        """TrackedManifest: Manifest of the current installation of this package"""
+        if self._manifest is None:
+            self._manifest = TrackedManifest.from_file(self.manifest_path)
+
+        return self._manifest
+
+    @runez.cached_property
     def manifest_path(self):
-        return self.name and self.cfg.meta.full_path(self.dashed, ".manifest.json")
+        return self.cfg.meta.full_path(self.dashed, ".manifest.json")
 
-    @property
+    @runez.cached_property
     def meta_path(self):
-        return self.name and self.cfg.meta.full_path(self.dashed)
+        return self.cfg.meta.full_path(self.dashed)
 
-    @property
+    @runez.cached_property
     def ping_path(self):
         """Path to .ping file (for throttle auto-upgrade checks)"""
-        return self.name and self.cfg.cache.full_path("%s.ping" % self.dashed)
+        return self.cfg.cache.full_path(f"{self.dashed}.ping")
 
-    @property
+    @runez.cached_property
     def is_already_installed_by_pickley(self):
         """bool: True if this package was already installed by pickley once"""
-        if self.name:
-            return self.dashed == PICKLEY or os.path.exists(self.manifest_path)
+        return self.dashed == PICKLEY or os.path.exists(self.manifest_path)
+
+    def get_install_path(self, version):
+        if self._pickley_dev_mode:
+            return self.cfg.meta.full_path(PICKLEY, f"{PICKLEY}-dev")
+
+        return self.cfg.meta.full_path(self.dashed, f"{self.dashed}-{version}")
 
     def get_lock_path(self):
         """str: Path to lock file used during installation for this package"""
-        name = self.dashed or os.path.basename(self.original)
-        return self.cfg.meta.full_path("%s.lock" % name)
+        return self.cfg.meta.full_path(f"{self.dashed}.lock")
 
     def skip_reason(self, force=False):
         """str: Reason for skipping installation, when applicable"""
@@ -287,25 +306,26 @@ class PackageSpec(object):
 
     def is_healthily_installed(self):
         """Double-check that current venv is still usable"""
-        m = self.get_manifest()
-        if m and m.entrypoints:
-            for name in m.entrypoints:
-                exe_path = self.exe_path(name)
-                if not runez.is_executable(exe_path):
-                    return False
+        if self.manifest:
+            if self.manifest.entrypoints:
+                for name in self.manifest.entrypoints:
+                    exe_path = self.exe_path(name)
+                    if not runez.is_executable(exe_path):
+                        return False
 
-        py_path = self.cfg.available_pythons.resolved_python_exe(self.install_path)
-        if py_path:
-            return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
+            install_folder = self.get_install_path(self.manifest.version)
+            py_path = self.cfg.available_pythons.resolved_python_exe(install_folder)
+            if py_path:
+                return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
     def find_wheel(self, folder, fatal=True):
         """list[str]: Wheel for this package found in 'folder', if any"""
         if runez.DRYRUN:
-            return ["%s-%s-py3-none-any.whl" % (self.wheelified, self.version)]
+            return [f"{self.wheelified}-{self.desired_track.version}-py3-none-any.whl"]
 
         result = []
         if folder and os.path.isdir(folder):
-            prefix = "%s-" % self.wheelified
+            prefix = f"{self.wheelified}-"
             for fname in os.listdir(folder):
                 if fname.startswith(prefix):
                     result.append(os.path.join(folder, fname))
@@ -313,24 +333,22 @@ class PackageSpec(object):
             if len(result) == 1:
                 return result[0]
 
-        return runez.abort("Expecting 1 wheel, found: %s" % (result or "None"), fatal=fatal, return_value=None)
-
-    def get_manifest(self):
-        """TrackedManifest: Manifest of the current installation of this package"""
-        return TrackedManifest.from_file(self.manifest_path)
+        return runez.abort(f"Expecting 1 wheel, found: {runez.short(result)}", fatal=fatal, return_value=None)
 
     def groom_installation(self, keep_for=60):
         """
         Args:
             keep_for (int): Minimum time in minutes for how long to keep the previous latest version
         """
+        if self._pickley_dev_mode:
+            return
+
         if self.cfg.cache.contains(self.folder):
             runez.delete(self.folder, logger=False)
 
-        current = self.get_manifest()
         meta_path = self.meta_path
         current_age = None
-        if current and os.path.isdir(meta_path):
+        if self.manifest and os.path.isdir(meta_path):
             now = time.time()
             candidates = []
             for fname in os.listdir(meta_path):
@@ -340,7 +358,7 @@ class PackageSpec(object):
                 fpath = os.path.join(meta_path, fname)
                 vpart = fname[len(self.dashed) + 1:]
                 age = now - os.path.getmtime(fpath)
-                if vpart == current.version:
+                if vpart == self.manifest.version:
                     current_age = age
 
                 else:
@@ -372,57 +390,33 @@ class PackageSpec(object):
             self.settings,
             entry_points,
             pinned=self.pinned,
-            version=self.version,
+            version=self.desired_track.version,
         )
         payload = manifest.to_dict()
         runez.save_json(payload, self.manifest_path)
-        runez.save_json(payload, os.path.join(self.install_path, ".manifest.json"))
+        path = self.get_install_path(self.desired_track.version)
+        runez.save_json(payload, os.path.join(path, ".manifest.json"))
+        self._manifest = manifest
         return manifest
-
-    def get_desired_version_info(self, force=False):
-        """
-        Args:
-            force (bool): If True, ignore configured 'version_check_delay'
-
-        Returns:
-            (TrackedVersion): Object describing desired version
-        """
-        if self.version:
-            return TrackedVersion(source="explicit", version=self.version)
-
-        if self.pinned:
-            return TrackedVersion(source="pinned", version=self.pinned)
-
-        desired = self.get_latest(force=force)  # By default, the latest is desired
-        candidates = []
-        manifest = self.get_manifest()
-        if manifest and manifest.version:
-            candidates.append(TrackedVersion.from_manifest(manifest))
-
-        if self.dashed == PICKLEY:
-            candidates.append(TrackedVersion(source="current", version=__version__))
-
-        for candidate in candidates:
-            if candidate and candidate.version:
-                if not desired or not desired.version or Version(candidate.version) > Version(desired.version):
-                    desired = candidate
-
-        return desired
 
     def get_latest(self, force=False):
         """Tracked in DOT_META/.cache/<package>.latest"""
-        path = self.cfg.cache.full_path("%s.latest" % self.dashed)
-        age = self.cfg.version_check_delay(self)
-        if not force and age and runez.file.is_younger(path, age):
-            latest = TrackedVersion.from_file(path)
-            if latest:
-                return latest
+        if force or self._latest is None:
+            path = self.cfg.cache.full_path(f"{self.dashed}.latest")
+            if not force:
+                age = self.cfg.version_check_delay(self)
+                if age and runez.file.is_younger(path, age):
+                    self._latest = TrackedVersion.from_file(path)
+                    if self._latest:
+                        return self._latest
 
-        latest = TrackedVersion.from_pypi(self)
-        if not latest.problem:
-            runez.save_json(latest.to_dict(), path, fatal=None)
+            self._latest = TrackedVersion.from_pypi(self)
+            if not self._latest.problem:
+                runez.save_json(self._latest.to_dict(), path, fatal=None)
 
-        return latest
+            self._desired_track = None
+
+        return self._latest
 
 
 def get_default_index(*paths):
@@ -572,7 +566,7 @@ class PickleyConfig(object):
             if not python.problem:
                 return python
 
-            issues.append("Python '%s' skipped: %s" % (runez.bold(runez.short(d)), runez.red(python.problem)))
+            issues.append(f"Python '{runez.bold(runez.short(d))}' skipped: {runez.red(python.problem)}")
 
         for i in issues:  # Warn only if no python could be found at all
             LOG.warning(i)
@@ -752,7 +746,7 @@ class PickleyConfig(object):
 
     def represented(self):
         """str: Human readable representation of this configuration"""
-        result = ["%s: %s" % (runez.bold("base"), self), ""]
+        result = [f"{runez.bold('base')}: {self}", ""]
         for c in self.configs:
             result.append(c.represented())
 
@@ -775,6 +769,9 @@ class TrackedVersion(object):
         self.source = source
         self.version = version
 
+    def __repr__(self):
+        return self.version
+
     @classmethod
     def from_pypi(cls, pspec, index=None, include_prerelease=False):
         """
@@ -789,7 +786,7 @@ class TrackedVersion(object):
         index = index or pspec.index or pspec.cfg.default_index
         version = PypiStd.latest_pypi_version(pspec.dashed, index=index, include_prerelease=include_prerelease)
         if not version:
-            return cls(index=index, problem="does not exist on %s" % index)
+            return cls(index=index, problem=f"does not exist on {index}")
 
         return cls(index=index, source="latest", version=version.text)
 
@@ -832,13 +829,13 @@ class TrackedManifest(object):
     def __init__(self, path, settings, entrypoints, install_info=None, pinned=None, version=None):
         self.path = path
         self.settings = settings
-        self.entrypoints = entrypoints
+        self.entrypoints = entrypoints or {}
         self.install_info = install_info or TrackedInstallInfo.current()
         self.pinned = pinned
         self.version = version
 
     def __repr__(self):
-        return "%s [p: %s]" % (self.version, self.python)
+        return f"{self.version} [p: {self.python}]"
 
     @classmethod
     def from_file(cls, path):
@@ -996,7 +993,7 @@ class RawConfig(object):
         self.values = values
 
     def __repr__(self):
-        return "%s (%s values)" % (runez.short(self.source), len(self.values))
+        return f"{runez.short(self.source)} ({runez.plural(self.values)})"
 
     def get_nested(self, section, key):
         """
@@ -1048,20 +1045,20 @@ class RawConfig(object):
         for key, value in sorted(data.items()):
             key = self.parent.colored_key(key, indent)
             if isinstance(value, dict):
-                result.append("%s%s:" % (padding, key))
+                result.append(f"{padding}{key}:")
                 self._add_dict_representation(result, value, indent=indent + 1)
 
             elif isinstance(value, list):
-                result.append("%s%s:" % (padding, key))
+                result.append(f"{padding}{key}:")
                 for item in value:
-                    result.append("%s- %s" % (padding + "  ", runez.short(item)))
+                    result.append(f"{padding} - {runez.short(item)}")
 
             else:
-                result.append("%s%s: %s" % (padding, key, runez.short(value)))
+                result.append(f"{padding}{key}: {runez.short(value)}")
 
     def represented(self):
         """str: Human readable representation of this configuration"""
-        result = ["%s:" % runez.bold(runez.short(self.source))]
+        result = [f"{runez.bold(runez.short(self.source))}:"]
         if self.values:
             self._add_dict_representation(result, self.values)
 

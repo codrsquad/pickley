@@ -20,7 +20,7 @@ class PackageFolder(object):
         self.files = {}
 
     def __str__(self):
-        return "%s [%s files]" % (self.folder, len(self))
+        return f"{self.folder} [{len(self)} files]"
 
     def __len__(self):
         return len(self.files)
@@ -39,23 +39,21 @@ class PackageFolder(object):
 class PackageContents(object):
     """Contents of a pip-installed package"""
 
-    def __init__(self, venv, pspec):
+    def __init__(self, venv):
         """
         Args:
             venv (PythonVenv): Venv to extract info from
-            pspec (pickley.PackageSpec): Package spec to look for
         """
         self.venv = venv
-        self.pspec = pspec
         self.location = None
         self.bin = PackageFolder(folder="bin")
         self.completers = PackageFolder(folder="bin")
         self.dist_info = PackageFolder()
         self.files = None
         self.info = {}
-        name = pspec.dashed
+        name = venv.pspec.dashed
         if runez.DRYRUN and not venv.is_venv_exe("bin/pip"):
-            self.bin.files = {pspec.dashed: "dryrun"}  # Pretend an entry point exists in dryrun mode
+            self.bin.files = {venv.pspec.dashed: "dryrun"}  # Pretend an entry point exists in dryrun mode
             return
 
         if name == PICKLEY:
@@ -64,7 +62,8 @@ class PackageContents(object):
 
         if name == "ansible":
             # Is there a better way to detect weird indirections like ansible does?
-            name = "ansible-core" if not pspec.version or pspec.version >= "4" else "ansible-base"
+            version = venv.pspec.desired_track.version
+            name = "ansible-core" if not version or version >= "4" else "ansible-base"
 
         r = venv.run_pip("show", "-f", name, fatal=False)
         if not r.succeeded:
@@ -108,7 +107,7 @@ class PackageContents(object):
                     self.location = value
 
     def __repr__(self):
-        return "%s [%s]" % (self.pspec, runez.short(self.location))
+        return f"{self.venv.pspec} [{runez.short(self.location)}]"
 
     @runez.cached_property
     def entry_points(self):
@@ -121,7 +120,8 @@ class PackageContents(object):
                 if isinstance(commands, dict):
                     wrap_console = commands.get("wrap_console")
                     if wrap_console:
-                        runez.log.trace("Found %s entry points in metadata.json" % len(wrap_console))
+                        nb = runez.plural(wrap_console, "entry point")
+                        runez.log.trace(f"Found {nb} in metadata.json")
                         return wrap_console
 
         entry_points_txt = self.dist_info.files.get("entry_points.txt")
@@ -129,67 +129,57 @@ class PackageContents(object):
             metadata = runez.file.ini_to_dict(entry_points_txt)
             console_scripts = metadata.get("console_scripts")
             if console_scripts:
-                runez.log.trace("Found %s entry points in entry_points.txt" % len(console_scripts))
+                nb = runez.plural(console_scripts, "entry point")
+                runez.log.trace(f"Found {nb} in entry_points.txt")
                 return console_scripts
 
         if self.bin.files:
-            runez.log.trace("Found %s bin/ scripts" % len(self.bin.files))
+            nb = runez.plural(self.bin.files, "bin/ script")
+            runez.log.trace(f"Found {nb}")
 
         return self.bin.files or None
 
 
 class PythonVenv(object):
-    def __init__(self, pspec=None, folder=None, python=None, index=None, cfg=None, create=True):
+
+    def __init__(self, folder, pspec, create=True):
         """
         Args:
-            pspec (pickley.PackageSpec | None): Package spec to install
-            folder (str | None): Target folder (default: pspec.install_path)
-            python (pickley.env.PythonInstallation): Python to use (default: pspec.python)
-            index (str | None): Optional custom pypi index to use (default: pspec.index)
-            cfg (pickley.PickleyConfig | None): Config to use
+            folder (str | pathlib.Path): Target folder
+            pspec (pickley.PackageSpec): Package spec to install
             create (bool): Create venv if True
         """
-        if folder is None and pspec:
-            folder = pspec.install_path
-
-        if not python and pspec:
-            python = pspec.python
-
-        if not index and pspec:
-            index = pspec.index
-
         self.folder = folder
-        self.index = index
-        if create and folder:
-            self._create_virtualenv(pspec, cfg=cfg, python=python, vv=pspec.cfg.get_virtualenv(pspec))
+        self.pspec = pspec
+        self.python = pspec.python or pspec.cfg.find_python(pspec)
+        if create:
+            self._create_virtualenv(vv=pspec.cfg.get_virtualenv(pspec))
 
     def __repr__(self):
         return runez.short(self.folder)
 
-    def _create_virtualenv(self, pspec, cfg=None, python=None, runner=runez.run, vv=None):
-        cfg = cfg or pspec.cfg
-        python = python or cfg.find_python(pspec=pspec)
+    def _create_virtualenv(self, runner=runez.run, vv=None):
         runez.ensure_folder(self.folder, clean=True, logger=False)
         if vv:
-            return self._old_virtualenv(pspec, python, self.folder, runner, vv)
+            return self._old_virtualenv(runner, vv)
 
-        runez.run(python.executable, "-mvenv", self.folder)
+        runez.run(self.python.executable, "-mvenv", self.folder)
         if not runez.DRYRUN and not self.pip_path:
-            return self._old_virtualenv(pspec, python, self.folder, runner, "latest")
+            return self._old_virtualenv(runner, "latest")
 
-        pip_spec = pip_version(python.version.components)
-        pip_spec = "pip==%s" % pip_spec if pip_spec else "pip"
+        pip_spec = pip_version(self.python.version.components)
+        pip_spec = f"pip=={pip_spec}" if pip_spec else "pip"
         return self.run_pip("install", "-U", pip_spec)
 
-    @staticmethod
-    def _old_virtualenv(pspec, python, folder, runner, vv):
+    def _old_virtualenv(self, runner, vv):
         """Create a virtualenv using old virtualenv module"""
-        pv = python.version.components
+        pv = self.python.version.components
         if not vv or vv == "latest":
-            vv = PackageSpec(pspec.cfg, "virtualenv")
-            vv = vv.get_desired_version_info().version
+            vv = PackageSpec(self.pspec.cfg, "virtualenv")
+            vv = vv.desired_track.version
 
-        return create_virtualenv(pspec.cfg.cache.path, pv, python.executable, folder, virtualenv_version=vv, runner=runner)
+        tmp = self.pspec.cfg.cache.path
+        return create_virtualenv(tmp, pv, self.python.executable, self.folder, virtualenv_version=vv, runner=runner, dryrun=runez.DRYRUN)
 
     @property
     def pip_path(self):
@@ -208,7 +198,7 @@ class PythonVenv(object):
             return path
 
         if try_variant:
-            path = os.path.join(self.folder, "bin", "%s3" % name)
+            path = os.path.join(self.folder, "bin", f"{name}3")
             if os.path.exists(path):
                 return path
 
@@ -228,7 +218,7 @@ class PythonVenv(object):
 
     def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""
-        r = self.run_pip("install", "-i", self.index, *args, fatal=False)
+        r = self.run_pip("install", "-i", self.pspec.index, *args, fatal=False)
         if r.failed:
             message = "\n".join(simplified_pip_error(r.error, r.output))
             abort(message)
@@ -237,7 +227,7 @@ class PythonVenv(object):
 
     def pip_wheel(self, *args):
         """Allows to not forget to state the -i index..."""
-        return self.run_pip("wheel", "-i", self.index, *args)
+        return self.run_pip("wheel", "-i", self.pspec.index, *args)
 
     def run_pip(self, *args, **kwargs):
         return runez.run(self.pip_path, *args, **kwargs)
@@ -303,10 +293,10 @@ class PexPackager(Packager):
         wheels = os.path.join(build_folder, "wheels")
         runez.ensure_folder(tmp, logger=False)
         runez.ensure_folder(wheels, logger=False)
-        pex_venv = PythonVenv(pspec, folder=os.path.join(build_folder, "pex-venv"))
+        pex_venv = PythonVenv(os.path.join(build_folder, "pex-venv"), pspec)
         pex_venv.pip_install("pex==2.1.90", *requirements)
         pex_venv.pip_wheel("--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
-        contents = PackageContents(pex_venv, pspec)
+        contents = PackageContents(pex_venv)
         if contents.entry_points:
             wheel_path = pspec.find_wheel(wheels)
             result = []
@@ -314,11 +304,11 @@ class PexPackager(Packager):
                 target = os.path.join(dist_folder, name)
                 runez.delete(target)
                 pex_venv.run_python(
-                    "-mpex", "-o%s" % target, "--pex-root", pex_root, "--tmpdir", tmp,
+                    "-mpex", f"-o{target}", "--pex-root", pex_root, "--tmpdir", tmp,
                     "--no-index", "--find-links", wheels,  # resolver options
                     None if run_compile_all else "--no-compile",  # output options
-                    "-c%s" % name,  # entry point options
-                    "--python-shebang", "/usr/bin/env python%s" % pspec.python.major,
+                    f"-c{name}",  # entry point options
+                    "--python-shebang", f"/usr/bin/env python{pspec.python.major}",
                     wheel_path,
                 )
                 result.append(target)
@@ -338,34 +328,36 @@ class VenvPackager(Packager):
             args.append("--no-binary")
             args.append(no_binary)
 
+        venv_folder = pspec.get_install_path(pspec.desired_track.version)
         if pspec.folder:
             args.append(pspec.folder)
 
         elif pspec._pickley_dev_mode:  # pragma: no cover, convenience case for running pickley from .venv/
+            venv_folder = pspec.cfg.meta.full_path(PICKLEY, f"{PICKLEY}-dev")
             args.append("-e")
             args.append(pspec._pickley_dev_mode)
 
         else:
-            args.append(pspec.specced)
+            args.append(f"{pspec.dashed}=={pspec.desired_track.version}")
 
-        venv = PythonVenv(pspec)
+        venv = PythonVenv(venv_folder, pspec)
         venv.pip_install(*args)
-        contents = PackageContents(venv, pspec)
+        contents = PackageContents(venv)
         if not contents.entry_points:
             runez.delete(pspec.meta_path)
-            abort("Can't install '%s', it is %s" % (runez.bold(pspec.dashed), runez.red("not a CLI")))
+            abort(f"Can't install '{runez.bold(pspec.dashed)}', it is {runez.red('not a CLI')}")
 
-        return delivery.install(pspec, venv, contents.entry_points)
+        return delivery.install(venv, contents.entry_points)
 
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements, run_compile_all):
         runez.ensure_folder(dist_folder, clean=True, logger=False)
-        venv = PythonVenv(pspec, folder=dist_folder)
+        venv = PythonVenv(dist_folder, pspec)
         venv.pip_install(*requirements)
         if run_compile_all:
             venv.run_python("-mcompileall", dist_folder)
 
-        contents = PackageContents(venv, pspec)
+        contents = PackageContents(venv)
         if contents.entry_points:
             result = []
             for name in contents.entry_points:
