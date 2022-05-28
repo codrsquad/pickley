@@ -6,8 +6,9 @@ from unittest.mock import patch
 import pytest
 import runez
 from runez.http import GlobalHttpCalls
+from runez.pyenv import Version
 
-from pickley import __version__, get_program_path, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest
+from pickley import __version__, get_program_path, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest, TrackedVersion
 from pickley.cli import clean_compiled_artifacts, find_base, PackageFinalizer, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.package import Packager
@@ -92,27 +93,12 @@ def test_debian_mode(temp_cfg, logged):
         assert "'foo' failed --version sanity check" in logged.pop()
 
 
-def mock_git_clone(pspec):
-    basename = runez.basename(pspec.original)
-    pspec.folder = pspec.cfg.cache.full_path("checkout", basename)
-    setup_py = os.path.join(pspec.folder, "setup.py")
-    runez.write(setup_py, "from setuptools import setup\nsetup(name='%s', version='1.0')\n" % basename, dryrun=False)
+def mock_latest_pypi_version(package_name, **_):
+    if package_name in ("mgit", "pickley", "virtualenv"):
+        return Version("100.0")
 
 
-@GlobalHttpCalls.allowed
 def test_dryrun(cli, monkeypatch):
-    cli.run("-n --debug auto-upgrade mgit")
-    assert cli.succeeded
-    assert "Would wrap mgit" in cli.logged
-    runez.touch(dot_meta("mgit.lock"))
-    cli.run("-n --debug auto-upgrade mgit")
-    assert cli.succeeded
-    assert "Lock file present, another installation is in progress" in cli.logged
-
-    cli.expect_success("-n check", "No packages installed")
-    cli.expect_failure("-n check foo+bar", "'foo+bar' is not a valid pypi package name")
-    cli.expect_failure("-n check mgit pickley2-a", "is not installed", "pickley2-a: does not exist")
-
     cli.run("-n config")
     assert cli.succeeded
     assert not cli.logged.stderr
@@ -123,25 +109,10 @@ def test_dryrun(cli, monkeypatch):
     assert cli.succeeded
 
     cli.expect_failure("-n -Pfoo install bundle:bar", "No suitable python")
-
-    # Simulate an old entry point that was now removed
-    runez.write(dot_meta("mgit/.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
-    cli.expect_failure("-n install mgit pickley2.a", "Would state: Installed mgit v", "'pickley2.a' is not pypi canonical")
-    runez.delete(dot_meta("mgit"))
-
     cli.expect_success("-n -Pfoo diagnostics", "desired python : foo", "foo [not available]", "sys.executable")
     cli.run("-n install git@github.com:zsimic/mgit.git")
     assert cli.succeeded
     assert "pip install .pickley/.cache/checkout/git-github-com-zsimic-mgit-git" in cli.logged
-
-    cli.run("-n --virtualenv latest -Pinvoker install --no-binary :all: mgit==1.3.0")
-    assert cli.succeeded
-    assert " --no-binary :all: mgit==1.3.0" in cli.logged
-    assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
-    assert cli.match("Would save %s" % dot_meta("mgit/.manifest.json"))
-    assert cli.match("Would state: Installed mgit v1.3.0")
-
-    cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
 
     cli.expect_success("-n list", "No packages installed")
 
@@ -167,11 +138,49 @@ def test_dryrun(cli, monkeypatch):
     cli.expect_success("-n upgrade", "No packages installed, nothing to upgrade")
     cli.expect_failure("-n upgrade mgit", "'mgit' is not installed")
 
+    with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+        cli.run("-n --debug auto-upgrade mgit")
+        assert cli.succeeded
+        assert "pip install mgit==100.0" in cli.logged
+        assert "Would wrap mgit" in cli.logged
+        runez.touch(dot_meta("mgit.lock"))
+        cli.run("-n --debug auto-upgrade mgit")
+        assert cli.succeeded
+        assert "Lock file present, another installation is in progress" in cli.logged
 
-def test_edge_cases(temp_cfg, monkeypatch, logged):
+        cli.expect_success("-n check", "No packages installed")
+        cli.expect_failure("-n check foo+bar", "'foo+bar' is not a valid pypi package name")
+        cli.expect_failure("-n check mgit pickley2-a", "is not installed", "pickley2-a: does not exist")
+
+        # Simulate an old entry point that was now removed
+        runez.write(dot_meta("mgit/.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
+        cli.expect_failure("-n install mgit pickley2.a", "Would state: Installed mgit v", "'pickley2.a' is not pypi canonical")
+        runez.delete(dot_meta("mgit"))
+
+        cli.run("-n --virtualenv latest -Pinvoker install --no-binary :all: mgit==1.3.0")
+        assert cli.succeeded
+        assert " --no-binary :all: mgit==1.3.0" in cli.logged
+        assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
+        assert cli.match("Would save %s" % dot_meta("mgit/.manifest.json"))
+        assert cli.match("Would state: Installed mgit v1.3.0")
+
+        cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
+
+
+def test_dev_mode(cli, monkeypatch):
     monkeypatch.setattr(PickleyConfig, "_pickley_dev_path", None)
+    with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+        cli.run("-n install pickley")
+        assert cli.succeeded
+        assert "pip install -e " in cli.logged
+        assert "pickley-dev/bin/pickley" in cli.logged
+        assert "pickley-100.0" not in cli.logged
+
+
+def test_edge_cases(temp_cfg, logged):
+    tv = TrackedVersion(version="1.2")
+    assert str(tv) == "1.2"
     pspec = PackageSpec(temp_cfg, PICKLEY)
-    assert pspec._pickley_dev_mode == runez.DEV.project_folder
 
     assert pspec.find_wheel(".", fatal=False) is None
     assert "Expecting 1 wheel" in logged.pop()
@@ -193,18 +202,17 @@ def test_edge_cases(temp_cfg, monkeypatch, logged):
     assert os.path.isdir("share")
 
 
-@GlobalHttpCalls.allowed
 def test_facultative(cli):
     runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"))
 
     # Empty file -> proceed with install as if it wasn't there
     runez.touch("virtualenv")
-    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
+    cli.expect_success("-n install virtualenv==1.0", "Would state: Installed virtualenv")
 
     # Simulate pickley wrapper
     runez.write("virtualenv", "echo installed by pickley")
     runez.make_executable("virtualenv")
-    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
+    cli.expect_success("-n install virtualenv==1.0", "Would state: Installed virtualenv")
 
     # Unknown executable -> skip pickley installation (since facultative)
     runez.write("virtualenv", "echo foo")
@@ -213,13 +221,28 @@ def test_facultative(cli):
     cli.expect_success("-n check virtualenv", "skipped, not installed by pickley")
 
     # --force ignores 'facultative' setting
-    cli.expect_failure("-n install --force virtualenv", "Can't automatically uninstall virtualenv")
+    with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+        cli.run("-n install --force virtualenv")
+        assert cli.failed
+        assert "Can't automatically uninstall virtualenv" in cli.logged
 
-    # Simulate pickley symlink delivery
-    dummy_target = dot_meta("foo")
-    runez.touch(dummy_target)
-    runez.symlink(dummy_target, "virtualenv")
-    cli.expect_success("-n install virtualenv", "Would state: Installed virtualenv")
+        # Simulate pickley symlink delivery
+        dummy_target = dot_meta("foo")
+        runez.touch(dummy_target)
+        runez.symlink(dummy_target, "virtualenv")
+        cli.run("-n install virtualenv")
+        assert cli.succeeded
+        assert "Would state: Installed virtualenv" in cli.logged
+
+
+def test_failure_cases(cli):
+    cli.run("-n --packager pex install mgit==1.0")
+    assert cli.failed
+    assert "Installation with 'PexPackager' is not supported" in cli.logged
+
+    with patch("runez.run", side_effect=Exception):
+        cli.run("install git@github.com:zsimic/mgit.git")
+        assert cli.failed
 
 
 def check_is_wrapper(path, is_wrapper):
@@ -227,9 +250,6 @@ def check_is_wrapper(path, is_wrapper):
         assert not os.path.islink(path)
         contents = runez.readlines(path)
         assert WRAPPER_MARK in contents
-
-    else:
-        assert os.path.islink(path)
 
     r = runez.run(path, "--version")
     assert r.succeeded
@@ -325,7 +345,7 @@ def test_lock(temp_cfg, logged):
         try:
             # Try to grab same lock a seconds time, give up after 1 second
             with SoftLock(pspec, give_up=1, invalid=600):
-                assert False, "Should not grab same lock twice!"
+                assert False, "Should not grab same lock twice!"  # pragma: no cover
 
         except SoftLockException as e:
             assert "giving up" in str(e)

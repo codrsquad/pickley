@@ -12,7 +12,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, despecced, DOT_META, inform, PackageSpec, PickleyConfig
+from pickley import __version__, abort, despecced, DOT_META, inform, PackageSpec, PickleyConfig, specced
 from pickley.delivery import PICKLEY
 from pickley.package import PexPackager, PythonVenv, VenvPackager
 
@@ -425,11 +425,15 @@ class RunSetup:
         self.pinned = pinned
 
     def __repr__(self):
+        return self.canonical
+
+    @property
+    def canonical(self):
         return self.specced if self.package == self.command else f"{self.specced}:{self.command}"
 
-    @runez.cached_property
+    @property
     def specced(self):
-        return runez.joined(self.package, self.pinned, delimiter="==")
+        return specced(self.package, self.pinned)
 
     @classmethod
     def from_cli(cls, command):
@@ -458,7 +462,7 @@ class RunSetup:
         if not pspec.is_healthily_installed():
             perform_install(pspec)
 
-        path = pspec.exe_path(command)
+        path = pspec.exe_path(rs.command)
         r = runez.run(path, args, stdout=None, stderr=None, fatal=False)
         sys.exit(r.exit_code)
 

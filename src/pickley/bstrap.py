@@ -157,7 +157,7 @@ def run_program(program, *args, **kwargs):
         if fatal and p.returncode:
             abort("'%s' exited with code %s" % (short(program), p.returncode))
 
-        return p.returncode  # pragma: no cover
+        return p.returncode
 
 
 def seed_config(pickley_base, desired_cfg, force=False):
@@ -270,7 +270,7 @@ def find_venv_exe(folder, name):
     for bname in (name, "%s3" % name):
         path = os.path.join(folder, "bin", bname)
         if is_executable(path):
-            return path  # pragma: no cover
+            return path
 
 
 def main(args=None):

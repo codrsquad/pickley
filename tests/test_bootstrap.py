@@ -66,11 +66,21 @@ def test_bootstrap(cli, monkeypatch):
             with patch("pickley.bstrap.built_in_download"):
                 with patch("pickley.bstrap.get_python_version", return_value=(3, 10)):
                     with patch("pickley.bstrap.run_program", side_effect=mocked_logged_run):
-                        # Verify that a python without ensurepip still works
+                        # Verify that a python without ensurepip still works (via virtualenv)
                         cli.run("1.0", main=bstrap.main)
                         assert cli.succeeded
                         assert " -mvenv --clear " in cli.logged
                         assert "virtualenv-20.10.0.pyz -q --clear --download -p " in cli.logged
+
+                        # When pip available, don't use virtualenv
+                        pip = ".local/bin/.pickley/pickley/pickley-1.0/bin/pip3"
+                        runez.touch(pip)
+                        runez.make_executable(pip)
+                        cli.run("1.0", main=bstrap.main)
+                        assert cli.succeeded
+                        assert "virtualenv" not in cli.logged
+                        assert "pip -q install pickley==1.0" in cli.logged
+                        assert "pickley base bootstrap-own-wrapper" in cli.logged
 
             with patch("pickley.bstrap.which", return_value=None):
                 with patch("pickley.bstrap.is_executable", return_value=False):
@@ -103,6 +113,9 @@ def test_edge_cases(temp_folder, monkeypatch, logged):
         bstrap.run_program(sys.executable, "--no-such-option")
     assert "'python' exited with code" in str(exc)
     assert "Running: python --no-such-option" in logged.pop()
+
+    assert bstrap.run_program(sys.executable, "--version") == 0
+    assert "Running: python --version" in logged.pop()
 
     with patch("pickley.bstrap.built_in_download", side_effect=Exception):  # urllib fails
         with patch("pickley.bstrap.run_program", side_effect=mocked_run):  # mocked_run() returns just the program name

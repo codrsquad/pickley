@@ -19,11 +19,6 @@ def is_brew_link(path):
     return path and path.startswith(BREW_INSTALL)
 
 
-def brew_exists(path):
-    """Pretend any file under BREW_INSTALL exists"""
-    return path and path.startswith(BREW_INSTALL)
-
-
 def brew_realpath(path):
     """Simulate brew symlink for names in BREW_INSTALLED"""
     if path and path.startswith(BREW_INSTALL):
@@ -32,8 +27,6 @@ def brew_realpath(path):
             return path
 
         return "{cellar}/{basename}/1.0/bin/{basename}".format(cellar=BREW_CELLAR, basename=basename)
-
-    return path
 
 
 def test_edge_cases(temp_folder, logged):
@@ -53,7 +46,6 @@ def test_edge_cases(temp_folder, logged):
     assert "Failed to deliver" in logged.pop()
 
 
-@patch("os.path.exists", side_effect=brew_exists)
 @patch("os.path.islink", side_effect=is_brew_link)
 @patch("os.path.realpath", side_effect=brew_realpath)
 def test_uninstall_brew(*_):

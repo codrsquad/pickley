@@ -114,7 +114,7 @@ def _dynamic_resolver(cfg, name_or_url):
                 if package_name.endswith(".git"):
                     package_name = package_name[:-4]
 
-                return package_name, "1.0", folder
+                return package_name, "0.0.0", folder
 
             runez.run("git", "clone", name_or_url, folder)
 

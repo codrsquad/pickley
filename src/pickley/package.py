@@ -251,7 +251,7 @@ class Packager(object):
     """Ancestor to package/install implementations"""
 
     @staticmethod
-    def install(pspec, ping=True):
+    def install(pspec, ping=True, no_binary=None):
         """
         Args:
             pspec (pickley.PackageSpec): Targeted package spec
@@ -279,15 +279,13 @@ class PexPackager(Packager):
     """Package via pex (https://pypi.org/project/pex/)"""
 
     @staticmethod
-    def install(pspec, ping=True):  # pragma: no cover
+    def install(pspec, ping=True, no_binary=None):
         raise NotImplementedError("Installation with 'PexPackager' is not supported")
 
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements, run_compile_all):
         runez.ensure_folder(build_folder, clean=True)
-        if pspec.python.major < 3:  # pragma: no cover
-            abort("Packaging with pex is not supported any more with python2")
-
+        runez.abort_if(pspec.python.major < 3, "Packaging with pex is not supported any more with python2")
         pex_root = os.path.join(build_folder, "pex-root")
         tmp = os.path.join(build_folder, "pex-tmp")
         wheels = os.path.join(build_folder, "wheels")
@@ -332,8 +330,7 @@ class VenvPackager(Packager):
         if pspec.folder:
             args.append(pspec.folder)
 
-        elif pspec._pickley_dev_mode:  # pragma: no cover, convenience case for running pickley from .venv/
-            venv_folder = pspec.cfg.meta.full_path(PICKLEY, f"{PICKLEY}-dev")
+        elif pspec._pickley_dev_mode:
             args.append("-e")
             args.append(pspec._pickley_dev_mode)
 
