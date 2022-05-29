@@ -147,7 +147,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
             inform(f"Skipping installation of {pspec}: {runez.bold(skip_reason)}")
             return None
 
-        if is_upgrade and not pspec.manifest and not quiet:
+        if is_upgrade and not pspec.is_currently_installed and not quiet:
             abort(f"'{runez.red(pspec)}' is not installed")
 
         if force:
@@ -332,12 +332,12 @@ def check(force, verbose, packages):
             msg = pspec.desired_track.problem
             code = 1
 
-        elif not pspec.manifest or not pspec.manifest.version:
+        elif not pspec.is_currently_installed:
             msg = f"v{dv} is not installed"
             code = 1
 
-        elif pspec.manifest.version == pspec.desired_track.version:
-            msg = f"v{dv} is installed"
+        elif pspec.is_up_to_date:
+            msg = f"v{dv} is up-to-date"
 
         else:
             action = "upgraded to" if pspec.desired_track.source == "latest" else f"caught up to {pspec.desired_track.source}"
@@ -402,10 +402,10 @@ def list(border, verbose):
         table.header.hide(3, 4)
 
     for pspec in packages:
-        if pspec.manifest:
-            python = CFG.available_pythons.find_python(pspec.manifest.python)
-            python = pspec.manifest.python if python.problem else python
-            table.add_row(pspec.dashed, pspec.manifest.version, python, pspec.manifest.delivery, pspec.manifest.index)
+        manifest = pspec.manifest
+        if manifest:
+            python = CFG.available_pythons.find_python(manifest.python)
+            table.add_row(pspec.dashed, manifest.version, python, manifest.delivery, manifest.index)
 
     print(table)
 

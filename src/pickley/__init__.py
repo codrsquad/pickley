@@ -217,7 +217,7 @@ class PackageSpec(object):
             else:
                 self._desired_track = self.get_latest()  # By default, the latest is desired
                 candidates = []
-                if self.manifest and self.manifest.version:
+                if self.is_currently_installed:
                     candidates.append(TrackedVersion.from_manifest(self.manifest))
 
                 if self.dashed == PICKLEY:
@@ -233,7 +233,8 @@ class PackageSpec(object):
 
     @property
     def is_up_to_date(self):
-        return self.manifest and self.manifest.version == self.desired_track.version and self.is_healthily_installed()
+        manifest = self.manifest
+        return manifest and manifest.version == self.desired_track.version and self.is_healthily_installed()
 
     @property
     def manifest(self):
@@ -255,6 +256,11 @@ class PackageSpec(object):
     def ping_path(self):
         """Path to .ping file (for throttle auto-upgrade checks)"""
         return self.cfg.cache.full_path(f"{self.dashed}.ping")
+
+    @property
+    def is_currently_installed(self):
+        manifest = self.manifest
+        return manifest and manifest.version
 
     @runez.cached_property
     def is_already_installed_by_pickley(self):
@@ -306,14 +312,15 @@ class PackageSpec(object):
 
     def is_healthily_installed(self):
         """Double-check that current venv is still usable"""
-        if self.manifest:
-            if self.manifest.entrypoints:
-                for name in self.manifest.entrypoints:
+        manifest = self.manifest
+        if manifest:
+            if manifest.entrypoints:
+                for name in manifest.entrypoints:
                     exe_path = self.exe_path(name)
                     if not runez.is_executable(exe_path):
                         return False
 
-            install_folder = self.get_install_path(self.manifest.version)
+            install_folder = self.get_install_path(manifest.version)
             py_path = self.cfg.available_pythons.resolved_python_exe(install_folder)
             if py_path:
                 return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
@@ -348,7 +355,8 @@ class PackageSpec(object):
 
         meta_path = self.meta_path
         current_age = None
-        if self.manifest and os.path.isdir(meta_path):
+        manifest = self.manifest
+        if manifest and os.path.isdir(meta_path):
             now = time.time()
             candidates = []
             for fname in os.listdir(meta_path):
@@ -358,7 +366,7 @@ class PackageSpec(object):
                 fpath = os.path.join(meta_path, fname)
                 vpart = fname[len(self.dashed) + 1:]
                 age = now - os.path.getmtime(fpath)
-                if vpart == self.manifest.version:
+                if vpart == manifest.version:
                     current_age = age
 
                 else:

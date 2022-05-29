@@ -283,7 +283,7 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
         assert cli.succeeded
         assert cli.match("Installed %s" % package)
 
-    cli.expect_success("check", "is installed")
+    cli.expect_success("check", "is up-to-date")
     cli.expect_success("list", package)
     cli.expect_success("upgrade", "is already up-to-date")
 
