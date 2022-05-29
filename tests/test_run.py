@@ -13,12 +13,12 @@ def test_run(cli):
 
     cli.run("-n run mgit:mgit==1.3.0 -f")
     assert cli.succeeded
-    assert "Would state: Installed mgit v1.3.0" in cli.logged
+    assert "pip install mgit==1.3.0" in cli.logged
     assert "mgit -f" in cli.logged
 
     cli.run("-n run aws==1.0 foo -bar")
     assert cli.succeeded
-    assert "Would state: Installed awscli v1.0" in cli.logged
+    assert "pip install awscli==1.0" in cli.logged
     assert "aws foo -bar" in cli.logged
 
 
@@ -31,4 +31,4 @@ def test_run_setup():
     assert rs.command == "bar"
     assert rs.package == "foo"
     assert rs.pinned == "1.0"
-    assert rs
+    assert rs.specced == "foo==1.0"

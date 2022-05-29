@@ -177,20 +177,29 @@ class PackageSpec(object):
             logging.warning(f"'{runez.red(self.name)}' is not pypi canonical, use dashes only and lowercase")
 
         self.wheelified = PypiStd.std_wheel_basename(self.name)
-        self.pinned = self.cfg.pinned_version(self)
-        self.python = self.cfg.find_python(self)
-        self.settings = TrackedSettings(
-            delivery=self.cfg.delivery_method(self),
-            index=self.cfg.index(self) or self.cfg.default_index,
-            python=self.python.executable,
-            virtualenv=self.cfg.get_virtualenv(self),
-        )
 
     def __repr__(self):
         return specced(self.dashed, self.given_version)
 
     def __lt__(self, other):
         return str(self) < str(other)
+
+    @runez.cached_property
+    def python(self):
+        return self.cfg.find_python(self)
+
+    @runez.cached_property
+    def settings(self):
+        return TrackedSettings(
+            delivery=self.cfg.delivery_method(self),
+            index=self.cfg.index(self) or self.cfg.default_index,
+            python=self.python.executable,
+            virtualenv=self.cfg.get_virtualenv(self),
+        )
+
+    @runez.cached_property
+    def pinned(self):
+        return self.cfg.pinned_version(self)
 
     @runez.cached_property
     def _pickley_dev_mode(self):

@@ -459,9 +459,10 @@ class RunSetup:
     def perform_run(cls, command, args):
         rs = cls.from_cli(command)
         pspec = PackageSpec(CFG, rs.specced)
-        if not pspec.is_healthily_installed():
-            perform_install(pspec)
+        if not pspec.is_currently_installed:
+            perform_install(pspec, quiet=True)
 
+        runez.log.progress.stop()
         path = pspec.exe_path(rs.command)
         r = runez.run(path, args, stdout=None, stderr=None, fatal=False)
         sys.exit(r.exit_code)
@@ -492,7 +493,6 @@ def run(command, args):
         click.echo(click.get_current_context().get_help())
         return
 
-    setup_audit_log()
     RunSetup.perform_run(command, args)
 
 

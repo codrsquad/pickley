@@ -108,7 +108,6 @@ def test_dryrun(cli, monkeypatch):
     cli.run("-n --color config")
     assert cli.succeeded
 
-    cli.expect_failure("-n -Pfoo install bundle:bar", "No suitable python")
     cli.expect_success("-n -Pfoo diagnostics", "desired python : foo", "foo [not available]", "sys.executable")
     cli.run("-n install git@github.com:zsimic/mgit.git")
     assert cli.succeeded
@@ -139,6 +138,8 @@ def test_dryrun(cli, monkeypatch):
     cli.expect_failure("-n upgrade mgit", "'mgit' is not installed")
 
     with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+        cli.expect_failure("-n -Pfoo install bundle:bar", "No suitable python")
+
         cli.run("-n --debug auto-upgrade mgit")
         assert cli.succeeded
         assert "pip install mgit==100.0" in cli.logged
@@ -342,13 +343,12 @@ def test_lock(temp_cfg, logged):
     with SoftLock(pspec, give_up=600) as lock:
         assert str(lock) == "lock foo"
         assert os.path.exists(lock_path)
-        try:
+        with pytest.raises(SoftLockException) as e:
             # Try to grab same lock a seconds time, give up after 1 second
             with SoftLock(pspec, give_up=1, invalid=600):
-                assert False, "Should not grab same lock twice!"  # pragma: no cover
+                pass
 
-        except SoftLockException as e:
-            assert "giving up" in str(e)
+        assert "giving up" in str(e)
 
     assert not os.path.exists(lock_path)  # Check that lock was released
 

@@ -80,9 +80,9 @@ def test_bogus_config(temp_folder, logged):
     assert "skipped: not an executable" in logged.pop()
 
     assert not logged
+    p = PackageSpec(cfg, "mgit")
     with pytest.raises(SystemExit):
-        # Fails to resolve due to desired python configured to be /dev/null
-        PackageSpec(cfg, "mgit")
+        _ = p.python  # Fails to resolve due to desired python configured to be /dev/null
 
     assert "No suitable python" in logged.pop()
 
