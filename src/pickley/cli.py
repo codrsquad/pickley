@@ -310,9 +310,8 @@ def base(what):
 
 @main.command()
 @click.option("--force", "-f", is_flag=True, help="Force check, even if checked recently")
-@click.option("--verbose", "-v", is_flag=True, help="Show more information")
 @click.argument("packages", nargs=-1, required=False)
-def check(force, verbose, packages):
+def check(force, packages):
     """Check whether specified packages need an upgrade"""
     code = 0
     packages = CFG.package_specs(packages)
@@ -327,21 +326,21 @@ def check(force, verbose, packages):
             continue
 
         pspec.get_latest(force=force)
-        dv = runez.bold(pspec.desired_track.version)
+        dv = pspec.desired_track.version
         if pspec.desired_track.problem:
             msg = pspec.desired_track.problem
             code = 1
 
         elif not pspec.is_currently_installed:
-            msg = f"v{dv} is not installed"
+            msg = f"{runez.bold(dv)} not installed"
             code = 1
 
         elif pspec.is_up_to_date:
-            msg = f"v{dv} is up-to-date"
+            msg = f"{dv} up-to-date"
 
         else:
-            action = "upgraded to" if pspec.desired_track.source == "latest" else f"caught up to {pspec.desired_track.source}"
-            msg = f"v{runez.dim(pspec.manifest.version)} installed, can be {action} v{dv}"
+            msg = runez.dim(pspec.manifest.version) if pspec.is_healthily_installed() else "unhealthy"
+            msg = f"{runez.bold(dv)} (currently {msg})"
 
         print(f"{pspec.dashed}: {msg}")
 
@@ -386,28 +385,82 @@ def install(force, no_binary, packages):
         perform_install(pspec, is_upgrade=False, force=force, quiet=False, no_binary=no_binary)
 
 
+class TabularReport:
+    """Reports that can be shown as table, csv or json"""
+
+    def __init__(self, columns, additional=None, border="github", verbose=False):
+        """
+        Args:
+            columns (str | list): Column headers
+            additional (str | list | None): Additional column headers (showed when verbose is True)
+            border (str): Tabel border to use
+            verbose (bool): If True, show additional columns as well
+        """
+        self.border = border
+        self.verbose = verbose
+        cols = (columns, additional) if verbose else columns
+        self.columns = runez.flattened(cols, split=",")
+        self.table = PrettyTable(self.columns, border=border)
+        self.mapped_values = []
+        self.values = []
+
+    @staticmethod
+    def _json_key(key):
+        return runez.joined(runez.words(key.lower()), delimiter="-")
+
+    def add_row(self, **kwargs):
+        values = [kwargs.get(n) for n in self.columns]
+        self.mapped_values.append({self._json_key(k): runez.uncolored(v) for k, v in kwargs.items() if k in self.columns})
+        self.values.append(values)
+        self.table.add_row(values)
+
+    def represented(self, format):
+        if format in ("csv", "tsv"):
+            delimiter = "\t" if format == "tsv" else ","
+            lines = [runez.joined(self.columns, delimiter=delimiter)]
+            lines.extend(runez.joined([runez.uncolored(x) for x in v], delimiter=delimiter) for v in self.values)
+            return runez.joined(lines, delimiter="\n")
+
+        if format == "json":
+            return runez.represented_json(self.mapped_values)
+
+        if format == "yaml":
+            lines = []
+            for value in self.mapped_values:
+                text = [f" {k}: {value[k]}" for k in sorted(value)]
+                text = runez.joined(text, delimiter="\n ")
+                lines.append(f"-{text}")
+
+            return runez.joined(lines, delimiter="\n")
+
+        return self.table.get_string()
+
+
 @main.command()
 @runez.click.border("-b", default="github")
+@click.option("--format", "-f", type=click.Choice(["csv", "json", "tsv", "yaml"]), help="Representation format")
 @click.option("--verbose", "-v", is_flag=True, help="Show more information")
-def list(border, verbose):
+def list(border, format, verbose):
     """List installed packages"""
     packages = CFG.package_specs(include_pickley=verbose)
     if not packages:
         print("No packages installed")
         sys.exit(0)
 
-    table = PrettyTable("Package,Version,Python,Delivery,From index", border=border)
-    table.header.style = runez.bold
-    if not verbose:
-        table.header.hide(3, 4)
-
+    report = TabularReport("Package,Version,Python", additional="Delivery,Index", border=border, verbose=verbose)
     for pspec in packages:
         manifest = pspec.manifest
         if manifest:
             python = CFG.available_pythons.find_python(manifest.python)
-            table.add_row(pspec.dashed, manifest.version, python, manifest.delivery, manifest.index)
+            report.add_row(
+                Package=pspec.dashed,
+                Version=manifest.version,
+                Python=python,
+                Delivery=manifest.delivery,
+                Index=manifest.index
+            )
 
-    print(table)
+    print(report.represented(format))
 
 
 class RunSetup:

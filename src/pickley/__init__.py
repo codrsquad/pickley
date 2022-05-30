@@ -322,7 +322,7 @@ class PackageSpec(object):
     def is_healthily_installed(self):
         """Double-check that current venv is still usable"""
         manifest = self.manifest
-        if manifest:
+        if manifest and manifest.version:
             if manifest.entrypoints:
                 for name in manifest.entrypoints:
                     exe_path = self.exe_path(name)

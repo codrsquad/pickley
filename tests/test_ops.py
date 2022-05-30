@@ -151,11 +151,18 @@ def test_dryrun(cli, monkeypatch):
 
         cli.expect_success("-n check", "No packages installed")
         cli.expect_failure("-n check foo+bar", "'foo+bar' is not a valid pypi package name")
-        cli.expect_failure("-n check mgit pickley2-a", "is not installed", "pickley2-a: does not exist")
+        cli.expect_failure("-n check mgit pickley2-a", "not installed", "pickley2-a: does not exist")
 
         # Simulate an old entry point that was now removed
         runez.write(dot_meta("mgit/.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
         cli.expect_failure("-n install mgit pickley2.a", "Would state: Installed mgit v", "'pickley2.a' is not pypi canonical")
+
+        cli.expect_failure("check", "not installed")
+        cli.expect_success("list", "mgit")
+        cli.expect_success("list -fcsv", "mgit")
+        cli.expect_success("list -fjson", "mgit")
+        cli.expect_success("list -ftsv", "mgit")
+        cli.expect_success("list -fyaml", "mgit")
         runez.delete(dot_meta("mgit"))
 
         cli.run("-n --virtualenv latest -Pinvoker install --no-binary :all: mgit==1.3.0")
@@ -284,14 +291,15 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
         assert cli.succeeded
         assert cli.match("Installed %s" % package)
 
-    cli.expect_success("check", "is up-to-date")
+    cli.expect_success("check", " up-to-date")
     cli.expect_success("list", package)
     cli.expect_success("upgrade", "is already up-to-date")
 
     if simulate_version:
+        installed_version = m.version
         m.version = simulate_version
         runez.save_json(m.to_dict(), dot_meta("%s/.manifest.json" % package))
-        cli.expect_success("check", "v%s installed, can be upgraded to" % simulate_version)
+        cli.expect_success("check", "%s (currently unhealthy)" % installed_version)
 
 
 @GlobalHttpCalls.allowed
