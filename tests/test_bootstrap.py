@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 import runez
 
-from pickley import bstrap
+from pickley import __version__, bstrap
 
 
 def mocked_expanduser(path):
@@ -29,6 +29,10 @@ def mocked_which(program):
 
 
 def test_bootstrap(cli, monkeypatch):
+    cli.run("-n base bootstrap-own-wrapper")
+    assert cli.succeeded
+    assert f"Would save .pickley/pickley/pickley-{__version__}/.manifest.json" in cli.logged
+
     with patch("pickley.bstrap.which", side_effect=mocked_which):
         with patch("pickley.bstrap.os.path.expanduser", side_effect=mocked_expanduser):
             runez.write(".local/bin/pickley", "#!/bin/sh\necho 0.1")  # Pretend we have an old pickley
