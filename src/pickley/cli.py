@@ -286,7 +286,7 @@ def base(what):
         from pickley.delivery import DeliveryMethodWrap
 
         pspec = PackageSpec(CFG, f"{PICKLEY}=={__version__}")
-        venv = PythonVenv(CFG.meta.full_path(f"{PICKLEY}-{__version__}"), pspec, create=False)
+        venv = PythonVenv(CFG.meta.full_path(PICKLEY, f"{PICKLEY}-{__version__}"), pspec, create=False)
         wrap = DeliveryMethodWrap()
         wrap.install(venv, {PICKLEY: PICKLEY})
         return
