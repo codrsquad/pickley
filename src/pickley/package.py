@@ -163,8 +163,8 @@ class PythonVenv(object):
         if vv:
             return self._old_virtualenv(runner, vv)
 
-        runez.run(self.python.executable, "-mvenv", self.folder)
-        if not runez.DRYRUN and not self.pip_path:
+        r = runez.run(self.python.executable, "-mvenv", self.folder, fatal=False)
+        if r.failed or (not runez.DRYRUN and not self.pip_path):
             return self._old_virtualenv(runner, "latest")
 
         pip_spec = pip_version(self.python.version.components)
@@ -179,6 +179,7 @@ class PythonVenv(object):
             vv = vv.desired_track.version
 
         tmp = self.pspec.cfg.cache.path
+        runez.ensure_folder(self.folder, clean=True, logger=False)
         return create_virtualenv(tmp, pv, self.python.executable, self.folder, virtualenv_version=vv, runner=runner, dryrun=runez.DRYRUN)
 
     @property
