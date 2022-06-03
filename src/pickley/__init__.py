@@ -141,7 +141,7 @@ def _dynamic_resolver(cfg, name_or_url):
     return package_name, package_version, None
 
 
-class PackageSpec(object):
+class PackageSpec:
     """
     Formalizes a pypi package specification
 
@@ -459,7 +459,7 @@ def get_program_path(path=None):
     return path
 
 
-class PickleyConfig(object):
+class PickleyConfig:
     """Pickley configuration"""
 
     base = None  # type: FolderBase # Installation folder
@@ -770,7 +770,7 @@ class PickleyConfig(object):
         return "\n".join(result).strip()
 
 
-class TrackedVersion(object):
+class TrackedVersion:
     """Object tracking a version, and the source it was obtained from"""
 
     index = None  # type: str # Associated pypi url, if any
@@ -833,7 +833,7 @@ class TrackedVersion(object):
         )
 
 
-class TrackedManifest(object):
+class TrackedManifest:
     """Info stored in .manifest.json for each installation"""
 
     path = None  # type: str # Path to this manifest
@@ -892,7 +892,7 @@ class TrackedManifest(object):
         )
 
 
-class TrackedInstallInfo(object):
+class TrackedInstallInfo:
     """Info on which pickley run performed the installation"""
 
     args = None  # type: str # CLI args with which pickley was invoked
@@ -922,7 +922,7 @@ class TrackedInstallInfo(object):
         return dict(args=self.args, timestamp=self.timestamp.strftime("%Y-%m-%d %H:%M:%S"), vpickley=self.vpickley)
 
 
-class TrackedSettings(object):
+class TrackedSettings:
     delivery = None  # type: str # Delivery method name
     index = None  # type: str # Pypi url used
     python = None  # type: str # Desired python
@@ -948,7 +948,7 @@ class TrackedSettings(object):
         return dict(delivery=self.delivery, index=self.index, python=self.python, virtualenv=self.virtualenv)
 
 
-class FolderBase(object):
+class FolderBase:
     """
     This class allows to more easily deal with folders
     """
@@ -1001,7 +1001,7 @@ def _log_to_file(message, error=False):
             c.level = prev_level
 
 
-class RawConfig(object):
+class RawConfig:
     """Represents one configuration source: one particular file, or hardcoded defaults"""
 
     def __init__(self, parent, source, values):

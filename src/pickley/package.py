@@ -11,7 +11,7 @@ from pickley.delivery import DeliveryMethod
 LOG = logging.getLogger(__name__)
 
 
-class PackageFolder(object):
+class PackageFolder:
     """Allows to track reported file contents by `pip show -f`"""
 
     def __init__(self, location=None, folder=None):
@@ -36,7 +36,7 @@ class PackageFolder(object):
         self.files[relative] = path
 
 
-class PackageContents(object):
+class PackageContents:
     """Contents of a pip-installed package"""
 
     def __init__(self, venv):
@@ -140,7 +140,7 @@ class PackageContents(object):
         return self.bin.files or None
 
 
-class PythonVenv(object):
+class PythonVenv:
 
     def __init__(self, folder, pspec, create=True):
         """
@@ -248,7 +248,7 @@ def simplified_pip_error(error, output):
             yield line
 
 
-class Packager(object):
+class Packager:
     """Ancestor to package/install implementations"""
 
     @staticmethod

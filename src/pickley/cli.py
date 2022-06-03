@@ -51,7 +51,7 @@ class SoftLockException(Exception):
     """Raised when soft lock can't be acquired"""
 
 
-class SoftLock(object):
+class SoftLock:
     """
     Simple soft file lock mechanism, allows to ensure only one pickley is working on a specific installation.
     A lock is a simple file containing 2 lines: process id holding it, and the CLI args it was invoked with.
@@ -677,7 +677,7 @@ def package(build, dist, symlink, no_compile, sanity_check, project, requirement
     inform(f"Packaged {runez.bold(runez.short(project))} successfully {runez.dim(elapsed)}")
 
 
-class PackageFinalizer(object):
+class PackageFinalizer:
     """
     This class allows to have an early check on provided settings, and wrap them up
     """
@@ -774,7 +774,7 @@ def does_not_implement_cli_flag(*messages):
                 return True
 
 
-class Symlinker(object):
+class Symlinker:
     def __init__(self, spec):
         self.base, _, self.target = spec.partition(":")
         if not self.base or not self.target:

@@ -49,7 +49,7 @@ fi
 """ % WRAPPER_MARK
 
 
-class DeliveryMethod(object):
+class DeliveryMethod:
     """
     Various implementation of delivering the actual executables
     """
