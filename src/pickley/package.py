@@ -155,18 +155,18 @@ class PythonVenv:
         self.pspec = pspec
         self.python = pspec.python or pspec.cfg.find_python(pspec)
         if create:
-            vv = self.pspec.cfg.get_virtualenv(self.pspec)
-            if not vv and runez.SYS_INFO.platform_id.is_macos and runez.SYS_INFO.platform_id.arch != "arm64":
-                # Weird bug reported on Intel macs, where tox installed via -mvenv fails to create its own .tox venvs in a mysterious way
-                vv = self._vv_fallback
-
-            self._create_virtualenv(vv=vv)
+            self._create_virtualenv()
 
     def __repr__(self):
         return runez.short(self.folder)
 
-    def _create_virtualenv(self, runner=runez.run, vv=None):
+    def _create_virtualenv(self, runner=runez.run):
         runez.ensure_folder(self.folder, clean=True, logger=False)
+        vv = self.pspec.cfg.get_virtualenv(self.pspec)
+        if not vv and runez.SYS_INFO.platform_id.is_macos and runez.SYS_INFO.platform_id.arch != "arm64":
+            # Weird bug reported on Intel macs, where tox installed via -mvenv fails to create its own .tox venvs in a mysterious way
+            vv = self._vv_fallback
+
         if vv and vv != "no":
             return self._old_virtualenv(runner, vv)
 
