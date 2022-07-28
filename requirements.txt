@@ -1,4 +1,4 @@
 # pinned
-click==8.0.4
-requests==2.27.1
+click==8.0.4  # Last version supporting py3.6
+requests==2.27.1  # Last version supporting py3.6
 runez==3.6.1
