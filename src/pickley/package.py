@@ -142,7 +142,7 @@ class PackageContents:
 
 class PythonVenv:
 
-    _vv_fallback = "latest"
+    _vv_fallback = "20.16.1"
 
     def __init__(self, folder, pspec, create=True):
         """
