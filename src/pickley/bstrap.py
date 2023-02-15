@@ -240,7 +240,7 @@ def create_virtualenv(tmp_folder, python_version, python_exe, venv_folder, virtu
     """
     zipapp = os.path.join(tmp_folder, "virtualenv-%s.pyz" % virtualenv_version)
     if not os.path.exists(zipapp):
-        url = "https://github.com/pypa/get-virtualenv/blob/%s/public/virtualenv.pyz?raw=true" % virtualenv_version
+        url = "https://bootstrap.pypa.io/virtualenv/%s/virtualenv.pyz" % ("%s.%s" % python_version[0:2])
         download(zipapp, url, dryrun=dryrun)
 
     cmd = virtualenv_cmd(zipapp, python_version, python_exe, venv_folder)
