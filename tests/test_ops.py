@@ -392,6 +392,22 @@ def test_package_venv(cli):
     runez.delete("/tmp/pickley")
 
 
+def test_package_venv_with_additional_packages(cli):
+    runez.delete("/tmp/pickley")
+    cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder, "litecli")
+    assert cli.succeeded
+    assert "pip install -U pip" in cli.logged
+    assert "pip install -r requirements.txt" in cli.logged
+    assert "pip install litecli" in cli.logged
+    assert runez.is_executable("/tmp/pickley/bin/pickley")
+    assert runez.is_executable("/tmp/pickley/bin/litecli")
+    r = runez.run("/tmp/pickley/bin/pickley", "--version")
+    assert r.succeeded
+    r = runez.run("/tmp/pickley/bin/litecli", "--version")
+    assert r.succeeded
+    runez.delete("/tmp/pickley")
+
+
 def test_version_check(cli):
     cli.run("version-check")
     assert cli.failed
