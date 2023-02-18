@@ -9,7 +9,7 @@ from runez.http import GlobalHttpCalls
 from runez.pyenv import Version
 
 from pickley import __version__, get_program_path, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest, TrackedVersion
-from pickley.cli import Requirements, clean_compiled_artifacts, find_base, PackageFinalizer, SoftLock, SoftLockException
+from pickley.cli import clean_compiled_artifacts, find_base, PackageFinalizer, Requirements, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.package import Packager
 
