@@ -358,7 +358,11 @@ class VenvPackager(Packager):
     def package(pspec, build_folder, dist_folder, requirements, run_compile_all):
         runez.ensure_folder(dist_folder, clean=True, logger=False)
         venv = PythonVenv(dist_folder, pspec)
-        venv.pip_install(*requirements)
+        for requirement_file in requirements.requirement_files:
+            venv.pip_install("-r", requirement_file)
+        if requirements.additional_packages:
+            venv.pip_install(*requirements.additional_packages)
+        venv.pip_install(requirements.project)
         if run_compile_all:
             venv.run_python("-mcompileall", dist_folder)
 
