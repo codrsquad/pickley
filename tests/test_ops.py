@@ -9,7 +9,7 @@ from runez.http import GlobalHttpCalls
 from runez.pyenv import Version
 
 from pickley import __version__, get_program_path, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest, TrackedVersion
-from pickley.cli import clean_compiled_artifacts, find_base, PackageFinalizer, SoftLock, SoftLockException
+from pickley.cli import Requirements, clean_compiled_artifacts, find_base, PackageFinalizer, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.package import Packager
 
@@ -60,7 +60,7 @@ def test_debian_mode(temp_cfg, logged):
     runez.write("foo/setup.py", "import setuptools\nsetuptools.setup(name='foo', version='1.0')")
     p = dummy_finalizer(temp_cfg, "root/apps")
     assert p.dist == "root/apps/foo"
-    assert p.requirements == [runez.resolved_path("foo")]
+    assert p.requirements == Requirements(requirement_files=[], additional_packages=None, project=runez.resolved_path("foo"))
     assert "Using python:" in logged.pop()
 
     # Symlink not created unless source effectively exists
