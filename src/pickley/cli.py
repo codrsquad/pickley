@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import time
+from collections import namedtuple
 
 import click
 import runez
@@ -20,6 +21,8 @@ from pickley.package import PexPackager, PythonVenv, VenvPackager
 LOG = logging.getLogger(__name__)
 PACKAGER = VenvPackager  # Packager to use for this run
 CFG = PickleyConfig()
+
+Requirements = namedtuple("Requirements", ["requirement_files", "additional_packages", "project"])
 
 
 def setup_audit_log(cfg=CFG):
@@ -706,8 +709,8 @@ class PackageFinalizer:
             if os.path.exists(default_req):
                 requirement_files = default_req
 
-        requirement_files = [("-r", runez.resolved_path(r, base=self.folder)) for r in runez.flattened(requirement_files)]
-        self.requirements = runez.flattened(requirement_files, additional, self.folder, unique=True)
+        requirement_files = [runez.resolved_path(r, base=self.folder) for r in runez.flattened(requirement_files)]
+        self.requirements = Requirements(requirement_files, additional, self.folder)
 
     @staticmethod
     def validate_sanity_check(exe, sanity_check):
