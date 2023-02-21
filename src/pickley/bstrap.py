@@ -76,8 +76,7 @@ def find_base(base):
         if c and os.path.isdir(c) and is_writable(c) and c in path_dirs:
             return c
 
-    msg = "The following locations are not suitable: %s\n" % ", ".join(candidates)
-    msg += "Please make sure one those locations is writable and is in your PATH environment variable"
+    msg = "Please make sure ~/.local/bin is in your PATH environment variable."
     abort(msg)
 
 
