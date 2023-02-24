@@ -40,19 +40,22 @@ def test_bootstrap(cli, monkeypatch):
 
             with patch("pickley.bstrap.get_python_version", return_value=(3, 6)):  # urllib fails
                 monkeypatch.setenv("__PYVENV_LAUNCHER__", "oh apple, why?")  # macos oddity env var, should be removed
+                monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
                 cli.run("-n", main=bstrap.main)
                 assert cli.succeeded
                 assert "__PYVENV_LAUNCHER__" not in os.environ
                 assert "Replacing older pickley 0.1" in cli.logged
                 assert "Would run: python virtualenv-20.10.0.pyz -q --clear --pip 21.3.1 -p " in cli.logged
                 assert "Would run: .local/bin/.pickley/pickley/pickley-" in cli.logged
+                monkeypatch.undo()
 
             # Simulate multiple base candidates given
             cli.run("-n", "-b", "~/.local/bin:foo/bar", main=bstrap.main)
             assert cli.failed
-            assert "not suitable: ~/.local/bin, foo/bar" in cli.logged
+            assert "Make sure ~/.local/bin is writeable and in your PATH variable." in cli.logged
 
             # Simulate seeding
+            monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
             cli.run("0.1", "-b", "~/.local/bin", "-m", "my-mirror", "-c", '{"pyenv":"~/.pyenv"}', main=bstrap.main)
             assert cli.succeeded
             assert "Seeding .local/bin/.pickley/config.json with {'pyenv': '~/.pyenv'}" in cli.logged
@@ -63,7 +66,7 @@ def test_bootstrap(cli, monkeypatch):
 
             monkeypatch.setenv("PATH", "foo/bar:%s" % os.environ["PATH"])
             runez.ensure_folder("foo/bar", logger=None)
-            cli.run("-n", "-b", "~/.local/bin:foo/bar", main=bstrap.main)
+            cli.run("-n", "-b", "bar/baz:foo/bar", main=bstrap.main)
             assert cli.succeeded
             assert "base: foo/bar" in cli.logged
 
