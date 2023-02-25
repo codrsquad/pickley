@@ -17,6 +17,7 @@ HOME = os.path.expanduser("~")
 RUNNING_FROM_VENV = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
 TMP_FOLDER = None  # type: str
 RX_VERSION = re.compile(r"^\D*(\d+)\.(\d+).*$")
+DEFAULT_BASE = "~/.local/bin"
 
 
 def abort(message):
@@ -63,11 +64,7 @@ def find_base(base):
         if base:
             print("Found existing %s" % short(base))
             return os.path.dirname(base)
-
-        return os.path.expanduser("~/.local/bin")
-
-    if os.pathsep not in base:
-        return os.path.expanduser(base)
+        base = DEFAULT_BASE
 
     path_dirs = os.environ.get("PATH", "").split(os.pathsep)
     candidates = base.split(os.pathsep)
@@ -76,8 +73,7 @@ def find_base(base):
         if c and os.path.isdir(c) and is_writable(c) and c in path_dirs:
             return c
 
-    msg = "The following locations are not suitable: %s\n" % ", ".join(candidates)
-    msg += "Please make sure one those locations is writable and is in your PATH environment variable"
+    msg = "Make sure %s is writeable and in your PATH variable." % candidates[0]
     abort(msg)
 
 
