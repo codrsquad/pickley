@@ -218,10 +218,15 @@ class PythonVenv:
         Returns:
             (bool): True if 'path' points to a python executable part of this venv
         """
+        path = runez.to_path(path)
         if runez.is_executable(path):
+            if path.stat().st_size > 1024:
+                # Some pypi packages started delivering full-blown executables (like 'ruff', a pypi package written in rust)
+                return True
+
             for line in runez.readlines(path, first=1):
                 if line.startswith("#!"):
-                    if path.startswith(self.folder):
+                    if path.parent == runez.to_path(self.folder):
                         return True
 
     def pip_install(self, *args):
