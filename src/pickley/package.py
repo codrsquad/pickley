@@ -52,7 +52,7 @@ class PackageContents:
         self.files = None
         self.info = {}
         name = venv.pspec.dashed
-        if runez.DRYRUN and not venv.is_venv_exe("bin/pip"):
+        if runez.DRYRUN and not runez.is_executable("bin/pip"):
             self.bin.files = {venv.pspec.dashed: "dryrun"}  # Pretend an entry point exists in dryrun mode
             return
 
@@ -84,7 +84,7 @@ class PackageContents:
                     if "_completer" in basename:
                         self.completers.add_file(path)
 
-                    elif venv.is_venv_exe(path):
+                    elif runez.is_executable(path):
                         self.bin.add_file(path)
 
                 elif dirname.endswith(".dist-info"):
@@ -209,25 +209,6 @@ class PythonVenv:
             path = os.path.join(self.folder, "bin", f"{name}3")
             if os.path.exists(path):
                 return path
-
-    def is_venv_exe(self, path):
-        """
-        Args:
-            path (str): Path to file to examine
-
-        Returns:
-            (bool): True if 'path' points to a python executable part of this venv
-        """
-        path = runez.to_path(path)
-        if runez.is_executable(path):
-            if path.stat().st_size > 1024:
-                # Some pypi packages started delivering full-blown executables (like 'ruff', a pypi package written in rust)
-                return True
-
-            for line in runez.readlines(path, first=1):
-                if line.startswith("#!"):
-                    if path.parent == runez.to_path(self.folder):
-                        return True
 
     def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""
