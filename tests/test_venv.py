@@ -42,7 +42,7 @@ def test_edge_cases(temp_cfg, logged):
             assert cmd[4] == "--pip"
 
         else:
-            assert cmd[4] == "--download"
+            assert cmd[4] == "--pip"
 
 
 def simulated_run(*args, **_):
