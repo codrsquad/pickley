@@ -223,6 +223,8 @@ def pip_version(python_version):
     if python_version and python_version < (3, 7):
         return "21.3.1"
 
+    return "22.2.2"  # TODO: pip started looking for <whl>.metadata all of the sudden... what the heck?
+
 
 def create_virtualenv(tmp_folder, python_version, python_exe, venv_folder, virtualenv_version="20.10.0", runner=None, dryrun=None):
     """
