@@ -21,13 +21,11 @@ Automate installation of standalone python CLIs
 Overview
 ========
 
-See: `major changes in v3.0 <https://github.com/codrsquad/pickley/discussions/9>`_
-
 **pickley** allows to install and keep up-to-date standalone pip-installable python CLIs
-such as tox_, twine_, etc. A bit like brew_ or apt_, but based solely on pypi_
+such as tox_, hatch_, etc.
 
-It is similar to pipx_, but supports any python (including py2), offers self-auto-upgrade, and
-can ``package`` folders as well (for deployment, as venv or pex_ currently).
+It is `similar to pipx`_, main difference being installed CLIs automatically self-upgrade
+as you use them.
 
 It can work out of the box, **without any configuration**:
 
@@ -54,7 +52,7 @@ With **some configuration**, the following becomes possible:
 Example
 =======
 
-Once you have pickley_, you can get other python CLIs and use them as standalone programs, for example::
+Once you have ``pickley``, you can get other python CLIs and use them as standalone programs, for example::
 
     # One-liner to grab pickley, and drop it in ~/.local/bin
     $ curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/master/src/pickley/bstrap.py | /usr/bin/python3 -
@@ -66,9 +64,9 @@ Once you have pickley_, you can get other python CLIs and use them as standalone
     $ pickley base
     ~/.local/bin
 
-    $ pickley install tox twine
-    Installed tox v3.21.4 in 6 seconds 501 ms
-    Installed twine v3.3.0 in 6 seconds 901 ms
+    $ pickley install tox hatch
+    Installed tox v4.5.2 in 6 seconds 501 ms
+    Installed hatch v1.7.0 in 15 seconds
 
     $ which tox
     ~/.local/bin/tox
@@ -79,8 +77,8 @@ Once you have pickley_, you can get other python CLIs and use them as standalone
     $ pickley list
     | Package    | Version |
     -------------|----------
-    | tox        | 3.21.4  |
-    | twine      | 3.3.0   |
+    | tox        | 4.5.2   |
+    | hatch      | 1.7.0   |
 
 
 Configuration
@@ -139,26 +137,12 @@ Run (you will need tox_)::
     .venv/bin/pickley --help
 
 
-.. _pickley: https://pypi.org/project/pickley/
-
 .. _pypi: https://pypi.org/
-
-.. _pip: https://pypi.org/project/pip/
-
-.. _pipx: https://pypi.org/project/pipx/
-
-.. _pex: https://pypi.org/project/pex/
-
-.. _virtualenv: https://pypi.org/project/virtualenv/
-
-.. _shiv: https://pypi.org/project/shiv/
-
-.. _brew: https://brew.sh/
-
-.. _apt: https://en.wikipedia.org/wiki/APT_(Debian)
 
 .. _tox: https://pypi.org/project/tox/
 
-.. _twine: https://pypi.org/project/twine/
+.. _hatch: https://pypi.org/project/hatch/
 
 .. _config: https://github.com/codrsquad/pickley/wiki/Config
+
+.. _similar to pipx: https://github.com/codrsquad/pickley/wiki/Pickley-vs-pipx
