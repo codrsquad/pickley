@@ -82,7 +82,7 @@ class DeliveryMethod:
             entry_points (dict | list): Full path of executable to deliver (<base>/<entry_point>)
         """
         if not venv.pspec.is_clear_for_installation():
-            auto_uninstall(venv.pspec.exe_path(venv.pspec.dashed))
+            abort(f"{runez.short(venv.pspec.exe_path(venv.pspec.dashed))} exists and was not installed by pickley")
 
         try:
             prev_manifest = venv.pspec.manifest
@@ -165,44 +165,3 @@ class DeliveryMethodWrap(DeliveryMethod):
         runez.delete(target, logger=False)
         runez.write(target, contents, logger=False)
         runez.make_executable(target, logger=False)
-
-
-def auto_uninstall(target):
-    """
-    Args:
-        target (str): Path to executable to auto-uninstall if needed
-
-    Returns:
-        Aborts if uninstallation was not possible
-    """
-    brew, name = find_brew_name(target)
-    if brew and name:
-        result = runez.run(brew, "uninstall", "-f", name, fatal=False, logger=LOG.info)
-        if result.succeeded:
-            LOG.info(f"Auto-uninstalled brew formula '{name}'")
-            return
-
-        command = f"{brew} uninstall {name}"
-        abort(f"'{runez.bold(command)}' failed, please check")
-
-    abort(f"Can't automatically uninstall {runez.short(target)}")
-
-
-def find_brew_name(target):
-    """
-    Args:
-        target (str): Path to executable file
-
-    Returns:
-        (str, str): Name of brew formula, if target was installed with brew
-    """
-    if os.path.islink(target):
-        path = os.path.realpath(target)
-        folder = runez.parent_folder(target)
-        cellar = os.path.join(runez.parent_folder(folder), "Cellar")
-        if path.startswith(cellar):
-            brew = os.path.join(folder, "brew")
-            name, _, _ = path[len(cellar) + 1:].partition("/")
-            return brew, name
-
-    return None, None

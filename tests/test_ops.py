@@ -232,7 +232,7 @@ def test_facultative(cli):
     with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install --force virtualenv")
         assert cli.failed
-        assert "Can't automatically uninstall virtualenv" in cli.logged
+        assert "virtualenv exists and was not installed by pickley" in cli.logged
 
         # Simulate pickley symlink delivery
         dummy_target = dot_meta("foo")
