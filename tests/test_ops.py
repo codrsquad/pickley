@@ -108,10 +108,13 @@ def test_dryrun(cli, monkeypatch):
     cli.run("-n --color config")
     assert cli.succeeded
 
+    cli.expect_success("-n auto-heal", "Auto-healed 0 / 0 packages")
+
     cli.expect_success("-n -Pfoo diagnostics", "desired python : foo", "foo [not available]", "sys.executable")
     cli.run("-n install git@github.com:zsimic/mgit.git")
     assert cli.succeeded
-    assert "pip install .pickley/.cache/checkout/git-github-com-zsimic-mgit-git" in cli.logged
+    checkout = dot_meta(".cache/checkout")
+    assert f"pip install {checkout}/git-github-com-zsimic-mgit-git" in cli.logged
 
     cli.expect_success("-n list", "No packages installed")
 

@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 import runez
 
-from pickley import __version__, bstrap
+from pickley import __version__, bstrap, DOT_META
 
 
 def mocked_expanduser(path):
@@ -31,7 +31,7 @@ def mocked_which(program):
 def test_bootstrap(cli, monkeypatch):
     cli.run("-n base bootstrap-own-wrapper")
     assert cli.succeeded
-    assert f"Would save .pickley/pickley/pickley-{__version__}/.manifest.json" in cli.logged
+    assert f"Would save {DOT_META}/pickley/pickley-{__version__}/.manifest.json" in cli.logged
 
     with patch("pickley.bstrap.which", side_effect=mocked_which):
         with patch("pickley.bstrap.os.path.expanduser", side_effect=mocked_expanduser):
@@ -77,7 +77,7 @@ def test_bootstrap(cli, monkeypatch):
                         cli.run("1.0", main=bstrap.main)
                         assert cli.succeeded
                         assert " -mvenv --clear " in cli.logged
-                        assert "virtualenv-20.10.0.pyz -q --clear --pip 22.2.2 -p " in cli.logged
+                        assert "virtualenv-20.10.0.pyz -q --clear --download -p " in cli.logged
 
                         # When pip available, don't use virtualenv
                         pip = ".local/bin/.pickley/pickley/pickley-1.0/bin/pip3"
@@ -107,7 +107,7 @@ def test_edge_cases(temp_folder, monkeypatch, logged):
     cmd = bstrap.virtualenv_cmd("vv", (3, 6), "pyexe", "venv")
     assert cmd == [sys.executable, "vv", "-q", "--clear", "--pip", "21.3.1", "-p", "pyexe", "venv"]
     cmd = bstrap.virtualenv_cmd("vv", (3, 7), "pyexe", "venv")
-    assert cmd == [sys.executable, "vv", "-q", "--clear", "--pip", "22.2.2", "-p", "pyexe", "venv"]
+    assert cmd == [sys.executable, "vv", "-q", "--clear", "--download", "-p", "pyexe", "venv"]
 
     monkeypatch.setattr(bstrap, "DRYRUN", False)
     assert bstrap.which("python3")  # Check that which() works

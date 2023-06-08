@@ -13,7 +13,7 @@ from runez.pyenv import PypiStd, PythonDepot, PythonInstallationScanner, Version
 __version__ = "3.4.5"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
-DOT_META = ".pickley"
+DOT_META = ".pk"
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
@@ -620,6 +620,32 @@ class PickleyConfig:
                             result.append(PackageSpec(self, fname))
 
         return result
+
+    @runez.cached_property
+    def _wrapped_canonical_regex(self):
+        return re.compile(r"\.(pk|pickley)(/\w+)?/((?P<dashed>\w+)-(\d+(\.\d+)+))/bin/")
+
+    def _wrapped_canonical(self, path):
+        """(str | None): Canonical name of installed python package, if installed via pickley wrapper"""
+        if runez.is_executable(path):
+            for line in runez.readlines(path, first=12):
+                m = self._wrapped_canonical_regex.search(line)
+                if m:
+                    return m.group("dashed")
+
+    @runez.cached_property
+    def installed_specs(self):
+        """(list[PackageSpec]): Currently installed package specs"""
+        spec_names = set()
+        if os.path.isdir(self.base.path):
+            for basename in sorted(os.listdir(self.base.path)):
+                spec_name = self._wrapped_canonical(self.base.full_path(basename))
+                if spec_name:
+                    # Python packages can provide multiple entry-points
+                    # This captures the set of installed packages, regardles off how many entry points each has
+                    spec_names.add(spec_name)
+
+        return [PackageSpec(self, x) for x in sorted(spec_names)]
 
     def get_nested(self, section, key):
         """

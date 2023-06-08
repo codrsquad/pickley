@@ -132,17 +132,21 @@ class SoftLock:
         runez.delete(self.lock_path, logger=False)
 
 
-def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary=None):
+def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary=None, verb=None):
     """
     Args:
         pspec (PackageSpec): Package spec to install
         is_upgrade (bool): If True, intent is an upgrade (not a new install)
         force (bool): If True, check latest version even if recently checked
         quiet (bool): If True, don't chatter
+        verb (str): Verb to use to convey what kind of installation is being done (ex: auto-heal)
 
     Returns:
         (pickley.TrackedManifest): Manifest is successfully installed (or was already up-to-date)
     """
+    if not verb:
+        verb = "upgrade" if is_upgrade else "install"
+
     with SoftLock(pspec):
         started = time.time()
         skip_reason = pspec.skip_reason(force)
@@ -157,8 +161,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
             pspec.get_latest(force=force)
 
         if pspec.desired_track.problem:
-            action = "upgrade" if is_upgrade else "install"
-            abort(f"Can't {action} {pspec}: {runez.red(pspec.desired_track.problem)}")
+            abort(f"Can't {verb} {pspec}: {runez.red(pspec.desired_track.problem)}")
 
         if not force and pspec.is_up_to_date:
             if not quiet:
@@ -172,7 +175,8 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
         manifest = PACKAGER.install(pspec, no_binary=no_binary)
         if manifest and not quiet:
             note = f" in {runez.represented_duration(time.time() - started)}"
-            action = "Upgraded" if is_upgrade else "Installed"
+            verb += "d" if verb.endswith("e") else "ed"
+            action = "%s%s" % (verb[0].upper(), verb[1:])
             if runez.DRYRUN:
                 action = f"Would state: {action}"
 
@@ -259,7 +263,30 @@ def main(ctx, debug, config, index, python, delivery, packager, virtualenv):
         CFG.set_base(find_base())
 
 
-@main.command(name="auto-upgrade")
+@main.command()
+def auto_heal():
+    """
+    Automatically re-install packages that have stopped working.
+
+    \b
+    Reasons a package wouldn't be "healthy" anymore:
+    - Base python used to install the packages' venv is not available anymore
+    - The pickley-generated wrapper points to files that have now been deleted
+    """
+    total = healed = 0
+    for spec in CFG.installed_specs:
+        total += 1
+        if spec.is_healthily_installed():
+            print("%s is healthy" % runez.bold(spec))
+            continue
+
+        healed += 1
+        perform_install(spec, verb="auto-heal")
+
+    print("Auto-healed %s / %s packages" % (healed, total))
+
+
+@main.command()
 @click.option("--force", is_flag=True, help="Force auto-upgrade check, even if recently checked")
 @click.argument("package", required=True)
 def auto_upgrade(force, package):
