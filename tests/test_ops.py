@@ -266,12 +266,13 @@ def check_is_wrapper(path, is_wrapper):
     assert r.succeeded
 
 
-def check_install_from_pypi(cli, delivery, package, simulate_version=None):
-    cli.run("--debug", "-d%s" % delivery, "install", package)
+def check_install_from_pypi(cli, delivery, package, version, simulate_version=None):
+    runez.write(".pk/.cache/mgit.latest", f'{{"version": "{version}"}}')
+    cli.run("--debug", f"-d{delivery}", "install", package)
     assert cli.succeeded
-    assert cli.match("Installed %s" % package)
+    assert cli.match(f"Installed {package} v{version}")
     assert runez.is_executable(package)
-    m = TrackedManifest.from_file(dot_meta("%s/.manifest.json" % package))
+    m = TrackedManifest.from_file(dot_meta(f"{package}/.manifest.json"))
     assert str(m)
     assert m.entrypoints[package]
     assert m.install_info.args == runez.quoted(cli.args)
@@ -279,20 +280,21 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
     assert m.install_info.vpickley == __version__
     assert m.settings.delivery == delivery
     assert m.settings.python
-    assert m.version
+    assert m.version == version
 
     r = runez.run(package, "--version")
     assert r.succeeded
+    assert version in r.full_output
 
-    cli.expect_success("--debug auto-upgrade %s" % package, "Skipping auto-upgrade, checked recently")
-    cli.expect_success("install %s" % package, "is already installed")
+    cli.expect_success(f"--debug auto-upgrade {package}", "Skipping auto-upgrade, checked recently")
+    cli.expect_success(f"install {package}", "is already installed")
     if simulate_version:
         # Edge case: simulated user manually deletes the installed wrapper or symlink
         assert os.path.exists(package)
         os.unlink(package)
-        cli.run("--debug", "-d%s" % delivery, "install", package)
+        cli.run("--debug", f"-d{delivery}", "install", package)
         assert cli.succeeded
-        assert cli.match("Installed %s" % package)
+        assert cli.match(f"Installed {package} v{version}")
 
     cli.expect_success("check", " up-to-date")
     cli.expect_success("list", package)
@@ -301,17 +303,11 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
     if simulate_version:
         installed_version = m.version
         m.version = simulate_version
-        runez.save_json(m.to_dict(), dot_meta("%s/.manifest.json" % package))
-        cli.expect_success("check", "%s (currently unhealthy)" % installed_version)
+        runez.save_json(m.to_dict(), dot_meta(f"{package}/.manifest.json"))
+        cli.expect_success("check", f"{installed_version} (currently unhealthy)")
 
 
-@GlobalHttpCalls.allowed
 def test_install_pypi(cli):
-    cli.expect_failure("--color install six", "it is not a CLI")
-    assert not os.path.exists(dot_meta("six"))
-
-    cli.expect_failure("install mgit+foo", "not a valid pypi package name")
-
     runez.touch(dot_meta("mgit/.foo"))  # Should stay because name starts with '.'
     runez.touch(dot_meta("mgit/mgit-foo"))  # Bogus installation
     runez.touch(dot_meta("mgit/mgit-0.0.1/foo"))  # Oldest should be deleted
@@ -324,28 +320,53 @@ def test_install_pypi(cli):
 
     time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
     runez.touch(dot_meta("mgit/mgit-0.0.2/foo"))  # Youngest should remain for an hour
-    check_install_from_pypi(cli, "symlink", "mgit")
+    check_install_from_pypi(cli, "symlink", "mgit", "1.3.0")
     assert not os.path.exists("old-mgit-entrypoint")
     assert os.path.islink("mgit")
     assert os.path.exists(dot_meta("mgit/.manifest.json"))
     assert os.path.exists(dot_meta("mgit/.foo"))
     assert os.path.exists(dot_meta("mgit/mgit-0.0.2"))
+    assert os.path.exists(dot_meta("mgit/mgit-1.3.0"))
     assert not os.path.exists(dot_meta("mgit/mgit-foo"))
     assert not os.path.exists(dot_meta("mgit/mgit-0.0.1"))
 
+    cli.run("-n auto-heal")
+    assert cli.succeeded
+    assert "mgit is healthy" in cli.logged
+    assert "Auto-healed 0 / 1 packages" in cli.logged
+
     cfg = PickleyConfig()
     cfg.set_base(".")
-    pspec = PackageSpec(cfg, "mgit")
+    pspec = PackageSpec(cfg, "mgit==1.3.0")
     pspec.groom_installation(keep_for=0)
     assert not os.path.exists(dot_meta("mgit/mgit-0.0.2"))
+    assert os.path.exists(dot_meta("mgit/mgit-1.3.0"))
 
     cli.expect_success("uninstall mgit", "Uninstalled mgit")
     assert not runez.is_executable("mgit")
-    assert not os.path.exists(dot_meta("mgit"))
+    assert not os.path.exists(dot_meta("mgit/.manifest.json"))
+    assert not os.path.exists(dot_meta("mgit/mgit-1.3.0"))
     assert os.path.exists(dot_meta("audit.log"))
 
-    check_install_from_pypi(cli, "wrap", "mgit", simulate_version="0.0.0")
+    check_install_from_pypi(cli, "wrap", "mgit", "1.3.0", simulate_version="0.0.0")
     check_is_wrapper("mgit", True)
+
+    runez.delete(dot_meta("mgit/mgit-1.3.0"))
+    cli.run("-n auto-heal")
+    assert cli.succeeded
+    assert "Auto-healed 1 / 1 packages" in cli.logged
+
+
+@GlobalHttpCalls.allowed
+def test_invalid(cli):
+    cli.run("--color install six")
+    assert cli.failed
+    assert "not a CLI" in cli.logged
+    assert not os.path.exists(dot_meta("six.manifest.json"))
+
+    cli.expect_failure("install mgit+foo")
+    assert cli.failed
+    assert "not a valid pypi package name" in cli.logged
 
 
 def test_lock(temp_cfg, logged):

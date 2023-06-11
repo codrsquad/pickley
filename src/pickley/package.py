@@ -260,7 +260,7 @@ class Packager:
             pspec (pickley.PackageSpec): Targeted package spec
             build_folder (str): Folder to use as build cache
             dist_folder (str): Folder where to produce package
-            requirements (list): Additional requirements (same convention as pip, can be package names or package specs)
+            requirements (pickley.cli.Requirements): Additional requirements (same convention as pip, can be package names or package specs)
             run_compile_all (bool): Call 'compileall' on generated package?
 
         Returns:
@@ -335,7 +335,7 @@ class VenvPackager(Packager):
         venv.pip_install(*args)
         contents = PackageContents(venv)
         if not contents.entry_points:
-            runez.delete(pspec.meta_path)
+            pspec.delete_all_files()
             abort(f"Can't install '{runez.bold(pspec.dashed)}', it is {runez.red('not a CLI')}")
 
         return delivery.install(venv, contents.entry_points)

@@ -13,8 +13,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, despecced, DOT_META, inform, PackageSpec, PickleyConfig, specced
-from pickley.delivery import PICKLEY
+from pickley import __version__, abort, despecced, DOT_META, inform, PackageSpec, PICKLEY, PickleyConfig, specced
 from pickley.package import PexPackager, PythonVenv, VenvPackager
 
 
@@ -274,7 +273,7 @@ def auto_heal():
     - The pickley-generated wrapper points to files that have now been deleted
     """
     total = healed = 0
-    for spec in CFG.installed_specs:
+    for spec in CFG.installed_specs():
         total += 1
         if spec.is_healthily_installed():
             print("%s is healthy" % runez.bold(spec))
@@ -615,7 +614,7 @@ def uninstall(all, packages):
         for ep in pspec.manifest.entrypoints:
             runez.delete(pspec.exe_path(ep))
 
-        runez.delete(pspec.meta_path)
+        pspec.delete_all_files()
         action = "Would uninstall" if runez.DRYRUN else "Uninstalled"
         inform(f"{action} {pspec}")
 

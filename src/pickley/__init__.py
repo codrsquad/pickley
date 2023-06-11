@@ -258,10 +258,6 @@ class PackageSpec:
         return self.cfg.meta.full_path(self.dashed, ".manifest.json")
 
     @runez.cached_property
-    def meta_path(self):
-        return self.cfg.meta.full_path(self.dashed)
-
-    @runez.cached_property
     def ping_path(self):
         """Path to .ping file (for throttle auto-upgrade checks)"""
         return self.cfg.cache.full_path(f"{self.dashed}.ping")
@@ -351,6 +347,20 @@ class PackageSpec:
 
         return runez.abort(f"Expecting 1 wheel, found: {runez.short(result)}", fatal=fatal, return_value=None)
 
+    def delete_all_files(self):
+        """Delete all files in DOT_META/ folder related to this package spec"""
+        runez.delete(self.manifest_path, fatal=False)
+        for candidate, version in self.installed_sibling_folders():
+            runez.delete(candidate, fatal=False)
+
+    def installed_sibling_folders(self):
+        folder = runez.to_path(self.cfg.meta.full_path(self.dashed))
+        if folder.is_dir():
+            prefix = f"{self.dashed}-"
+            for item in folder.iterdir():
+                if item.name.startswith(prefix):
+                    yield item, item.name[len(prefix):]
+
     def groom_installation(self, keep_for=60):
         """
         Args:
@@ -359,47 +369,37 @@ class PackageSpec:
         if self._pickley_dev_mode:
             return
 
-        if self.cfg.cache.contains(self.folder):
-            runez.delete(self.folder, logger=False)
-
-        meta_path = self.meta_path
+        candidates = []
         current_age = None
         manifest = self.manifest
-        if manifest and os.path.isdir(meta_path):
-            now = time.time()
-            candidates = []
-            for fname in os.listdir(meta_path):
-                if fname.startswith("."):  # Pickley meta files start with '.'
+        now = time.time()
+        for candidate, version in self.installed_sibling_folders():
+            age = now - os.path.getmtime(candidate)
+            if version == manifest.version:
+                current_age = age
+
+            else:
+                version = Version(version)
+                if not version.is_valid:
+                    # Not a proper installation
+                    runez.delete(candidate, fatal=False)
                     continue
 
-                fpath = os.path.join(meta_path, fname)
-                vpart = fname[len(self.dashed) + 1:]
-                age = now - os.path.getmtime(fpath)
-                if vpart == manifest.version:
-                    current_age = age
+                # Different version, previously installed
+                candidates.append((age, version, candidate))
 
-                else:
-                    version = Version(vpart)
-                    if not version.is_valid:
-                        # Not a proper installation
-                        runez.delete(fpath, fatal=False)
-                        continue
+        if not candidates:
+            return
 
-                    # Different version, previously installed
-                    candidates.append((age, version, fpath))
+        candidates = sorted(candidates)
+        youngest = candidates[0]
+        for candidate in candidates[1:]:
+            runez.delete(candidate[2], fatal=False)
 
-            if not candidates:
-                return
-
-            candidates = sorted(candidates)
-            youngest = candidates[0]
-            for candidate in candidates[1:]:
-                runez.delete(candidate[2], fatal=False)
-
-            if current_age:
-                current_age = min(current_age, youngest[0])
-                if current_age > (keep_for * runez.date.SECONDS_IN_ONE_MINUTE):
-                    runez.delete(youngest[2], fatal=False)
+        if current_age:
+            current_age = min(current_age, youngest[0])
+            if current_age > (keep_for * runez.date.SECONDS_IN_ONE_MINUTE):
+                runez.delete(youngest[2], fatal=False)
 
     def save_manifest(self, entry_points):
         manifest = TrackedManifest(
@@ -506,7 +506,7 @@ class PickleyConfig:
             base_path (str): Path to pickley base installation
         """
         self.configs = []
-        self.base = FolderBase("base", base_path)
+        self.base = FolderBase("base", runez.resolved_path(base_path))
         self.meta = FolderBase("meta", os.path.join(self.base.path, DOT_META))
         self.cache = FolderBase("cache", os.path.join(self.meta.path, ".cache"))
         if self.cli:
@@ -633,18 +633,16 @@ class PickleyConfig:
                 if m:
                     return m.group("dashed")
 
-    @runez.cached_property
+    def scan_installed(self):
+        """Scan installed"""
+        for item in self.base.iterdir():
+            spec_name = self._wrapped_canonical(item)
+            if spec_name:
+                yield spec_name
+
     def installed_specs(self):
         """(list[PackageSpec]): Currently installed package specs"""
-        spec_names = set()
-        if os.path.isdir(self.base.path):
-            for basename in sorted(os.listdir(self.base.path)):
-                spec_name = self._wrapped_canonical(self.base.full_path(basename))
-                if spec_name:
-                    # Python packages can provide multiple entry-points
-                    # This captures the set of installed packages, regardles off how many entry points each has
-                    spec_names.add(spec_name)
-
+        spec_names = set(self.scan_installed())
         return [PackageSpec(self, x) for x in sorted(spec_names)]
 
     def get_nested(self, section, key):
@@ -986,15 +984,15 @@ class FolderBase:
             path (str): Path to folder
         """
         self.name = name
-        self.path = runez.resolved_path(path)
+        self.path = path
 
     def __repr__(self):
         return self.path
 
-    def contains(self, path):
-        if path:
-            path = runez.resolved_path(path)
-            return path.startswith(self.path)
+    def iterdir(self):
+        path = runez.to_path(self.path)
+        if path.is_dir():
+            yield from path.iterdir()
 
     def full_path(self, *relative):
         """
@@ -1002,7 +1000,7 @@ class FolderBase:
             *relative: Relative path components
 
         Returns:
-            (str): Full path based on self.path
+            (str): Full path based on `self.path`
         """
         return os.path.join(self.path, *relative)
 
