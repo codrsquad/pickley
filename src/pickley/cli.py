@@ -315,9 +315,16 @@ def base(what):
         from pickley.delivery import DeliveryMethodWrap
 
         pspec = PackageSpec(CFG, f"{PICKLEY}=={__version__}")
-        venv = PythonVenv(CFG.meta.full_path(PICKLEY, f"{PICKLEY}-{__version__}"), pspec, create=False)
+        venv = PythonVenv(CFG.meta.full_path(f"{PICKLEY}-{__version__}"), pspec, create=False)
         wrap = DeliveryMethodWrap()
         wrap.install(venv, {PICKLEY: PICKLEY})
+
+        # TODO: Remove once pickley 3.4 is phased out
+        old_meta = CFG.base.full_path(".pickley")
+        if os.path.isdir(old_meta):
+            runez.delete(old_meta)
+            runez.run(os.path.join(venv.folder, "bin", PICKLEY), "auto-heal")
+
         return
 
     if what:
