@@ -31,8 +31,8 @@ def mocked_which(program):
 def test_bootstrap(cli, monkeypatch):
     cli.run("-n base bootstrap-own-wrapper")
     assert cli.succeeded
-    expected_meta = f"{DOT_META}/pickley/pickley-{__version__}"
-    assert f"Would save {expected_meta}/.manifest.json" in cli.logged
+    expected_meta = f"{DOT_META}/pickley-{__version__}"
+    assert f"Would save {DOT_META}/pickley.manifest.json" in cli.logged
 
     with patch("pickley.bstrap.which", side_effect=mocked_which):
         with patch("pickley.bstrap.os.path.expanduser", side_effect=mocked_expanduser):
@@ -81,7 +81,7 @@ def test_bootstrap(cli, monkeypatch):
                         assert "virtualenv-20.10.0.pyz -q --clear --download -p " in cli.logged
 
                         # When pip available, don't use virtualenv
-                        pip = f".local/bin/{DOT_META}/pickley/pickley-1.0/bin/pip3"
+                        pip = f".local/bin/{DOT_META}/pickley-1.0/bin/pip3"
                         runez.touch(pip)
                         runez.make_executable(pip)
                         cli.run("1.0", main=bstrap.main)

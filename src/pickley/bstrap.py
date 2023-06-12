@@ -315,7 +315,7 @@ def main(args=None):
             if v and len(v) < 24:  # If long output -> old pickley is busted (stacktrace)
                 print("Replacing older pickley %s" % v)
 
-        pickley_venv = os.path.join(pickley_base, ".pk", "pickley", "pickley-%s" % pickley_version)
+        pickley_venv = os.path.join(pickley_base, ".pk", "pickley-%s" % pickley_version)
         pv = get_python_version(python3)
         needs_virtualenv = True
         if pv and pv >= (3, 7):

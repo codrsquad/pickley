@@ -255,7 +255,7 @@ class PackageSpec:
 
     @runez.cached_property
     def manifest_path(self):
-        return self.cfg.meta.full_path(self.dashed, ".manifest.json")
+        return self.cfg.meta.full_path(f"{self.dashed}.manifest.json")
 
     @runez.cached_property
     def ping_path(self):
@@ -274,9 +274,9 @@ class PackageSpec:
 
     def get_install_path(self, version):
         if self._pickley_dev_mode:
-            return self.cfg.meta.full_path(PICKLEY, f"{PICKLEY}-dev")
+            return self.cfg.meta.full_path(f"{PICKLEY}-dev")
 
-        return self.cfg.meta.full_path(self.dashed, f"{self.dashed}-{version}")
+        return self.cfg.meta.full_path(f"{self.dashed}-{version}")
 
     def get_lock_path(self):
         """str: Path to lock file used during installation for this package"""
@@ -354,7 +354,7 @@ class PackageSpec:
             runez.delete(candidate, fatal=False)
 
     def installed_sibling_folders(self):
-        folder = runez.to_path(self.cfg.meta.full_path(self.dashed))
+        folder = runez.to_path(self.cfg.meta.path)
         if folder.is_dir():
             prefix = f"{self.dashed}-"
             for item in folder.iterdir():
@@ -370,23 +370,12 @@ class PackageSpec:
             return
 
         candidates = []
-        current_age = None
         manifest = self.manifest
         now = time.time()
         for candidate, version in self.installed_sibling_folders():
             age = now - os.path.getmtime(candidate)
-            if version == manifest.version:
-                current_age = age
-
-            else:
-                version = Version(version)
-                if not version.is_valid:
-                    # Not a proper installation
-                    runez.delete(candidate, fatal=False)
-                    continue
-
-                # Different version, previously installed
-                candidates.append((age, version, candidate))
+            if version != manifest.version:
+                candidates.append((age, candidate))
 
         if not candidates:
             return
@@ -394,12 +383,10 @@ class PackageSpec:
         candidates = sorted(candidates)
         youngest = candidates[0]
         for candidate in candidates[1:]:
-            runez.delete(candidate[2], fatal=False)
+            runez.delete(candidate[1], fatal=False)
 
-        if current_age:
-            current_age = min(current_age, youngest[0])
-            if current_age > (keep_for * runez.date.SECONDS_IN_ONE_MINUTE):
-                runez.delete(youngest[2], fatal=False)
+        if youngest[0] > (keep_for * runez.date.SECONDS_IN_ONE_MINUTE):
+            runez.delete(youngest[1], fatal=False)
 
     def save_manifest(self, entry_points):
         manifest = TrackedManifest(
@@ -610,16 +597,7 @@ class PickleyConfig:
             result = runez.flattened(result, unique=True)
             return [PackageSpec(self, name) for name in result]
 
-        result = []
-        if os.path.isdir(self.meta.path):
-            for fname in sorted(os.listdir(self.meta.path)):
-                if include_pickley or fname != PICKLEY:
-                    fpath = os.path.join(self.meta.path, fname)
-                    if os.path.isdir(fpath):
-                        if os.path.exists(os.path.join(fpath, ".manifest.json")):
-                            result.append(PackageSpec(self, fname))
-
-        return result
+        return self.installed_specs()
 
     @runez.cached_property
     def _wrapped_canonical_regex(self):
@@ -639,6 +617,12 @@ class PickleyConfig:
             spec_name = self._wrapped_canonical(item)
             if spec_name:
                 yield spec_name
+
+        for item in self.meta.iterdir():
+            if item.name.endswith(".manifest.json"):
+                spec_name = item.name[:-14]
+                if spec_name:
+                    yield spec_name
 
     def installed_specs(self):
         """(list[PackageSpec]): Currently installed package specs"""

@@ -157,7 +157,7 @@ def test_dryrun(cli, monkeypatch):
         cli.expect_failure("-n check mgit pickley2-a", "not installed", "pickley2-a: does not exist")
 
         # Simulate an old entry point that was now removed
-        runez.write(dot_meta("mgit/.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
+        runez.write(dot_meta("mgit.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
         cli.expect_failure("-n install mgit pickley2.a", "Would state: Installed mgit v", "'pickley2.a' is not pypi canonical")
 
         cli.expect_failure("check", "not installed")
@@ -172,7 +172,7 @@ def test_dryrun(cli, monkeypatch):
         assert cli.succeeded
         assert " --no-binary :all: mgit==1.3.0" in cli.logged
         assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
-        assert cli.match("Would save %s" % dot_meta("mgit/.manifest.json"))
+        assert cli.match("Would save %s" % dot_meta("mgit.manifest.json"))
         assert cli.match("Would state: Installed mgit v1.3.0")
 
         cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
@@ -272,7 +272,7 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
     assert cli.succeeded
     assert cli.match(f"Installed {package} v{version}")
     assert runez.is_executable(package)
-    m = TrackedManifest.from_file(dot_meta(f"{package}/.manifest.json"))
+    m = TrackedManifest.from_file(dot_meta(f"{package}.manifest.json"))
     assert str(m)
     assert m.entrypoints[package]
     assert m.install_info.args == runez.quoted(cli.args)
@@ -303,32 +303,27 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
     if simulate_version:
         installed_version = m.version
         m.version = simulate_version
-        runez.save_json(m.to_dict(), dot_meta(f"{package}/.manifest.json"))
+        runez.save_json(m.to_dict(), dot_meta(f"{package}.manifest.json"))
         cli.expect_success("check", f"{installed_version} (currently unhealthy)")
 
 
 def test_install_pypi(cli):
-    runez.touch(dot_meta("mgit/.foo"))  # Should stay because name starts with '.'
-    runez.touch(dot_meta("mgit/mgit-foo"))  # Bogus installation
-    runez.touch(dot_meta("mgit/mgit-0.0.1/foo"))  # Oldest should be deleted
+    runez.touch(dot_meta("mgit-0.0.1/pyenv.cfg"))
+    time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
+    runez.touch(dot_meta("mgit-0.0.2/pyenv.cfg"))
 
     # Simulate the presence of an old entry point
-    manifest_path = dot_meta("mgit/.manifest.json")
+    manifest_path = dot_meta("mgit.manifest.json")
     runez.save_json(dict(entrypoints=["mgit", "old-mgit-entrypoint"]), manifest_path)
     runez.touch("old-mgit-entrypoint")
-    assert os.path.exists("old-mgit-entrypoint")
 
-    time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
-    runez.touch(dot_meta("mgit/mgit-0.0.2/foo"))  # Youngest should remain for an hour
     check_install_from_pypi(cli, "symlink", "mgit", "1.3.0")
     assert not os.path.exists("old-mgit-entrypoint")
     assert os.path.islink("mgit")
-    assert os.path.exists(dot_meta("mgit/.manifest.json"))
-    assert os.path.exists(dot_meta("mgit/.foo"))
-    assert os.path.exists(dot_meta("mgit/mgit-0.0.2"))
-    assert os.path.exists(dot_meta("mgit/mgit-1.3.0"))
-    assert not os.path.exists(dot_meta("mgit/mgit-foo"))
-    assert not os.path.exists(dot_meta("mgit/mgit-0.0.1"))
+    assert os.path.exists(dot_meta("mgit.manifest.json"))
+    assert not os.path.exists(dot_meta("mgit-0.0.1"))
+    assert os.path.exists(dot_meta("mgit-0.0.2"))
+    assert os.path.exists(dot_meta("mgit-1.3.0"))
 
     cli.run("-n auto-heal")
     assert cli.succeeded
@@ -339,19 +334,19 @@ def test_install_pypi(cli):
     cfg.set_base(".")
     pspec = PackageSpec(cfg, "mgit==1.3.0")
     pspec.groom_installation(keep_for=0)
-    assert not os.path.exists(dot_meta("mgit/mgit-0.0.2"))
-    assert os.path.exists(dot_meta("mgit/mgit-1.3.0"))
+    assert not os.path.exists(dot_meta("mgit-0.0.2"))
+    assert os.path.exists(dot_meta("mgit-1.3.0"))
 
     cli.expect_success("uninstall mgit", "Uninstalled mgit")
     assert not runez.is_executable("mgit")
-    assert not os.path.exists(dot_meta("mgit/.manifest.json"))
-    assert not os.path.exists(dot_meta("mgit/mgit-1.3.0"))
+    assert not os.path.exists(dot_meta("mgit.manifest.json"))
+    assert not os.path.exists(dot_meta("mgit-1.3.0"))
     assert os.path.exists(dot_meta("audit.log"))
 
     check_install_from_pypi(cli, "wrap", "mgit", "1.3.0", simulate_version="0.0.0")
     check_is_wrapper("mgit", True)
 
-    runez.delete(dot_meta("mgit/mgit-1.3.0"))
+    runez.delete(dot_meta("mgit-1.3.0"))
     cli.run("-n auto-heal")
     assert cli.succeeded
     assert "Auto-healed 1 / 1 packages" in cli.logged
