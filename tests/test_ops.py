@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 from unittest.mock import patch
 
@@ -8,7 +7,7 @@ import runez
 from runez.http import GlobalHttpCalls
 from runez.pyenv import Version
 
-from pickley import __version__, get_program_path, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest, TrackedVersion
+from pickley import __version__, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest, TrackedVersion
 from pickley.cli import clean_compiled_artifacts, find_base, PackageFinalizer, Requirements, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.package import Packager
@@ -36,17 +35,10 @@ def test_base(cli, monkeypatch):
     runez.ensure_folder("temp-base")
     assert find_base() == runez.resolved_path("temp-base")
 
-    assert sys.prefix in get_program_path("foo/bar.py")
-
     monkeypatch.delenv("PICKLEY_ROOT")
-    monkeypatch.setattr(PickleyConfig, "program_path", "/foo/.venv/bin/pickley")
-    assert find_base() == "/foo/.venv/root"
-
-    monkeypatch.setattr(PickleyConfig, "program_path", dot_meta("pickley-0.0.0/bin/pickley", parent="foo"))
-    assert find_base() == "foo"
-
-    monkeypatch.setattr(PickleyConfig, "program_path", "foo/bar")
-    assert find_base() == "foo"
+    assert find_base("/foo/.venv/bin/pickley") == "/foo/.venv/root"
+    assert find_base(dot_meta("pickley-0.0.0/bin/pickley", parent="foo")) == "foo"
+    assert find_base("foo/bar") == "foo"
 
 
 def dummy_finalizer(cfg, dist, symlink="root:root/usr/local/bin"):
@@ -179,13 +171,13 @@ def test_dryrun(cli, monkeypatch):
 
 
 def test_dev_mode(cli, monkeypatch):
-    monkeypatch.setattr(PickleyConfig, "_pickley_dev_path", None)
     with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install pickley")
         assert cli.succeeded
-        assert "pip install -e " in cli.logged
-        assert "pickley-dev/bin/pickley" in cli.logged
+        assert ".pk/pickley-dev/bin/pip install -e " in cli.logged
+        assert "Would symlink .pk/pickley-dev <- .pk/pickley" in cli.logged
         assert "pickley-100.0" not in cli.logged
+        assert "Would state: Installed pickley v100.0 in "
 
 
 def test_edge_cases(temp_cfg, logged):
@@ -282,7 +274,7 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
     assert m.settings.python
     assert m.version == version
 
-    r = runez.run(package, "--version")
+    r = runez.run(f"./{package}", "--version")
     assert r.succeeded
     assert version in r.full_output
 
@@ -304,7 +296,7 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
         installed_version = m.version
         m.version = simulate_version
         runez.save_json(m.to_dict(), dot_meta(f"{package}.manifest.json"))
-        cli.expect_success("check", f"{installed_version} (currently unhealthy)")
+        cli.expect_success("check", f"{installed_version} (currently {simulate_version})")
 
 
 def test_install_pypi(cli):
@@ -344,7 +336,7 @@ def test_install_pypi(cli):
     assert os.path.exists(dot_meta("audit.log"))
 
     check_install_from_pypi(cli, "wrap", "mgit", "1.3.0", simulate_version="0.0.0")
-    check_is_wrapper("mgit", True)
+    check_is_wrapper("./mgit", True)
 
     runez.delete(dot_meta("mgit-1.3.0"))
     cli.run("-n auto-heal")

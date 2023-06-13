@@ -202,14 +202,6 @@ class PackageSpec:
         return self.cfg.pinned_version(self)
 
     @runez.cached_property
-    def _pickley_dev_mode(self):
-        """Path to pickley source folder, if we're running in dev mode"""
-        if self.dashed == PICKLEY:
-            dev_path = self.cfg.pickley_dev_path()
-            if dev_path:
-                return dev_path
-
-    @runez.cached_property
     def index(self):
         """Index to use for this package spec"""
         return self.cfg.index(self)
@@ -262,6 +254,11 @@ class PackageSpec:
         """Path to .ping file (for throttle auto-upgrade checks)"""
         return self.cfg.cache.full_path(f"{self.dashed}.ping")
 
+    @runez.cached_property
+    def active_install_path(self):
+        """Currently active installed venv (symlink)"""
+        return self.cfg.meta.full_path(self.dashed)
+
     @property
     def is_currently_installed(self):
         manifest = self.manifest
@@ -272,11 +269,14 @@ class PackageSpec:
         """bool: True if this package was already installed by pickley once"""
         return self.dashed == PICKLEY or os.path.exists(self.manifest_path)
 
-    def get_install_path(self, version):
-        if self._pickley_dev_mode:
-            return self.cfg.meta.full_path(f"{PICKLEY}-dev")
+    def pip_spec(self):
+        if self.folder:
+            return [self.folder]
 
-        return self.cfg.meta.full_path(f"{self.dashed}-{version}")
+        if self.dashed == PICKLEY and runez.DEV.project_folder:
+            return ["-e", runez.DEV.project_folder]
+
+        return [f"{self.dashed}=={self.desired_track.version}"]
 
     def get_lock_path(self):
         """str: Path to lock file used during installation for this package"""
@@ -325,8 +325,7 @@ class PackageSpec:
                     if not runez.is_executable(exe_path):
                         return False
 
-            install_folder = self.get_install_path(manifest.version)
-            py_path = self.cfg.available_pythons.resolved_python_exe(install_folder)
+            py_path = self.cfg.available_pythons.resolved_python_exe(self.active_install_path)
             if py_path:
                 return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
@@ -366,9 +365,6 @@ class PackageSpec:
         Args:
             keep_for (int): Minimum time in minutes for how long to keep the previous latest version
         """
-        if self._pickley_dev_mode:
-            return
-
         candidates = []
         manifest = self.manifest
         now = time.time()
@@ -398,8 +394,7 @@ class PackageSpec:
         )
         payload = manifest.to_dict()
         runez.save_json(payload, self.manifest_path)
-        path = self.get_install_path(self.desired_track.version)
-        runez.save_json(payload, os.path.join(path, ".manifest.json"))
+        runez.save_json(payload, os.path.join(self.active_install_path, ".manifest.json"))
         self._manifest = manifest
         return manifest
 
@@ -434,18 +429,6 @@ def get_default_index(*paths):
     return None, None
 
 
-def get_program_path(path=None):
-    if path is None:
-        path = runez.resolved_path(sys.argv[0])
-
-    if path.endswith(".py") or path.endswith(".pyc"):
-        packaged = runez.SYS_INFO.venv_bin_path(PICKLEY)
-        if runez.is_executable(packaged):
-            path = packaged  # Convenience when running from debugger
-
-    return path
-
-
 class PickleyConfig:
     """Pickley configuration"""
 
@@ -454,9 +437,6 @@ class PickleyConfig:
     cache = None  # type: FolderBase # DOT_META/.cache subfolder
     cli = None  # type: TrackedSettings # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
     configs = None  # type: list
-    program_path = get_program_path()
-
-    _pickley_dev_path = None
 
     def __init__(self):
         self.configs = []
@@ -479,13 +459,6 @@ class PickleyConfig:
             preferred_min_python=self.get_value("preferred_min_python")
         )
         return depot
-
-    @classmethod
-    def pickley_dev_path(cls):
-        if cls._pickley_dev_path is None:
-            cls._pickley_dev_path = runez.DEV.project_folder
-
-        return cls._pickley_dev_path
 
     def set_base(self, base_path):
         """

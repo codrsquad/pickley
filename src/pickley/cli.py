@@ -200,7 +200,7 @@ def _find_base_from_program_path(path):
     return _find_base_from_program_path(dirpath)
 
 
-def find_base():
+def find_base(path=None):
     base_path = runez.resolved_path(os.environ.get("PICKLEY_ROOT"))
     if base_path:
         if not os.path.isdir(base_path):
@@ -208,8 +208,8 @@ def find_base():
 
         return runez.resolved_path(base_path)
 
-    program_path = PickleyConfig.program_path
-    return _find_base_from_program_path(program_path) or os.path.dirname(program_path)
+    path = path or runez.resolved_path(sys.argv[0])
+    return _find_base_from_program_path(path) or os.path.dirname(path)
 
 
 def clean_env_vars(*keys):

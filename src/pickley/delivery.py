@@ -89,7 +89,7 @@ class DeliveryMethod:
         try:
             prev_manifest = venv.pspec.manifest
             for name in entry_points:
-                src = venv.bin_path(name)
+                src = os.path.join(venv.pspec.active_install_path, "bin", name)
                 dest = venv.pspec.exe_path(name)
                 ssrc = runez.short(src)
                 sdest = runez.short(dest)
