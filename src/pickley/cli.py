@@ -487,15 +487,14 @@ def list(border, format, verbose):
     report = TabularReport("Package,Version,Python", additional="Delivery,Index", border=border, verbose=verbose)
     for pspec in packages:
         manifest = pspec.manifest
-        if manifest:
-            python = CFG.available_pythons.find_python(manifest.python)
-            report.add_row(
-                Package=pspec.dashed,
-                Version=manifest.version,
-                Python=python,
-                Delivery=manifest.delivery,
-                Index=manifest.index
-            )
+        python = manifest and manifest.python and CFG.available_pythons.find_python(manifest.python)
+        report.add_row(
+            Package=pspec.dashed,
+            Version=manifest and manifest.version,
+            Python=python,
+            Delivery=manifest and manifest.delivery,
+            Index=manifest and manifest.index
+        )
 
     print(report.represented(format))
 
