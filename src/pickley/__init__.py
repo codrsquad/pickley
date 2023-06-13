@@ -601,15 +601,20 @@ class PickleyConfig:
 
     @runez.cached_property
     def _wrapped_canonical_regex(self):
-        return re.compile(r"\.(pk|pickley)(/\w+)?/((?P<dashed>\w+)-(\d+(\.\d+)+))/bin/")
+        # TODO: Remove once pickley 3.4 is phased out
+        return re.compile(r"\.pickley/([^/]+)/.+/bin/")
 
     def _wrapped_canonical(self, path):
         """(str | None): Canonical name of installed python package, if installed via pickley wrapper"""
         if runez.is_executable(path):
             for line in runez.readlines(path, first=12):
+                if line.startswith("# pypi-package:"):
+                    return line[15:].strip()
+
+                # TODO: Remove once pickley 3.4 is phased out
                 m = self._wrapped_canonical_regex.search(line)
                 if m:
-                    return m.group("dashed")
+                    return m.group(1)
 
     def scan_installed(self):
         """Scan installed"""
