@@ -191,7 +191,7 @@ def _find_base_from_program_path(path):
     dirpath, basename = os.path.split(path)
     if basename:
         basename = basename.lower()
-        if basename == DOT_META:
+        if basename in (DOT_META, ".pickley"):
             return dirpath  # We're running from an installed pickley
 
         if basename == ".venv":
