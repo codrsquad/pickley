@@ -50,7 +50,7 @@ def test_bootstrap(cli, monkeypatch):
                 assert "__PYVENV_LAUNCHER__" not in os.environ
                 assert "Replacing older pickley 0.1" in cli.logged
                 assert "Would run: python virtualenv-20.10.0.pyz -q --clear --pip 21.3.1 -p " in cli.logged
-                assert f"Would run: .local/bin/{expected_meta}" in cli.logged
+                assert f"Would run: .local/bin/{DOT_META}/pickley-" in cli.logged
                 monkeypatch.undo()
 
             # Simulate multiple base candidates given
