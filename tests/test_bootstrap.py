@@ -32,7 +32,6 @@ def test_bootstrap(cli, monkeypatch):
     runez.touch(".pickley/foo")
     cli.run("-n base bootstrap-own-wrapper")
     assert cli.succeeded
-    expected_meta = f"{DOT_META}/pickley-{__version__}"
     assert f"Would save {DOT_META}/pickley.manifest.json" in cli.logged
     assert "Would delete .pickley" in cli.logged
     assert f"Would run: .pk/pickley-{__version__}/bin/pickley auto-heal" in cli.logged
