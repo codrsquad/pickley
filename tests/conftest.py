@@ -6,20 +6,16 @@ from runez.conftest import cli, logged, temp_folder
 from runez.http import GlobalHttpCalls
 from runez.pyenv import PythonDepot
 
-from pickley import DOT_META, PICKLEY, PickleyConfig
+from pickley import DOT_META, PickleyConfig
 from pickley.cli import main
 from pickley.package import PythonVenv
 
 
-cli.default_exe = PickleyConfig.program_path
 cli.default_main = main
 GlobalHttpCalls.forbid()
 PythonDepot.use_path = False
 PythonVenv._vv_fallback = None
 assert logged, temp_folder  # Just making fixtures available, with no complaints about unused imports
-
-PickleyConfig.program_path = PickleyConfig.program_path.replace("pytest", PICKLEY)
-PickleyConfig._pickley_dev_path = False
 
 
 def dot_meta(relative=None, parent=None):

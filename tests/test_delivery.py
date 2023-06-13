@@ -18,15 +18,15 @@ BREW_INSTALLED = ["tox", "twine"]
 def test_edge_cases(temp_folder, logged):
     cfg = PickleyConfig()
     pspec = PackageSpec(cfg, "mgit==1.0.0")
-    venv = MagicMock(pspec=pspec, bin_path=lambda x: os.path.join("some-package/bin", x))
+    venv = MagicMock(pspec=pspec)
     entry_points = {"some-source": ""}
     cfg.set_base(".")
     d = DeliveryMethod()
     with pytest.raises(SystemExit):
         d.install(venv, entry_points)
-    assert "Can't deliver some-source -> some-package/bin/some-source: source does not exist" in logged.pop()
+    assert "Can't deliver some-source -> .pk/mgit/bin/some-source: source does not exist" in logged.pop()
 
-    runez.touch("some-package/bin/some-source")
+    runez.touch(".pk/mgit/bin/some-source")
     with pytest.raises(SystemExit):
         d.install(venv, entry_points)
     assert "Failed to deliver" in logged.pop()
@@ -40,10 +40,11 @@ class SimulatedInstallation:
         self.entry_points = {name: name}
         self.pspec = PackageSpec(cfg, f"{name}=={version}")
         self.pspec.save_manifest(self.entry_points)
-        folder = self.pspec.get_install_path(version)
+        folder = self.cfg.meta.full_path(f"{name}-{version}")
         self.venv = PythonVenv(folder, self.pspec, create=False)
         venv_exe = os.path.join(folder, "bin", name)
         runez.write(venv_exe, f"#!/bin/bash\n\necho {version}\n")
+        runez.symlink(folder, self.pspec.active_install_path)
         runez.make_executable(venv_exe)
 
     def check_wrap(self, wrap_method):

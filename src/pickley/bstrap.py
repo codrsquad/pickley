@@ -161,7 +161,7 @@ def seed_config(pickley_base, desired_cfg, force=False):
     if desired_cfg:
         desired_cfg = read_json(desired_cfg)
         if desired_cfg and isinstance(desired_cfg, dict):
-            pickley_config = os.path.join(pickley_base, ".pickley", "config.json")
+            pickley_config = os.path.join(pickley_base, ".pk", "config.json")
             cfg = read_optional_json(pickley_config)
             if force or cfg != desired_cfg:
                 msg = "%s with %s" % (short(pickley_config), desired_cfg)
@@ -222,8 +222,6 @@ def pip_version(python_version):
     """
     if python_version and python_version < (3, 7):
         return "21.3.1"
-
-    return "22.2.2"  # TODO: pip started looking for <whl>.metadata all of the sudden... what the heck?
 
 
 def create_virtualenv(tmp_folder, python_version, python_exe, venv_folder, virtualenv_version="20.10.0", runner=None, dryrun=None):
@@ -317,7 +315,7 @@ def main(args=None):
             if v and len(v) < 24:  # If long output -> old pickley is busted (stacktrace)
                 print("Replacing older pickley %s" % v)
 
-        pickley_venv = os.path.join(pickley_base, ".pickley", "pickley", "pickley-%s" % pickley_version)
+        pickley_venv = os.path.join(pickley_base, ".pk", "pickley-%s" % pickley_version)
         pv = get_python_version(python3)
         needs_virtualenv = True
         if pv and pv >= (3, 7):

@@ -13,7 +13,7 @@ from runez.pyenv import PypiStd, PythonDepot, PythonInstallationScanner, Version
 __version__ = "3.4.5"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
-DOT_META = ".pickley"
+DOT_META = ".pk"
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
@@ -202,14 +202,6 @@ class PackageSpec:
         return self.cfg.pinned_version(self)
 
     @runez.cached_property
-    def _pickley_dev_mode(self):
-        """Path to pickley source folder, if we're running in dev mode"""
-        if self.dashed == PICKLEY:
-            dev_path = self.cfg.pickley_dev_path()
-            if dev_path:
-                return dev_path
-
-    @runez.cached_property
     def index(self):
         """Index to use for this package spec"""
         return self.cfg.index(self)
@@ -255,16 +247,17 @@ class PackageSpec:
 
     @runez.cached_property
     def manifest_path(self):
-        return self.cfg.meta.full_path(self.dashed, ".manifest.json")
-
-    @runez.cached_property
-    def meta_path(self):
-        return self.cfg.meta.full_path(self.dashed)
+        return self.cfg.meta.full_path(f"{self.dashed}.manifest.json")
 
     @runez.cached_property
     def ping_path(self):
         """Path to .ping file (for throttle auto-upgrade checks)"""
         return self.cfg.cache.full_path(f"{self.dashed}.ping")
+
+    @runez.cached_property
+    def active_install_path(self):
+        """Currently active installed venv (symlink)"""
+        return self.cfg.meta.full_path(self.dashed)
 
     @property
     def is_currently_installed(self):
@@ -276,11 +269,14 @@ class PackageSpec:
         """bool: True if this package was already installed by pickley once"""
         return self.dashed == PICKLEY or os.path.exists(self.manifest_path)
 
-    def get_install_path(self, version):
-        if self._pickley_dev_mode:
-            return self.cfg.meta.full_path(PICKLEY, f"{PICKLEY}-dev")
+    def pip_spec(self):
+        if self.folder:
+            return [self.folder]
 
-        return self.cfg.meta.full_path(self.dashed, f"{self.dashed}-{version}")
+        if self.dashed == PICKLEY and runez.DEV.project_folder:
+            return ["-e", runez.DEV.project_folder]
+
+        return [f"{self.dashed}=={self.desired_track.version}"]
 
     def get_lock_path(self):
         """str: Path to lock file used during installation for this package"""
@@ -329,8 +325,7 @@ class PackageSpec:
                     if not runez.is_executable(exe_path):
                         return False
 
-            install_folder = self.get_install_path(manifest.version)
-            py_path = self.cfg.available_pythons.resolved_python_exe(install_folder)
+            py_path = self.cfg.available_pythons.resolved_python_exe(self.active_install_path)
             if py_path:
                 return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
@@ -351,55 +346,43 @@ class PackageSpec:
 
         return runez.abort(f"Expecting 1 wheel, found: {runez.short(result)}", fatal=fatal, return_value=None)
 
+    def delete_all_files(self):
+        """Delete all files in DOT_META/ folder related to this package spec"""
+        runez.delete(self.manifest_path, fatal=False)
+        for candidate, version in self.installed_sibling_folders():
+            runez.delete(candidate, fatal=False)
+
+    def installed_sibling_folders(self):
+        folder = runez.to_path(self.cfg.meta.path)
+        if folder.is_dir():
+            prefix = f"{self.dashed}-"
+            for item in folder.iterdir():
+                if item.name.startswith(prefix):
+                    yield item, item.name[len(prefix):]
+
     def groom_installation(self, keep_for=60):
         """
         Args:
             keep_for (int): Minimum time in minutes for how long to keep the previous latest version
         """
-        if self._pickley_dev_mode:
+        candidates = []
+        manifest = self.manifest
+        now = time.time()
+        for candidate, version in self.installed_sibling_folders():
+            age = now - os.path.getmtime(candidate)
+            if version != manifest.version:
+                candidates.append((age, candidate))
+
+        if not candidates:
             return
 
-        if self.cfg.cache.contains(self.folder):
-            runez.delete(self.folder, logger=False)
+        candidates = sorted(candidates)
+        youngest = candidates[0]
+        for candidate in candidates[1:]:
+            runez.delete(candidate[1], fatal=False)
 
-        meta_path = self.meta_path
-        current_age = None
-        manifest = self.manifest
-        if manifest and os.path.isdir(meta_path):
-            now = time.time()
-            candidates = []
-            for fname in os.listdir(meta_path):
-                if fname.startswith("."):  # Pickley meta files start with '.'
-                    continue
-
-                fpath = os.path.join(meta_path, fname)
-                vpart = fname[len(self.dashed) + 1:]
-                age = now - os.path.getmtime(fpath)
-                if vpart == manifest.version:
-                    current_age = age
-
-                else:
-                    version = Version(vpart)
-                    if not version.is_valid:
-                        # Not a proper installation
-                        runez.delete(fpath, fatal=False)
-                        continue
-
-                    # Different version, previously installed
-                    candidates.append((age, version, fpath))
-
-            if not candidates:
-                return
-
-            candidates = sorted(candidates)
-            youngest = candidates[0]
-            for candidate in candidates[1:]:
-                runez.delete(candidate[2], fatal=False)
-
-            if current_age:
-                current_age = min(current_age, youngest[0])
-                if current_age > (keep_for * runez.date.SECONDS_IN_ONE_MINUTE):
-                    runez.delete(youngest[2], fatal=False)
+        if youngest[0] > (keep_for * runez.date.SECONDS_IN_ONE_MINUTE):
+            runez.delete(youngest[1], fatal=False)
 
     def save_manifest(self, entry_points):
         manifest = TrackedManifest(
@@ -411,8 +394,7 @@ class PackageSpec:
         )
         payload = manifest.to_dict()
         runez.save_json(payload, self.manifest_path)
-        path = self.get_install_path(self.desired_track.version)
-        runez.save_json(payload, os.path.join(path, ".manifest.json"))
+        runez.save_json(payload, os.path.join(self.active_install_path, ".manifest.json"))
         self._manifest = manifest
         return manifest
 
@@ -447,18 +429,6 @@ def get_default_index(*paths):
     return None, None
 
 
-def get_program_path(path=None):
-    if path is None:
-        path = runez.resolved_path(sys.argv[0])
-
-    if path.endswith(".py") or path.endswith(".pyc"):
-        packaged = runez.SYS_INFO.venv_bin_path(PICKLEY)
-        if runez.is_executable(packaged):
-            path = packaged  # Convenience when running from debugger
-
-    return path
-
-
 class PickleyConfig:
     """Pickley configuration"""
 
@@ -467,9 +437,6 @@ class PickleyConfig:
     cache = None  # type: FolderBase # DOT_META/.cache subfolder
     cli = None  # type: TrackedSettings # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
     configs = None  # type: list
-    program_path = get_program_path()
-
-    _pickley_dev_path = None
 
     def __init__(self):
         self.configs = []
@@ -493,20 +460,13 @@ class PickleyConfig:
         )
         return depot
 
-    @classmethod
-    def pickley_dev_path(cls):
-        if cls._pickley_dev_path is None:
-            cls._pickley_dev_path = runez.DEV.project_folder
-
-        return cls._pickley_dev_path
-
     def set_base(self, base_path):
         """
         Args:
             base_path (str): Path to pickley base installation
         """
         self.configs = []
-        self.base = FolderBase("base", base_path)
+        self.base = FolderBase("base", runez.resolved_path(base_path))
         self.meta = FolderBase("meta", os.path.join(self.base.path, DOT_META))
         self.cache = FolderBase("cache", os.path.join(self.meta.path, ".cache"))
         if self.cli:
@@ -610,16 +570,42 @@ class PickleyConfig:
             result = runez.flattened(result, unique=True)
             return [PackageSpec(self, name) for name in result]
 
-        result = []
-        if os.path.isdir(self.meta.path):
-            for fname in sorted(os.listdir(self.meta.path)):
-                if include_pickley or fname != PICKLEY:
-                    fpath = os.path.join(self.meta.path, fname)
-                    if os.path.isdir(fpath):
-                        if os.path.exists(os.path.join(fpath, ".manifest.json")):
-                            result.append(PackageSpec(self, fname))
+        return self.installed_specs()
 
-        return result
+    @runez.cached_property
+    def _wrapped_canonical_regex(self):
+        # TODO: Remove once pickley 3.4 is phased out
+        return re.compile(r"\.pickley/([^/]+)/.+/bin/")
+
+    def _wrapped_canonical(self, path):
+        """(str | None): Canonical name of installed python package, if installed via pickley wrapper"""
+        if runez.is_executable(path):
+            for line in runez.readlines(path, first=12):
+                if line.startswith("# pypi-package:"):
+                    return line[15:].strip()
+
+                # TODO: Remove once pickley 3.4 is phased out
+                m = self._wrapped_canonical_regex.search(line)
+                if m:
+                    return m.group(1)
+
+    def scan_installed(self):
+        """Scan installed"""
+        for item in self.base.iterdir():
+            spec_name = self._wrapped_canonical(item)
+            if spec_name:
+                yield spec_name
+
+        for item in self.meta.iterdir():
+            if item.name.endswith(".manifest.json"):
+                spec_name = item.name[:-14]
+                if spec_name:
+                    yield spec_name
+
+    def installed_specs(self):
+        """(list[PackageSpec]): Currently installed package specs"""
+        spec_names = set(self.scan_installed())
+        return [PackageSpec(self, x) for x in sorted(spec_names)]
 
     def get_nested(self, section, key):
         """
@@ -960,15 +946,15 @@ class FolderBase:
             path (str): Path to folder
         """
         self.name = name
-        self.path = runez.resolved_path(path)
+        self.path = path
 
     def __repr__(self):
         return self.path
 
-    def contains(self, path):
-        if path:
-            path = runez.resolved_path(path)
-            return path.startswith(self.path)
+    def iterdir(self):
+        path = runez.to_path(self.path)
+        if path.is_dir():
+            yield from path.iterdir()
 
     def full_path(self, *relative):
         """
@@ -976,7 +962,7 @@ class FolderBase:
             *relative: Relative path components
 
         Returns:
-            (str): Full path based on self.path
+            (str): Full path based on `self.path`
         """
         return os.path.join(self.path, *relative)
 

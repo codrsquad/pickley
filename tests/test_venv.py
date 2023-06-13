@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 import runez
 
-from pickley import PackageSpec, RawConfig
+from pickley import DOT_META, PackageSpec, RawConfig
 from pickley.package import PackageContents, PythonVenv
 
 
@@ -35,14 +35,14 @@ def test_edge_cases(temp_cfg, logged):
     runez.touch("venv/bin/pip3")
     assert venv.pip_path == "venv/bin/pip3"
 
-    runez.touch(".pickley/.cache/virtualenv-20.13.0.pyz")
+    runez.touch(f"{DOT_META}/.cache/virtualenv-20.13.0.pyz")
     with patch("runez.run", return_value=runez.program.RunResult(code=0)):
         cmd = venv._create_virtualenv(runner=lambda *x: x)
         if temp_cfg.available_pythons.invoker.version < "3.7":
             assert cmd[4] == "--pip"
 
         else:
-            assert cmd[4] == "--pip"
+            assert cmd[4] == "--download"
 
 
 def simulated_run(*args, **_):

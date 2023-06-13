@@ -13,8 +13,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, despecced, DOT_META, inform, PackageSpec, PickleyConfig, specced
-from pickley.delivery import PICKLEY
+from pickley import __version__, abort, despecced, DOT_META, inform, PackageSpec, PICKLEY, PickleyConfig, specced
 from pickley.package import PexPackager, PythonVenv, VenvPackager
 
 
@@ -132,17 +131,21 @@ class SoftLock:
         runez.delete(self.lock_path, logger=False)
 
 
-def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary=None):
+def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary=None, verb=None):
     """
     Args:
         pspec (PackageSpec): Package spec to install
         is_upgrade (bool): If True, intent is an upgrade (not a new install)
         force (bool): If True, check latest version even if recently checked
         quiet (bool): If True, don't chatter
+        verb (str): Verb to use to convey what kind of installation is being done (ex: auto-heal)
 
     Returns:
         (pickley.TrackedManifest): Manifest is successfully installed (or was already up-to-date)
     """
+    if not verb:
+        verb = "upgrade" if is_upgrade else "install"
+
     with SoftLock(pspec):
         started = time.time()
         skip_reason = pspec.skip_reason(force)
@@ -157,8 +160,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
             pspec.get_latest(force=force)
 
         if pspec.desired_track.problem:
-            action = "upgrade" if is_upgrade else "install"
-            abort(f"Can't {action} {pspec}: {runez.red(pspec.desired_track.problem)}")
+            abort(f"Can't {verb} {pspec}: {runez.red(pspec.desired_track.problem)}")
 
         if not force and pspec.is_up_to_date:
             if not quiet:
@@ -172,7 +174,8 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
         manifest = PACKAGER.install(pspec, no_binary=no_binary)
         if manifest and not quiet:
             note = f" in {runez.represented_duration(time.time() - started)}"
-            action = "Upgraded" if is_upgrade else "Installed"
+            verb += "d" if verb.endswith("e") else "ed"
+            action = "%s%s" % (verb[0].upper(), verb[1:])
             if runez.DRYRUN:
                 action = f"Would state: {action}"
 
@@ -197,7 +200,7 @@ def _find_base_from_program_path(path):
     return _find_base_from_program_path(dirpath)
 
 
-def find_base():
+def find_base(path=None):
     base_path = runez.resolved_path(os.environ.get("PICKLEY_ROOT"))
     if base_path:
         if not os.path.isdir(base_path):
@@ -205,8 +208,8 @@ def find_base():
 
         return runez.resolved_path(base_path)
 
-    program_path = PickleyConfig.program_path
-    return _find_base_from_program_path(program_path) or os.path.dirname(program_path)
+    path = path or runez.resolved_path(sys.argv[0])
+    return _find_base_from_program_path(path) or os.path.dirname(path)
 
 
 def clean_env_vars(*keys):
@@ -259,7 +262,30 @@ def main(ctx, debug, config, index, python, delivery, packager, virtualenv):
         CFG.set_base(find_base())
 
 
-@main.command(name="auto-upgrade")
+@main.command()
+def auto_heal():
+    """
+    Automatically re-install packages that have stopped working.
+
+    \b
+    Reasons a package wouldn't be "healthy" anymore:
+    - Base python used to install the packages' venv is not available anymore
+    - The pickley-generated wrapper points to files that have now been deleted
+    """
+    total = healed = 0
+    for spec in CFG.installed_specs():
+        total += 1
+        if spec.is_healthily_installed():
+            print("%s is healthy" % runez.bold(spec))
+            continue
+
+        healed += 1
+        perform_install(spec, verb="auto-heal")
+
+    print("Auto-healed %s / %s packages" % (healed, total))
+
+
+@main.command()
 @click.option("--force", is_flag=True, help="Force auto-upgrade check, even if recently checked")
 @click.argument("package", required=True)
 def auto_upgrade(force, package):
@@ -289,9 +315,16 @@ def base(what):
         from pickley.delivery import DeliveryMethodWrap
 
         pspec = PackageSpec(CFG, f"{PICKLEY}=={__version__}")
-        venv = PythonVenv(CFG.meta.full_path(PICKLEY, f"{PICKLEY}-{__version__}"), pspec, create=False)
+        venv = PythonVenv(CFG.meta.full_path(f"{PICKLEY}-{__version__}"), pspec, create=False)
         wrap = DeliveryMethodWrap()
         wrap.install(venv, {PICKLEY: PICKLEY})
+
+        # TODO: Remove once pickley 3.4 is phased out
+        old_meta = CFG.base.full_path(".pickley")
+        if os.path.isdir(old_meta):
+            runez.delete(old_meta)
+            runez.run(os.path.join(venv.folder, "bin", PICKLEY), "auto-heal")
+
         return
 
     if what:
@@ -588,7 +621,7 @@ def uninstall(all, packages):
         for ep in pspec.manifest.entrypoints:
             runez.delete(pspec.exe_path(ep))
 
-        runez.delete(pspec.meta_path)
+        pspec.delete_all_files()
         action = "Would uninstall" if runez.DRYRUN else "Uninstalled"
         inform(f"{action} {pspec}")
 

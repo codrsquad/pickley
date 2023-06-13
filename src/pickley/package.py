@@ -260,7 +260,7 @@ class Packager:
             pspec (pickley.PackageSpec): Targeted package spec
             build_folder (str): Folder to use as build cache
             dist_folder (str): Folder where to produce package
-            requirements (list): Additional requirements (same convention as pip, can be package names or package specs)
+            requirements (pickley.cli.Requirements): Additional requirements (same convention as pip, can be package names or package specs)
             run_compile_all (bool): Call 'compileall' on generated package?
 
         Returns:
@@ -320,22 +320,15 @@ class VenvPackager(Packager):
             args.append("--no-binary")
             args.append(no_binary)
 
-        venv_folder = pspec.get_install_path(pspec.desired_track.version)
-        if pspec.folder:
-            args.append(pspec.folder)
-
-        elif pspec._pickley_dev_mode:
-            args.append("-e")
-            args.append(pspec._pickley_dev_mode)
-
-        else:
-            args.append(f"{pspec.dashed}=={pspec.desired_track.version}")
-
+        version = "dev" if pspec.dashed == PICKLEY and runez.DEV.project_folder else pspec.desired_track.version
+        venv_folder = pspec.cfg.meta.full_path(f"{pspec.dashed}-{version}")
         venv = PythonVenv(venv_folder, pspec)
+        args.extend(pspec.pip_spec())
         venv.pip_install(*args)
+        runez.symlink(venv_folder, pspec.active_install_path)
         contents = PackageContents(venv)
         if not contents.entry_points:
-            runez.delete(pspec.meta_path)
+            pspec.delete_all_files()
             abort(f"Can't install '{runez.bold(pspec.dashed)}', it is {runez.red('not a CLI')}")
 
         return delivery.install(venv, contents.entry_points)

@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 from unittest.mock import patch
 
@@ -8,7 +7,7 @@ import runez
 from runez.http import GlobalHttpCalls
 from runez.pyenv import Version
 
-from pickley import __version__, get_program_path, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest, TrackedVersion
+from pickley import __version__, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest, TrackedVersion
 from pickley.cli import clean_compiled_artifacts, find_base, PackageFinalizer, Requirements, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.package import Packager
@@ -36,17 +35,10 @@ def test_base(cli, monkeypatch):
     runez.ensure_folder("temp-base")
     assert find_base() == runez.resolved_path("temp-base")
 
-    assert sys.prefix in get_program_path("foo/bar.py")
-
     monkeypatch.delenv("PICKLEY_ROOT")
-    monkeypatch.setattr(PickleyConfig, "program_path", "/foo/.venv/bin/pickley")
-    assert find_base() == "/foo/.venv/root"
-
-    monkeypatch.setattr(PickleyConfig, "program_path", dot_meta("pickley-0.0.0/bin/pickley", parent="foo"))
-    assert find_base() == "foo"
-
-    monkeypatch.setattr(PickleyConfig, "program_path", "foo/bar")
-    assert find_base() == "foo"
+    assert find_base("/foo/.venv/bin/pickley") == "/foo/.venv/root"
+    assert find_base(dot_meta("pickley-0.0.0/bin/pickley", parent="foo")) == "foo"
+    assert find_base("foo/bar") == "foo"
 
 
 def dummy_finalizer(cfg, dist, symlink="root:root/usr/local/bin"):
@@ -108,10 +100,13 @@ def test_dryrun(cli, monkeypatch):
     cli.run("-n --color config")
     assert cli.succeeded
 
+    cli.expect_success("-n auto-heal", "Auto-healed 0 / 0 packages")
+
     cli.expect_success("-n -Pfoo diagnostics", "desired python : foo", "foo [not available]", "sys.executable")
     cli.run("-n install git@github.com:zsimic/mgit.git")
     assert cli.succeeded
-    assert "pip install .pickley/.cache/checkout/git-github-com-zsimic-mgit-git" in cli.logged
+    checkout = dot_meta(".cache/checkout")
+    assert f"pip install {checkout}/git-github-com-zsimic-mgit-git" in cli.logged
 
     cli.expect_success("-n list", "No packages installed")
 
@@ -154,7 +149,7 @@ def test_dryrun(cli, monkeypatch):
         cli.expect_failure("-n check mgit pickley2-a", "not installed", "pickley2-a: does not exist")
 
         # Simulate an old entry point that was now removed
-        runez.write(dot_meta("mgit/.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
+        runez.write(dot_meta("mgit.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
         cli.expect_failure("-n install mgit pickley2.a", "Would state: Installed mgit v", "'pickley2.a' is not pypi canonical")
 
         cli.expect_failure("check", "not installed")
@@ -169,20 +164,20 @@ def test_dryrun(cli, monkeypatch):
         assert cli.succeeded
         assert " --no-binary :all: mgit==1.3.0" in cli.logged
         assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
-        assert cli.match("Would save %s" % dot_meta("mgit/.manifest.json"))
+        assert cli.match("Would save %s" % dot_meta("mgit.manifest.json"))
         assert cli.match("Would state: Installed mgit v1.3.0")
 
         cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
 
 
 def test_dev_mode(cli, monkeypatch):
-    monkeypatch.setattr(PickleyConfig, "_pickley_dev_path", None)
     with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install pickley")
         assert cli.succeeded
-        assert "pip install -e " in cli.logged
-        assert "pickley-dev/bin/pickley" in cli.logged
+        assert ".pk/pickley-dev/bin/pip install -e " in cli.logged
+        assert "Would symlink .pk/pickley-dev <- .pk/pickley" in cli.logged
         assert "pickley-100.0" not in cli.logged
+        assert "Would state: Installed pickley v100.0 in "
 
 
 def test_edge_cases(temp_cfg, logged):
@@ -263,12 +258,13 @@ def check_is_wrapper(path, is_wrapper):
     assert r.succeeded
 
 
-def check_install_from_pypi(cli, delivery, package, simulate_version=None):
-    cli.run("--debug", "-d%s" % delivery, "install", package)
+def check_install_from_pypi(cli, delivery, package, version, simulate_version=None):
+    runez.write(".pk/.cache/mgit.latest", f'{{"version": "{version}"}}')
+    cli.run("--debug", f"-d{delivery}", "install", package)
     assert cli.succeeded
-    assert cli.match("Installed %s" % package)
+    assert cli.match(f"Installed {package} v{version}")
     assert runez.is_executable(package)
-    m = TrackedManifest.from_file(dot_meta("%s/.manifest.json" % package))
+    m = TrackedManifest.from_file(dot_meta(f"{package}.manifest.json"))
     assert str(m)
     assert m.entrypoints[package]
     assert m.install_info.args == runez.quoted(cli.args)
@@ -276,20 +272,21 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
     assert m.install_info.vpickley == __version__
     assert m.settings.delivery == delivery
     assert m.settings.python
-    assert m.version
+    assert m.version == version
 
-    r = runez.run(package, "--version")
+    r = runez.run(f"./{package}", "--version")
     assert r.succeeded
+    assert version in r.full_output
 
-    cli.expect_success("--debug auto-upgrade %s" % package, "Skipping auto-upgrade, checked recently")
-    cli.expect_success("install %s" % package, "is already installed")
+    cli.expect_success(f"--debug auto-upgrade {package}", "Skipping auto-upgrade, checked recently")
+    cli.expect_success(f"install {package}", "is already installed")
     if simulate_version:
         # Edge case: simulated user manually deletes the installed wrapper or symlink
         assert os.path.exists(package)
         os.unlink(package)
-        cli.run("--debug", "-d%s" % delivery, "install", package)
+        cli.run("--debug", f"-d{delivery}", "install", package)
         assert cli.succeeded
-        assert cli.match("Installed %s" % package)
+        assert cli.match(f"Installed {package} v{version}")
 
     cli.expect_success("check", " up-to-date")
     cli.expect_success("list", package)
@@ -298,51 +295,65 @@ def check_install_from_pypi(cli, delivery, package, simulate_version=None):
     if simulate_version:
         installed_version = m.version
         m.version = simulate_version
-        runez.save_json(m.to_dict(), dot_meta("%s/.manifest.json" % package))
-        cli.expect_success("check", "%s (currently unhealthy)" % installed_version)
+        runez.save_json(m.to_dict(), dot_meta(f"{package}.manifest.json"))
+        cli.expect_success("check", f"{installed_version} (currently {simulate_version})")
 
 
-@GlobalHttpCalls.allowed
 def test_install_pypi(cli):
-    cli.expect_failure("--color install six", "it is not a CLI")
-    assert not os.path.exists(dot_meta("six"))
-
-    cli.expect_failure("install mgit+foo", "not a valid pypi package name")
-
-    runez.touch(dot_meta("mgit/.foo"))  # Should stay because name starts with '.'
-    runez.touch(dot_meta("mgit/mgit-foo"))  # Bogus installation
-    runez.touch(dot_meta("mgit/mgit-0.0.1/foo"))  # Oldest should be deleted
+    runez.touch(dot_meta("mgit-0.0.1/pyenv.cfg"))
+    time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
+    runez.touch(dot_meta("mgit-0.0.2/pyenv.cfg"))
 
     # Simulate the presence of an old entry point
-    manifest_path = dot_meta("mgit/.manifest.json")
+    manifest_path = dot_meta("mgit.manifest.json")
     runez.save_json(dict(entrypoints=["mgit", "old-mgit-entrypoint"]), manifest_path)
     runez.touch("old-mgit-entrypoint")
-    assert os.path.exists("old-mgit-entrypoint")
 
-    time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
-    runez.touch(dot_meta("mgit/mgit-0.0.2/foo"))  # Youngest should remain for an hour
-    check_install_from_pypi(cli, "symlink", "mgit")
+    check_install_from_pypi(cli, "symlink", "mgit", "1.3.0")
     assert not os.path.exists("old-mgit-entrypoint")
     assert os.path.islink("mgit")
-    assert os.path.exists(dot_meta("mgit/.manifest.json"))
-    assert os.path.exists(dot_meta("mgit/.foo"))
-    assert os.path.exists(dot_meta("mgit/mgit-0.0.2"))
-    assert not os.path.exists(dot_meta("mgit/mgit-foo"))
-    assert not os.path.exists(dot_meta("mgit/mgit-0.0.1"))
+    assert os.path.exists(dot_meta("mgit.manifest.json"))
+    assert not os.path.exists(dot_meta("mgit-0.0.1"))
+    assert os.path.exists(dot_meta("mgit-0.0.2"))
+    assert os.path.exists(dot_meta("mgit-1.3.0"))
+
+    cli.run("-n auto-heal")
+    assert cli.succeeded
+    assert "mgit is healthy" in cli.logged
+    assert "Auto-healed 0 / 1 packages" in cli.logged
 
     cfg = PickleyConfig()
     cfg.set_base(".")
-    pspec = PackageSpec(cfg, "mgit")
+    pspec = PackageSpec(cfg, "mgit==1.3.0")
     pspec.groom_installation(keep_for=0)
-    assert not os.path.exists(dot_meta("mgit/mgit-0.0.2"))
+    assert not os.path.exists(dot_meta("mgit-0.0.2"))
+    assert os.path.exists(dot_meta("mgit-1.3.0"))
 
     cli.expect_success("uninstall mgit", "Uninstalled mgit")
     assert not runez.is_executable("mgit")
-    assert not os.path.exists(dot_meta("mgit"))
+    assert not os.path.exists(dot_meta("mgit.manifest.json"))
+    assert not os.path.exists(dot_meta("mgit-1.3.0"))
     assert os.path.exists(dot_meta("audit.log"))
 
-    check_install_from_pypi(cli, "wrap", "mgit", simulate_version="0.0.0")
-    check_is_wrapper("mgit", True)
+    check_install_from_pypi(cli, "wrap", "mgit", "1.3.0", simulate_version="0.0.0")
+    check_is_wrapper("./mgit", True)
+
+    runez.delete(dot_meta("mgit-1.3.0"))
+    cli.run("-n auto-heal")
+    assert cli.succeeded
+    assert "Auto-healed 1 / 1 packages" in cli.logged
+
+
+@GlobalHttpCalls.allowed
+def test_invalid(cli):
+    cli.run("--color install six")
+    assert cli.failed
+    assert "not a CLI" in cli.logged
+    assert not os.path.exists(dot_meta("six.manifest.json"))
+
+    cli.expect_failure("install mgit+foo")
+    assert cli.failed
+    assert "not a valid pypi package name" in cli.logged
 
 
 def test_lock(temp_cfg, logged):
