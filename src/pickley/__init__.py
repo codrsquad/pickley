@@ -473,6 +473,13 @@ class PickleyConfig:
             cli = runez.serialize.json_sanitized(self.cli.to_dict())
             self.configs.append(RawConfig(self, "cli", cli))
 
+        # TODO: Remove once pickley 3.4 is phased out
+        old_meta = self.base.full_path(".pickley")
+        old_cfg = os.path.join(old_meta, "config.json")
+        new_cfg = self.meta.full_path("config.json")
+        if not os.path.exists(new_cfg) and os.path.exists(old_cfg):
+            runez.move(old_cfg, new_cfg)
+
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
         defaults = dict(

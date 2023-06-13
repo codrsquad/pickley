@@ -324,7 +324,7 @@ def base(what):
         old_meta = CFG.base.full_path(".pickley")
         if os.path.isdir(old_meta):
             runez.delete(old_meta)
-            runez.run(os.path.join(venv.folder, "bin", PICKLEY), "auto-heal")
+            runez.run(os.path.join(pspec.active_install_path, "bin", PICKLEY), "auto-heal")
 
         return
 
