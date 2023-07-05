@@ -320,12 +320,9 @@ class VenvPackager(Packager):
             args.append("--no-binary")
             args.append(no_binary)
 
-        version = "dev" if pspec.dashed == PICKLEY and runez.DEV.project_folder else pspec.desired_track.version
-        venv_folder = pspec.cfg.meta.full_path(f"{pspec.dashed}-{version}")
-        venv = PythonVenv(venv_folder, pspec)
+        venv = PythonVenv(pspec.active_install_path, pspec)
         args.extend(pspec.pip_spec())
         venv.pip_install(*args)
-        runez.symlink(venv_folder, pspec.active_install_path)
         contents = PackageContents(venv)
         if not contents.entry_points:
             pspec.delete_all_files()

@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 import runez
 
-from pickley import bstrap, DOT_META
+from pickley import __version__, bstrap, DOT_META
 
 
 def mocked_expanduser(path):
@@ -35,7 +35,7 @@ def test_bootstrap(cli, monkeypatch):
     assert f"Would move .pickley/config.json -> {DOT_META}/config.json" in cli.logged
     assert f"Would save {DOT_META}/pickley.manifest.json" in cli.logged
     assert "Would delete .pickley" in cli.logged
-    assert f"Would run: {DOT_META}/pickley/bin/pickley auto-heal" in cli.logged
+    assert f"Would run: {DOT_META}/pickley-{__version__}/bin/pickley auto-heal" in cli.logged
 
     with patch("pickley.bstrap.which", side_effect=mocked_which):
         with patch("pickley.bstrap.os.path.expanduser", side_effect=mocked_expanduser):

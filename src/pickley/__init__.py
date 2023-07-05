@@ -257,7 +257,7 @@ class PackageSpec:
     @runez.cached_property
     def active_install_path(self):
         """Currently active installed venv (symlink)"""
-        return self.cfg.meta.full_path(self.dashed)
+        return self.cfg.meta.full_path(f"{self.dashed}-{self.desired_track}")
 
     @property
     def is_currently_installed(self):
@@ -591,9 +591,8 @@ class PickleyConfig:
                 if line.startswith("# pypi-package:"):
                     return line[15:].strip()
 
-                # TODO: Remove once pickley 3.4 is phased out
                 m = self._wrapped_canonical_regex.search(line)
-                if m:
+                if m:  # pragma: no cover, TODO: Remove once pickley 3.4 is phased out
                     return m.group(1)
 
     def scan_installed(self):
