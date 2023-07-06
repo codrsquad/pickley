@@ -24,9 +24,9 @@ def test_edge_cases(temp_folder, logged):
     d = DeliveryMethod()
     with pytest.raises(SystemExit):
         d.install(venv, entry_points)
-    assert "Can't deliver some-source -> .pk/mgit/bin/some-source: source does not exist" in logged.pop()
+    assert "Can't deliver some-source -> .pk/mgit-1.0.0/bin/some-source: source does not exist" in logged.pop()
 
-    runez.touch(".pk/mgit/bin/some-source")
+    runez.touch(".pk/mgit-1.0.0/bin/some-source")
     with pytest.raises(SystemExit):
         d.install(venv, entry_points)
     assert "Failed to deliver" in logged.pop()

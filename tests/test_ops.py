@@ -174,9 +174,8 @@ def test_dev_mode(cli, monkeypatch):
     with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install pickley")
         assert cli.succeeded
-        assert ".pk/pickley-dev/bin/pip install -e " in cli.logged
-        assert "Would symlink .pk/pickley-dev <- .pk/pickley" in cli.logged
-        assert "pickley-100.0" not in cli.logged
+        assert "Would run: .pk/pickley-100.0/bin/pip install -e " in cli.logged
+        assert "Would wrap pickley -> .pk/pickley-100.0/bin/pickley" in cli.logged
         assert "Would state: Installed pickley v100.0 in "
 
 
