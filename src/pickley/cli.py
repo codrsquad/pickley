@@ -405,7 +405,6 @@ def _diagnostics():
 @main.command()
 def diagnostics():
     """Show diagnostics info"""
-    CFG.available_pythons.scan_path_env_var()
     print(PrettyTable.two_column_diagnostics(_diagnostics(), runez.SYS_INFO.diagnostics(), CFG.available_pythons.representation()))
 
 
@@ -679,7 +678,7 @@ def parsed_version(text):
     """Parse --version from text, in reverse order to avoid being fulled by warnings..."""
     if text:
         for line in reversed(text.splitlines()):
-            version = Version.from_text(line)
+            version = Version.extracted_from_text(line)
             if version:
                 return version
 

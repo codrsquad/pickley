@@ -1,5 +1,5 @@
 # pinned
 click~=8.0
 requests~=2.27
-runez==3.7.1
+runez~=4.0
 urllib3~=1.26

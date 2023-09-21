@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 
 import runez
-from runez.pyenv import PypiStd, PythonDepot, PythonInstallationScanner, Version
+from runez.pyenv import PypiStd, PythonDepot, Version
 
 
 __version__ = "3.5.6"
@@ -185,11 +185,11 @@ class PackageSpec:
         return str(self) < str(other)
 
     @runez.cached_property
-    def python(self):
+    def python(self):  # noqa: F811
         return self.cfg.find_python(self)
 
     @runez.cached_property
-    def settings(self):
+    def settings(self):  # noqa: F811
         return TrackedSettings(
             delivery=self.cfg.delivery_method(self),
             index=self.cfg.index(self) or self.cfg.default_index,
@@ -198,7 +198,7 @@ class PackageSpec:
         )
 
     @runez.cached_property
-    def pinned(self):
+    def pinned(self):  # noqa: F811
         return self.cfg.pinned_version(self)
 
     @runez.cached_property
@@ -325,9 +325,8 @@ class PackageSpec:
                     if not runez.is_executable(exe_path):
                         return False
 
-            py_path = self.cfg.available_pythons.resolved_python_exe(self.active_install_path)
-            if py_path:
-                return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
+            py_path = os.path.join(self.active_install_path, "bin/python")
+            return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
     def find_wheel(self, folder, fatal=True):
         """list[str]: Wheel for this package found in 'folder', if any"""
@@ -451,13 +450,8 @@ class PickleyConfig:
     @runez.cached_property
     def available_pythons(self):
         pyenv = self.pyenv()
-        scanner = PythonInstallationScanner(pyenv) if pyenv else None
-        depot = PythonDepot(scanner=scanner)
-        depot.find_preferred_python(
-            self.get_value("preferred_pythons"),
-            min_python=self.get_value("min_python"),
-            preferred_min_python=self.get_value("preferred_min_python")
-        )
+        python_locations = [pyenv] if pyenv else []
+        depot = PythonDepot(*python_locations)
         return depot
 
     def set_base(self, base_path):
