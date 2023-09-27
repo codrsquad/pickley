@@ -30,7 +30,7 @@ if [[ -x get-pickley && -f $bstrap ]]; then
   script=$bstrap
 else
   script=$TMP_FOLDER/bstrap.py
-  curl -fsSL -o "$script" "https://raw.githubusercontent.com/codrsquad/pickley/master/$bstrap"
+  curl -fsSL -o "$script" "https://raw.githubusercontent.com/codrsquad/pickley/main/$bstrap"
 fi
 
 $python "$script" "$@"

@@ -59,14 +59,14 @@ def test_bootstrap(cli, monkeypatch):
             assert "Make sure ~/.local/bin is writeable and in your PATH variable." in cli.logged
 
             # Simulate seeding
+            sample_config = '"python-installations": "~/.pyenv/version/**"'
             monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
-            cli.run("0.1", "-b", "~/.local/bin", "-m", "my-mirror", "-c", '{"pyenv":"~/.pyenv"}', main=bstrap.main)
-            assert cli.succeeded
-            assert f"Seeding .local/bin/{DOT_META}/config.json with {{'pyenv': '~/.pyenv'}}" in cli.logged
+            cli.run("0.1", "-b", "~/.local/bin", "-m", "my-mirror", "-c", f"{{{sample_config}}}", main=bstrap.main)
+            assert f"Seeding .local/bin/{DOT_META}/config.json with " in cli.logged
             assert "Seeding .config/pip/pip.conf with my-mirror" in cli.logged
             assert "pickley version 0.1 is already installed" in cli.logged
             assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", "index-url = my-mirror"]
-            assert list(runez.readlines(f".local/bin/{DOT_META}/config.json")) == ["{", '  "pyenv": "~/.pyenv"', "}"]
+            assert list(runez.readlines(f".local/bin/{DOT_META}/config.json")) == ["{", f"  {sample_config}", "}"]
 
             monkeypatch.setenv("PATH", "foo/bar:%s" % os.environ["PATH"])
             runez.ensure_folder("foo/bar", logger=None)

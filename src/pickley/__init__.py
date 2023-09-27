@@ -155,9 +155,6 @@ class PackageSpec:
     folder = None  # type: str
     dashed = None  # type: str
     wheelified = None  # type: str
-    python = None  # type: runez.pyenv.PythonInstallation
-    pinned = None  # type: str
-    settings = None  # type: TrackedSettings
     _desired_track = None  # type: TrackedVersion
     _latest = None  # type: TrackedVersion
     _manifest = None  # type: TrackedManifest
@@ -185,11 +182,11 @@ class PackageSpec:
         return str(self) < str(other)
 
     @runez.cached_property
-    def python(self):  # noqa: F811
+    def python(self):
         return self.cfg.find_python(self)
 
     @runez.cached_property
-    def settings(self):  # noqa: F811
+    def settings(self) -> "TrackedSettings":
         return TrackedSettings(
             delivery=self.cfg.delivery_method(self),
             index=self.cfg.index(self) or self.cfg.default_index,
@@ -198,7 +195,7 @@ class PackageSpec:
         )
 
     @runez.cached_property
-    def pinned(self):  # noqa: F811
+    def pinned(self) -> str:
         return self.cfg.pinned_version(self)
 
     @runez.cached_property
@@ -449,9 +446,8 @@ class PickleyConfig:
 
     @runez.cached_property
     def available_pythons(self):
-        pyenv = self.pyenv()
-        python_locations = [pyenv] if pyenv else []
-        depot = PythonDepot(*python_locations)
+        locations = runez.flattened(self.get_value("python-installations") or "PATH")
+        depot = PythonDepot(*locations)
         return depot
 
     def set_base(self, base_path):
@@ -691,13 +687,6 @@ class PickleyConfig:
 
             if isinstance(pinned, str):
                 return pinned
-
-    def pyenv(self):
-        """
-        Returns:
-            (str): Configured path to pyenv installation
-        """
-        return self.get_value("pyenv")
 
     def resolved_bundle(self, name):
         """
