@@ -36,7 +36,6 @@ cli:  # empty
    - bogus.json
    - /dev/null/non-existent-config-file.json
   install_timeout: 250
-  pyenv: /dev/null
   python: /dev/null, /dev/null/foo
   version_check_delay: 15
 
@@ -62,7 +61,6 @@ def grab_sample(name):
 
 def test_bogus_config(temp_folder, logged):
     cfg = grab_sample("bogus-config")
-    assert cfg.pyenv() == "/dev/null"  # from custom.json
     assert cfg.resolved_bundle("") == []
     assert cfg.resolved_bundle("foo") == ["foo"]
     assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit"]

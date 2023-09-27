@@ -45,7 +45,7 @@ else
     echo "{source} is not available anymore"
     echo ""
     echo "Please reinstall with:"
-    echo '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/master/get-pickley)"'
+    echo '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/main/get-pickley)"'
     exit 1
 fi
 """ % WRAPPER_MARK
