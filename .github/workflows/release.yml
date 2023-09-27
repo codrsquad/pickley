@@ -9,29 +9,19 @@ jobs:
   publish:
 
     runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write  # mandatory for trusted publishing
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: actions/setup-python@v4
       with:
         python-version: '3.10'
 
-    - run: pip install -U pip setuptools wheel twine tox
+    - run: pip install -U pip setuptools wheel tox
     - run: tox -e py,docs,style
     - run: python setup.py sdist bdist_wheel
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        draft: false
-        prerelease: false
-
-    - name: Publish sdist and wheel
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_PICKLEY }}
-      run: twine upload dist/*
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
