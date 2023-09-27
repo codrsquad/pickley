@@ -48,5 +48,4 @@ def temp_cfg():
     with TemporaryBase() as base:
         cfg = PickleyConfig()
         cfg.set_base(base)
-        cfg.available_pythons.find_preferred_python("")
         yield cfg

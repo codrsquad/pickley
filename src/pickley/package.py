@@ -174,13 +174,13 @@ class PythonVenv:
         if r.failed or (not runez.DRYRUN and not self.pip_path):
             return self._old_virtualenv(runner, "latest")
 
-        pip_spec = pip_version(self.python.version.components)
+        pip_spec = pip_version(self.python.full_version.components)
         pip_spec = f"pip=={pip_spec}" if pip_spec else "pip"
         return self.run_pip("install", "-U", pip_spec)
 
     def _old_virtualenv(self, runner, vv):
         """Create a virtualenv using old virtualenv module"""
-        pv = self.python.version.components
+        pv = self.python.full_version.components
         if not vv or vv == "latest":
             vv = PackageSpec(self.pspec.cfg, "virtualenv")
             vv = vv.desired_track.version
