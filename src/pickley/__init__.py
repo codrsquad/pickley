@@ -448,6 +448,8 @@ class PickleyConfig:
     def available_pythons(self):
         locations = runez.flattened(self.get_value("python-installations") or "PATH")
         depot = PythonDepot(*locations)
+        preferred = runez.flattened(self.get_value("preferred_pythons"), split=",")
+        depot.set_preferred_python(preferred)
         return depot
 
     def set_base(self, base_path):
