@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 import runez
 
-from pickley import DOT_META, PackageSpec, RawConfig
+from pickley import PackageSpec, RawConfig
 from pickley.package import PackageContents, PythonVenv
 
 
