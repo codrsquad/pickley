@@ -133,7 +133,8 @@ Run (you will need tox_)::
 
     git clone https://github.com/codrsquad/pickley.git
     cd pickley
-    tox -e venv
+    python3 -mvenv .venv
+    .venv/bin/pip install -r requirements.txt -r tests/requirements.txt -e .
     .venv/bin/pickley --help
 
 
