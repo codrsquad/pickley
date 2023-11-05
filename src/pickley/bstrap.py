@@ -7,8 +7,7 @@ import json
 import os
 import re
 import shutil
-import ssl
-import subprocess  # nosec
+import subprocess
 import sys
 import tempfile
 
@@ -28,7 +27,7 @@ def built_in_download(target, url):
     from urllib.request import Request, urlopen
 
     request = Request(url)
-    response = urlopen(request, timeout=5, context=ssl.SSLContext())  # nosec
+    response = urlopen(request, timeout=5)
     with open(target, "wb") as fh:
         fh.write(response.read())
 
@@ -143,10 +142,12 @@ def run_program(program, *args, **kwargs):
             stdout = stderr = None
             print("Running: %s" % description)
 
-        p = subprocess.Popen([program] + list(args), stdout=stdout, stderr=stderr)  # nosec
+        p = subprocess.Popen([program] + list(args), stdout=stdout, stderr=stderr)
         if capture:
             output, _ = p.communicate()
-            output = output and output.decode("utf-8").strip()
+            if output is not None:
+                output = output.decode("utf-8").strip()
+
             return None if p.returncode else output
 
         p.wait()
