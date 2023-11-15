@@ -73,9 +73,9 @@ def test_bogus_config(temp_folder, logged):
     assert actual == expected
 
     p = cfg.find_python(pspec=None, fatal=False)
-    assert p.executable == "/dev/null/foo"
-    assert p.problem == "/dev/null/foo is not an executable"
-    assert "skipped: /dev/null/foo is not an executable" in logged.pop()
+    assert p.executable == runez.to_path("/dev/null/foo")
+    assert p.problem == "not available"
+    assert "Skipped python /dev/null [not available]" in logged.pop()
 
     assert not logged
     p = PackageSpec(cfg, "mgit")

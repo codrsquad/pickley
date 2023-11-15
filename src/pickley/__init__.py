@@ -542,7 +542,7 @@ class PickleyConfig:
             if not python.problem:
                 return python
 
-            issues.append(f"Python '{runez.bold(runez.short(d))}' skipped: {runez.red(python.problem)}")
+            issues.append(f"Skipped python {python}")
 
         for i in issues:  # Warn only if no python could be found at all
             LOG.warning(i)

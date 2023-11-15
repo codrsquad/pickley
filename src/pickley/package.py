@@ -171,7 +171,7 @@ class PythonVenv:
             return self._old_virtualenv(runner, vv)
 
         r = runez.run(self.python.executable, "-mvenv", self.folder, fatal=False)
-        if r.failed or (not runez.DRYRUN and not self.pip_path):
+        if r.failed or not self.pip_path:
             return self._old_virtualenv(runner, "latest")
 
         pip_spec = pip_version(self.python.full_version.components)
@@ -279,7 +279,8 @@ class PexPackager(Packager):
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements, run_compile_all):
         runez.ensure_folder(build_folder, clean=True)
-        runez.abort_if(pspec.python.major < 3, "Packaging with pex is not supported any more with python2")
+        runez.abort_if(pspec.python.problem, f"Can't package with {pspec.python}")
+        runez.abort_if(pspec.python.full_version.major < 3, "Packaging with pex is not supported any more with python2")
         pex_root = os.path.join(build_folder, "pex-root")
         tmp = os.path.join(build_folder, "pex-tmp")
         wheels = os.path.join(build_folder, "wheels")
@@ -300,7 +301,7 @@ class PexPackager(Packager):
                     "--no-index", "--find-links", wheels,  # resolver options
                     None if run_compile_all else "--no-compile",  # output options
                     f"-c{name}",  # entry point options
-                    "--python-shebang", f"/usr/bin/env python{pspec.python.major}",
+                    "--python-shebang", f"/usr/bin/env python{pspec.python.full_version.major}",
                     wheel_path,
                 )
                 result.append(target)

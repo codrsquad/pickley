@@ -386,7 +386,7 @@ def test_main(cli):
 def test_package_pex(cli, monkeypatch):
     cli.run("--dryrun", "-ppex", "package", cli.project_folder)
     assert cli.succeeded
-    assert cli.match("Using python: ... invoker", stdout=True)
+    assert cli.match("Using python: ...invoker", stdout=True)
     assert " -mpex " in cli.logged.stdout
 
 
