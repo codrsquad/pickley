@@ -21,6 +21,9 @@ assert logged, temp_folder  # Just making fixtures available, with no complaints
 def dot_meta(relative=None, parent=None):
     path = DOT_META
     if relative:
+        if relative.endswith("manifest.json"):
+            path = os.path.join(path, ".manifest")
+
         path = os.path.join(path, relative)
 
     if parent:

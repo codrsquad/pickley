@@ -244,7 +244,7 @@ class PackageSpec:
 
     @runez.cached_property
     def manifest_path(self):
-        return self.cfg.meta.full_path(f"{self.dashed}.manifest.json")
+        return self.cfg.manifests.full_path(f"{self.dashed}.manifest.json")
 
     @runez.cached_property
     def ping_path(self):
@@ -461,6 +461,7 @@ class PickleyConfig:
         self.base = FolderBase("base", runez.resolved_path(base_path))
         self.meta = FolderBase("meta", os.path.join(self.base.path, DOT_META))
         self.cache = FolderBase("cache", os.path.join(self.meta.path, ".cache"))
+        self.manifests = FolderBase("manifests", os.path.join(self.meta.path, ".manifest"))
         if self.cli:
             cli = runez.serialize.json_sanitized(self.cli.to_dict())
             self.configs.append(RawConfig(self, "cli", cli))
@@ -591,7 +592,7 @@ class PickleyConfig:
             if spec_name:
                 yield spec_name
 
-        for item in self.meta.iterdir():
+        for item in self.manifests.iterdir():
             if item.name.endswith(".manifest.json"):
                 spec_name = item.name[:-14]
                 if spec_name:

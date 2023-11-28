@@ -6,7 +6,9 @@ from unittest.mock import patch
 import pytest
 import runez
 
-from pickley import __version__, bstrap, DOT_META
+from pickley import __version__, bstrap
+
+from .conftest import dot_meta
 
 
 def mocked_expanduser(path):
@@ -21,10 +23,11 @@ def test_bootstrap(cli, monkeypatch):
     runez.touch(".pickley/config.json")
     cli.run("-n base bootstrap-own-wrapper")
     assert cli.succeeded
-    assert f"Would move .pickley/config.json -> {DOT_META}/config.json" in cli.logged
-    assert f"Would save {DOT_META}/pickley.manifest.json" in cli.logged
+    assert f"Would move .pickley/config.json -> {dot_meta('config.json')}" in cli.logged
+    assert f"Would save {dot_meta('pickley.manifest.json')}" in cli.logged
     assert "Would delete .pickley" in cli.logged
-    assert f"Would run: {DOT_META}/pickley-{__version__}/bin/pickley auto-heal" in cli.logged
+    pickley_path = dot_meta(f"pickley-{__version__}/bin/pickley")
+    assert f"Would run: {pickley_path} auto-heal" in cli.logged
 
     with patch("pickley.bstrap.which", side_effect=lambda x: None if x == "pickley" else x):
         with patch("pickley.bstrap.os.path.expanduser", side_effect=mocked_expanduser):
@@ -53,11 +56,11 @@ def test_bootstrap(cli, monkeypatch):
             monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
             cli.run("0.1", "-m", "my-mirror", "-c", f"{{{sample_config}}}", main=bstrap.main)
             assert "base: .local/bin" in cli.logged
-            assert f"Seeding .local/bin/{DOT_META}/config.json with " in cli.logged
+            assert f"Seeding .local/bin/{dot_meta('config.json')} with " in cli.logged
             assert "Seeding .config/pip/pip.conf with my-mirror" in cli.logged
             assert "pickley version 0.1 is already installed" in cli.logged
             assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", "index-url = my-mirror"]
-            assert list(runez.readlines(f".local/bin/{DOT_META}/config.json")) == ["{", f"  {sample_config}", "}"]
+            assert list(runez.readlines(f".local/bin/{dot_meta('config.json')}")) == ["{", f"  {sample_config}", "}"]
 
             monkeypatch.setattr(bstrap, "DRYRUN", False)
 
@@ -76,7 +79,7 @@ def test_bootstrap(cli, monkeypatch):
                 assert "pickley base bootstrap-own-wrapper" in cli.logged
 
                 # When pip available, don't use virtualenv
-                pip = f".local/bin/{DOT_META}/pickley-1.0/bin/pip3"
+                pip = f".local/bin/{dot_meta('pickley-1.0/bin/pip3')}"
                 runez.touch(pip)
                 runez.make_executable(pip)
                 cli.run("1.0", main=bstrap.main)
