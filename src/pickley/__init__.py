@@ -18,7 +18,7 @@ K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
 K_LEAVES = {
-    "facultative", "install_timeout", "min_python", "preferred_min_python", "preferred_pythons", "pyenv", "version", "version_check_delay"
+    "facultative", "install_timeout", "preferred_pythons", "python_installations", "pyenv", "version", "version_check_delay"
 }
 PLATFORM = platform.system().lower()
 
@@ -244,7 +244,7 @@ class PackageSpec:
 
     @runez.cached_property
     def manifest_path(self):
-        return self.cfg.meta.full_path(f"{self.dashed}.manifest.json")
+        return self.cfg.manifests.full_path(f"{self.dashed}.manifest.json")
 
     @runez.cached_property
     def ping_path(self):
@@ -446,7 +446,7 @@ class PickleyConfig:
 
     @runez.cached_property
     def available_pythons(self):
-        locations = runez.flattened(self.get_value("python-installations") or "PATH")
+        locations = runez.flattened(self.get_value("python_installations") or "PATH")
         depot = PythonDepot(*locations)
         preferred = runez.flattened(self.get_value("preferred_pythons"), split=",")
         depot.set_preferred_python(preferred)
@@ -461,6 +461,7 @@ class PickleyConfig:
         self.base = FolderBase("base", runez.resolved_path(base_path))
         self.meta = FolderBase("meta", os.path.join(self.base.path, DOT_META))
         self.cache = FolderBase("cache", os.path.join(self.meta.path, ".cache"))
+        self.manifests = FolderBase("manifests", os.path.join(self.meta.path, ".manifest"))
         if self.cli:
             cli = runez.serialize.json_sanitized(self.cli.to_dict())
             self.configs.append(RawConfig(self, "cli", cli))
@@ -477,10 +478,7 @@ class PickleyConfig:
         defaults = dict(
             delivery="wrap",
             install_timeout=1800,
-            min_python="3.6",
-            preferred_min_python="3.7",
-            preferred_pythons="/usr/bin/python3,/usr/bin/python",
-            version_check_delay=300
+            version_check_delay=300,
         )
         self.configs.append(RawConfig(self, "defaults", defaults))
 
@@ -531,7 +529,7 @@ class PickleyConfig:
         """
         desired = self.get_value("python", pspec=pspec)
         if not desired:
-            # Most common case: use configured preferred python (will be 'invoker' by default)
+            # Most common case: use configured preferred python
             return self.available_pythons.find_python(None)
 
         issues = []
@@ -542,7 +540,7 @@ class PickleyConfig:
             if not python.problem:
                 return python
 
-            issues.append(f"Python '{runez.bold(runez.short(d))}' skipped: {runez.red(python.problem)}")
+            issues.append(f"Skipped python {python}")
 
         for i in issues:  # Warn only if no python could be found at all
             LOG.warning(i)
@@ -594,7 +592,7 @@ class PickleyConfig:
             if spec_name:
                 yield spec_name
 
-        for item in self.meta.iterdir():
+        for item in self.manifests.iterdir():
             if item.name.endswith(".manifest.json"):
                 spec_name = item.name[:-14]
                 if spec_name:

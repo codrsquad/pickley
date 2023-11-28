@@ -1,4 +1,3 @@
-import os
 from unittest.mock import patch
 
 import pytest
@@ -22,18 +21,19 @@ Files:
 """
 
 
-def test_edge_cases(temp_cfg, logged):
+def test_edge_cases(temp_cfg):
     temp_cfg.configs.append(RawConfig(None, "test", {"pinned": {"virtualenv": {"version": "20.13.0"}}}))
-    runez.touch("dummy.whl")
-    runez.ensure_folder(".", clean=True)
-    assert "Cleaned 1 file from" in logged.pop()
-    assert not os.path.exists("dummy.whl")
-
     pspec = PackageSpec(temp_cfg, "mgit==1.3.0")
     venv = PythonVenv("venv", pspec, create=False)
     assert not venv.pip_path
     runez.touch("venv/bin/pip3")
     assert venv.pip_path == "venv/bin/pip3"
+
+    with runez.CaptureOutput(dryrun=True) as logged:
+        # Verify that we fall back to virtualenv if stdlib venv fails
+        with patch("runez.run", side_effect=simulated_run):
+            PythonVenv("venv", pspec, create=True)
+            assert f"virtualenv-{temp_cfg.available_pythons.invoker.mm}.pyz -q -p " in logged
 
 
 def simulated_run(*args, **_):

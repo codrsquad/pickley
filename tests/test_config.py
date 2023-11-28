@@ -42,9 +42,6 @@ cli:  # empty
 defaults:
   delivery: wrap
   install_timeout: 1800
-  min_python: 3.6
-  preferred_min_python: 3.7
-  preferred_pythons: /usr/bin/python3,/usr/bin/python
   version_check_delay: 300
 """
 
@@ -73,9 +70,9 @@ def test_bogus_config(temp_folder, logged):
     assert actual == expected
 
     p = cfg.find_python(pspec=None, fatal=False)
-    assert p.executable == "/dev/null/foo"
-    assert p.problem == "/dev/null/foo is not an executable"
-    assert "skipped: /dev/null/foo is not an executable" in logged.pop()
+    assert p.executable == runez.to_path("/dev/null/foo")
+    assert p.problem == "not available"
+    assert "Skipped python /dev/null [not available]" in logged.pop()
 
     assert not logged
     p = PackageSpec(cfg, "mgit")
@@ -101,8 +98,10 @@ def test_edge_cases():
     assert str(cfg) == "<not-configured>"
     assert "intentionally refuses" in pypi_name_problem("0-0")
     assert pypi_name_problem("mgit") is None
+
+    # Verify that default 'invoker' (current python) when no preferred python nor locations are configured
     p = cfg.find_python(pspec=None)
-    assert p is cfg.available_pythons.invoker
+    assert p == cfg.available_pythons.invoker
 
 
 @PYPI_CLIENT.mock({

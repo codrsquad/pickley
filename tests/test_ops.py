@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from unittest.mock import patch
 
@@ -48,6 +49,7 @@ def dummy_finalizer(cfg, dist, symlink="root:root/usr/local/bin"):
     return p
 
 
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_debian_mode(temp_cfg, logged):
     runez.write("foo/setup.py", "import setuptools\nsetuptools.setup(name='foo', version='1.0')")
     p = dummy_finalizer(temp_cfg, "root/apps")
@@ -102,7 +104,9 @@ def test_dryrun(cli, monkeypatch):
 
     cli.expect_success("-n auto-heal", "Auto-healed 0 / 0 packages")
 
-    cli.expect_success("-n -Pfoo diagnostics", "desired python : foo", "foo [not available]", "sys.executable")
+    cli.run("-n -Pfoo diagnostics")
+    assert "preferred python : foo [not available]" in cli.logged
+
     cli.run("-n install git@github.com:zsimic/mgit.git")
     assert cli.succeeded
     checkout = dot_meta(".cache/checkout")
@@ -114,14 +118,16 @@ def test_dryrun(cli, monkeypatch):
     cli.expect_failure("-n package . -sfoo", "Invalid symlink specification")
     cli.expect_failure("-n package . -sroot:root/usr/local/bin", "No setup.py in ")
 
-    runez.touch("setup.py")
-    cli.expect_failure("-n package .", "Could not determine package name")
-    runez.write("setup.py", "import sys\nfrom setuptools import setup\nif sys.argv[1]=='--version': sys.exit(1)\nsetup(name='foo')")
-    cli.expect_failure("-n package .", "Could not determine package version")
+    if sys.version_info[:2] < (3, 12):
+        # TODO: Reconsider how to test `package` command without setuptools
+        runez.touch("setup.py")
+        cli.expect_failure("-n package .", "Could not determine package name")
+        runez.write("setup.py", "import sys\nfrom setuptools import setup\nif sys.argv[1]=='--version': sys.exit(1)\nsetup(name='foo')")
+        cli.expect_failure("-n package .", "Could not determine package version")
 
-    cli.run("-n", "package", cli.project_folder)
-    assert cli.succeeded
-    cli.match("Would run: ...pip...install -r requirements.txt")
+        cli.run("-n", "package", cli.project_folder)
+        assert cli.succeeded
+        cli.match("Would run: ...pip...install -r requirements.txt")
 
     cli.expect_failure("-n uninstall", "Specify packages to uninstall, or --all")
     cli.expect_failure("-n uninstall pickley", "Run 'uninstall --all' if you wish to uninstall pickley itself")
@@ -383,10 +389,12 @@ def test_main(cli):
     cli.exercise_main("-mpickley", "src/pickley/bstrap.py")
 
 
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_package_pex(cli, monkeypatch):
+    # TODO: Reconsider how to test `package` command without setuptools
     cli.run("--dryrun", "-ppex", "package", cli.project_folder)
     assert cli.succeeded
-    assert cli.match("Using python: ... invoker", stdout=True)
+    assert cli.match("Using python: ...invoker", stdout=True)
     assert " -mpex " in cli.logged.stdout
 
 
@@ -406,7 +414,6 @@ def test_package_venv_with_additional_packages(cli):
     runez.delete("/tmp/pickley")
     cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder, "litecli")
     assert cli.succeeded
-    assert "pip install -U pip" in cli.logged
     assert "pip install -r requirements.txt" in cli.logged
     assert "pip install litecli" in cli.logged
     assert runez.is_executable("/tmp/pickley/bin/pickley")

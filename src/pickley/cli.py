@@ -390,14 +390,8 @@ def config():
 
 
 def _diagnostics():
-    desired = CFG.get_value("python")
     yield "base", CFG.base
-    yield "desired python", desired
-    python = CFG.find_python(fatal=False)
-    yield "selected python", python
-    if python is not CFG.available_pythons.invoker:
-        yield "invoker python", CFG.available_pythons.invoker
-
+    yield "preferred python", CFG.available_pythons.find_python(CFG.get_value("python"))
     yield "default index", CFG.default_index
     yield "pip.conf", CFG.pip_conf
 
