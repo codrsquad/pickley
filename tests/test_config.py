@@ -99,7 +99,7 @@ def test_edge_cases():
     assert "intentionally refuses" in pypi_name_problem("0-0")
     assert pypi_name_problem("mgit") is None
     p = cfg.find_python(pspec=None)
-    assert p is cfg.available_pythons.preferred_python
+    assert p is cfg.available_pythons.invoker
 
 
 @PYPI_CLIENT.mock({

@@ -13,8 +13,7 @@ import tempfile
 
 DRYRUN = False
 HOME = os.path.expanduser("~")
-RUNNING_FROM_VENV = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-TMP_FOLDER = None  # type: str
+TMP_FOLDER = None  # type: (str | None)
 RX_VERSION = re.compile(r"^\D*(\d+)\.(\d+).*$")
 DEFAULT_BASE = "~/.local/bin"
 
@@ -63,28 +62,16 @@ def find_base(base):
         if base:
             print("Found existing %s" % short(base))
             return os.path.dirname(base)
+
         base = DEFAULT_BASE
 
-    path_dirs = os.environ.get("PATH", "").split(os.pathsep)
     candidates = base.split(os.pathsep)
     for c in candidates:
         c = os.path.expanduser(c)
-        if c and os.path.isdir(c) and is_writable(c) and c in path_dirs:
+        if c and os.path.isdir(c) and is_writable(c):
             return c
 
-    msg = "Make sure %s is writeable and in your PATH variable." % candidates[0]
-    abort(msg)
-
-
-def find_python3():
-    if sys.version_info[0] == 3 and not RUNNING_FROM_VENV:
-        # We're not running from a venv
-        return sys.executable
-
-    if is_executable("/usr/bin/python3"):
-        return "/usr/bin/python3"
-
-    return which("python3")
+    abort("Make sure %s is writeable." % candidates[0])
 
 
 def get_latest_pickley_version():
@@ -187,9 +174,6 @@ def seed_mirror(mirror, force=False):
 
 
 def short(text):
-    if text == sys.executable:
-        return "python"
-
     if TMP_FOLDER:
         text = text.replace(TMP_FOLDER + os.path.sep, "")
 
@@ -197,70 +181,32 @@ def short(text):
 
 
 def which(program):
+    prefix_bin = os.path.join(sys.prefix, "bin")
     for p in os.environ.get("PATH", "").split(os.pathsep):
-        if not RUNNING_FROM_VENV or p != os.path.join(sys.prefix, "bin"):
+        if p != prefix_bin:
             fp = os.path.join(p, program)
             if fp and is_executable(fp):
                 return fp
 
 
-def get_python_version(python3):
-    pv = run_program(python3, "--version", capture=True, dryrun=False)
-    m = RX_VERSION.match(pv)
-    if m:
-        major = int(m.group(1))
-        minor = int(m.group(2))
-        return major, minor
-
-
-def pip_version(python_version):
-    """
-    Args:
-        python_version (tuple): Target python version
-
-    Returns:
-        (str | None): Pinned pip version to use, if applicable
-    """
-    if python_version and python_version < (3, 7):
-        return "21.3.1"
-
-
-def create_virtualenv(tmp_folder, python_version, python_exe, venv_folder, virtualenv_version="20.10.0", runner=None, dryrun=None):
+def create_virtualenv(tmp_folder, python_exe, venv_folder, runner=None, dryrun=None):
     """
     Args:
         tmp_folder (str): Temp folder to use, virtualenv.pyz is downloaded there
-        python_version (tuple): Target python version
         python_exe (str): Target python executable
         venv_folder (str): Target venv folder
-        virtualenv_version (str): Virtualenv version to use
         runner (callable): Function to use to run virtualenv
     """
-    zipapp = os.path.join(tmp_folder, "virtualenv-%s.pyz" % virtualenv_version)
+    pv = "%s.%s" % (sys.version_info[0], sys.version_info[1])
+    zipapp = os.path.join(tmp_folder, "virtualenv-%s.pyz" % pv)
     if not os.path.exists(zipapp):
-        url = "https://bootstrap.pypa.io/virtualenv/%s/virtualenv.pyz" % ("%s.%s" % python_version[0:2])
+        url = "https://bootstrap.pypa.io/virtualenv/%s/virtualenv.pyz" % pv
         download(zipapp, url, dryrun=dryrun)
 
-    cmd = virtualenv_cmd(zipapp, python_version, python_exe, venv_folder)
     if runner is None:
         runner = run_program
 
-    return runner(*cmd)
-
-
-def virtualenv_cmd(virtualenv_path, python_version, python_exe, venv_folder):
-    cmd = [sys.executable, virtualenv_path, "-q", "--clear"]
-    pv = pip_version(python_version)
-    if pv:
-        cmd.append("--pip")
-        cmd.append(pv)
-
-    else:
-        cmd.append("--download")
-
-    cmd.append("-p")
-    cmd.append(python_exe)
-    cmd.append(venv_folder)
-    return cmd
+    return runner(sys.executable, zipapp, "-q", "-p", python_exe, venv_folder)
 
 
 def find_venv_exe(folder, name):
@@ -288,25 +234,20 @@ def main(args=None):
     if "__PYVENV_LAUNCHER__" in os.environ:
         del os.environ["__PYVENV_LAUNCHER__"]
 
-    python3 = find_python3()
-    if not python3:
-        abort("Could not find python3 on this machine")
-
     pickley_base = find_base(args.base)
-    print("Using %s, base: %s" % (python3, short(pickley_base)))
+    if args.cfg:
+        # When --cfg is used, make sure chosen base is in PATH
+        path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+        if pickley_base not in path_dirs:
+            abort("Make sure %s is in your PATH environment variable." % pickley_base)
+
+    print("Using %s, base: %s" % (sys.executable, short(pickley_base)))
     seed_config(pickley_base, args.cfg, force=args.force)
     seed_mirror(args.mirror, force=args.force)
     TMP_FOLDER = os.path.realpath(tempfile.mkdtemp())
     try:
         pickley_exe = os.path.join(pickley_base, "pickley")
-        pickley_version = args.version
-        spec = None
-        if not pickley_version:
-            pickley_version = get_latest_pickley_version()
-
-        if not spec:
-            spec = "pickley==%s" % pickley_version
-
+        pickley_version = args.version or get_latest_pickley_version()
         if not args.force and is_executable(pickley_exe):
             v = run_program(pickley_exe, "--version", capture=True, dryrun=False)
             if v == pickley_version:
@@ -317,18 +258,15 @@ def main(args=None):
                 print("Replacing older pickley %s" % v)
 
         pickley_venv = os.path.join(pickley_base, ".pk", "pickley-%s" % pickley_version)
-        pv = get_python_version(python3)
-        needs_virtualenv = True
-        if pv and pv >= (3, 7):
-            needs_virtualenv = run_program(python3, "-mvenv", "--clear", pickley_venv, fatal=False)
-            if not needs_virtualenv and not DRYRUN:
-                needs_virtualenv = not find_venv_exe(pickley_venv, "pip")
+        needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", pickley_venv, fatal=False)
+        if not needs_virtualenv and not DRYRUN:
+            needs_virtualenv = not find_venv_exe(pickley_venv, "pip")
 
         if needs_virtualenv:
-            # For py3.6 or pythons without pip, use old virtualenv
-            create_virtualenv(TMP_FOLDER, pv, python3, pickley_venv)
+            print("-mvenv failed, falling back to virtualenv")
+            create_virtualenv(TMP_FOLDER, sys.executable, pickley_venv)
 
-        run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", spec)
+        run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", "pickley==%s" % pickley_version)
         run_program(os.path.join(pickley_venv, "bin", "pickley"), "base", "bootstrap-own-wrapper")
 
     finally:

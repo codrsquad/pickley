@@ -49,6 +49,7 @@ def dummy_finalizer(cfg, dist, symlink="root:root/usr/local/bin"):
     return p
 
 
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_debian_mode(temp_cfg, logged):
     runez.write("foo/setup.py", "import setuptools\nsetuptools.setup(name='foo', version='1.0')")
     p = dummy_finalizer(temp_cfg, "root/apps")
@@ -413,7 +414,6 @@ def test_package_venv_with_additional_packages(cli):
     runez.delete("/tmp/pickley")
     cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder, "litecli")
     assert cli.succeeded
-    assert "pip install -U pip" in cli.logged
     assert "pip install -r requirements.txt" in cli.logged
     assert "pip install litecli" in cli.logged
     assert runez.is_executable("/tmp/pickley/bin/pickley")

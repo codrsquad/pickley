@@ -3,8 +3,7 @@ import os
 
 import runez
 
-from pickley import abort, PackageSpec, PICKLEY
-from pickley.bstrap import create_virtualenv, pip_version
+from pickley import abort, PICKLEY
 from pickley.delivery import DeliveryMethod
 
 
@@ -162,32 +161,12 @@ class PythonVenv:
 
     def _create_virtualenv(self, runner=runez.run):
         runez.ensure_folder(self.folder, clean=True, logger=False)
-        vv = self.pspec.cfg.get_virtualenv(self.pspec)
-        if not vv and runez.SYS_INFO.platform_id.is_macos and runez.SYS_INFO.platform_id.arch != "arm64":
-            # Weird bug reported on Intel macs, where tox installed via -mvenv fails to create its own .tox venvs in a mysterious way
-            vv = self._vv_fallback
-
-        if vv and vv != "no":
-            return self._old_virtualenv(runner, vv)
-
         r = runez.run(self.python.executable, "-mvenv", self.folder, fatal=False)
         if r.failed or not self.pip_path:
-            return self._old_virtualenv(runner, "latest")
+            # There's an issue with std lib `venv` module, fallback to virtualenv
+            from pickley.bstrap import create_virtualenv
 
-        pip_spec = pip_version(self.python.full_version.components)
-        pip_spec = f"pip=={pip_spec}" if pip_spec else "pip"
-        return self.run_pip("install", "-U", pip_spec)
-
-    def _old_virtualenv(self, runner, vv):
-        """Create a virtualenv using old virtualenv module"""
-        pv = self.python.full_version.components
-        if not vv or vv == "latest":
-            vv = PackageSpec(self.pspec.cfg, "virtualenv")
-            vv = vv.desired_track.version
-
-        tmp = self.pspec.cfg.cache.path
-        runez.ensure_folder(self.folder, clean=True, logger=False)
-        return create_virtualenv(tmp, pv, self.python.executable, self.folder, virtualenv_version=vv, runner=runner, dryrun=runez.DRYRUN)
+            create_virtualenv(self.pspec.cfg.cache.path, self.python.executable, self.folder, runner=runner, dryrun=runez.DRYRUN)
 
     @property
     def pip_path(self):

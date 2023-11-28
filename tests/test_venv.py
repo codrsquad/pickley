@@ -33,7 +33,7 @@ def test_edge_cases(temp_cfg):
         # Verify that we fall back to virtualenv if stdlib venv fails
         with patch("runez.run", side_effect=simulated_run):
             PythonVenv("venv", pspec, create=True)
-            assert "virtualenv-20.13.0.pyz -q --clear --download -p " in logged
+            assert f"virtualenv-{temp_cfg.available_pythons.invoker.mm}.pyz -q -p " in logged
 
 
 def simulated_run(*args, **_):
