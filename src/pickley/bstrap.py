@@ -266,6 +266,10 @@ def main(args=None):
             print("-mvenv failed, falling back to virtualenv")
             create_virtualenv(TMP_FOLDER, sys.executable, pickley_venv)
 
+        if sys.version_info[:2] <= (3, 7):
+            # TODO: remove this when py3.6 and 3.7 are truly buried
+            run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", "-U", "pip==21.3.1")
+
         run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", "pickley==%s" % pickley_version)
         run_program(os.path.join(pickley_venv, "bin", "pickley"), "base", "bootstrap-own-wrapper")
 
