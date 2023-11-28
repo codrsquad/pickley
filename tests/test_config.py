@@ -98,8 +98,10 @@ def test_edge_cases():
     assert str(cfg) == "<not-configured>"
     assert "intentionally refuses" in pypi_name_problem("0-0")
     assert pypi_name_problem("mgit") is None
+
+    # Verify that default 'invoker' (current python) when no preferred python nor locations are configured
     p = cfg.find_python(pspec=None)
-    assert p is cfg.available_pythons.invoker
+    assert p == cfg.available_pythons.invoker
 
 
 @PYPI_CLIENT.mock({
