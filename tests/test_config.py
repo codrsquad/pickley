@@ -42,9 +42,6 @@ cli:  # empty
 defaults:
   delivery: wrap
   install_timeout: 1800
-  min_python: 3.6
-  preferred_min_python: 3.7
-  preferred_pythons: /usr/bin/python3,/usr/bin/python
   version_check_delay: 300
 """
 
@@ -102,7 +99,7 @@ def test_edge_cases():
     assert "intentionally refuses" in pypi_name_problem("0-0")
     assert pypi_name_problem("mgit") is None
     p = cfg.find_python(pspec=None)
-    assert p is cfg.available_pythons.invoker
+    assert p is cfg.available_pythons.preferred_python
 
 
 @PYPI_CLIENT.mock({

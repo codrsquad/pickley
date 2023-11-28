@@ -37,7 +37,7 @@ def download(target, url, dryrun=None):
         try:
             return built_in_download(target, url)
 
-        except (ImportError, Exception):
+        except Exception:
             pass
 
         curl = which("curl")

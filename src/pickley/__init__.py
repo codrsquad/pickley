@@ -18,7 +18,7 @@ K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
 K_LEAVES = {
-    "facultative", "install_timeout", "min_python", "preferred_min_python", "preferred_pythons", "pyenv", "version", "version_check_delay"
+    "facultative", "install_timeout", "preferred_pythons", "python_installations", "pyenv", "version", "version_check_delay"
 }
 PLATFORM = platform.system().lower()
 
@@ -446,7 +446,7 @@ class PickleyConfig:
 
     @runez.cached_property
     def available_pythons(self):
-        locations = runez.flattened(self.get_value("python-installations") or "PATH")
+        locations = runez.flattened(self.get_value("python_installations") or "PATH")
         depot = PythonDepot(*locations)
         preferred = runez.flattened(self.get_value("preferred_pythons"), split=",")
         depot.set_preferred_python(preferred)
@@ -477,10 +477,7 @@ class PickleyConfig:
         defaults = dict(
             delivery="wrap",
             install_timeout=1800,
-            min_python="3.6",
-            preferred_min_python="3.7",
-            preferred_pythons="/usr/bin/python3,/usr/bin/python",
-            version_check_delay=300
+            version_check_delay=300,
         )
         self.configs.append(RawConfig(self, "defaults", defaults))
 
@@ -531,7 +528,7 @@ class PickleyConfig:
         """
         desired = self.get_value("python", pspec=pspec)
         if not desired:
-            # Most common case: use configured preferred python (will be 'invoker' by default)
+            # Most common case: use configured preferred python
             return self.available_pythons.find_python(None)
 
         issues = []

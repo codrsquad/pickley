@@ -1,4 +1,3 @@
-# pinned
 click~=8.0
 requests~=2.27
 runez~=5.0.0
