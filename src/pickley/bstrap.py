@@ -37,7 +37,7 @@ def download(target, url, dryrun=None):
             return built_in_download(target, url)
 
         except Exception:
-            pass
+            print("Built-in download of %s failed, trying curl or wget" % url)
 
         curl = which("curl")
         if curl:
