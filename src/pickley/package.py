@@ -168,7 +168,7 @@ class PythonVenv:
 
             create_virtualenv(self.pspec.cfg.cache.path, self.python.executable, self.folder, runner=runner, dryrun=runez.DRYRUN)
 
-        if self.python.mm < "3.7":
+        if self.python.mm <= "3.7":
             # Older versions of python come with very old `ensurepip`, sometimes pip 9.0.1 from 2016
             # pip versions newer than 21.3.1 for those old pythons is also known not to work
             self.run_pip("install", "-U", "pip==21.3.1")
