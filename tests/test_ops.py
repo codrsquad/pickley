@@ -394,7 +394,7 @@ def test_package_pex(cli, monkeypatch):
     # TODO: Reconsider how to test `package` command without setuptools
     cli.run("--dryrun", "-ppex", "package", cli.project_folder)
     assert cli.succeeded
-    assert cli.match("Using python: ...invoker", stdout=True)
+    assert cli.match(f"Using python: {runez.short(runez.SYS_INFO.invoker_python)}", stdout=True)
     assert " -mpex " in cli.logged.stdout
 
 
