@@ -152,13 +152,23 @@ def test_dryrun(cli, monkeypatch):
 
         cli.expect_success("-n check", "No packages installed")
         cli.expect_failure("-n check foo+bar", "'foo+bar' is not a valid pypi package name")
-        cli.expect_failure("-n check mgit pickley2-a", "not installed", "pickley2-a: does not exist")
+
+        cli.run("-n check mgit pickley2.a")
+        assert "mgit: 100.0 not installed" in cli.logged
+        assert "pickley2-a: does not exist" in cli.logged
+        assert "'pickley2.a' is not pypi canonical" in cli.logged
+
+        # Simulate mgit installed
+        runez.write(dot_meta("mgit.manifest.json"), '{"entrypoints": ["bogus-mgit"],"version":"1.0"}')
+        cli.run("-n check mgit")
+        assert "mgit: 100.0 (currently 1.0 unhealthy)" in cli.logged
 
         # Simulate an old entry point that was now removed
-        runez.write(dot_meta("mgit.manifest.json"), '{"entrypoints": ["bogus-mgit"]}')
-        cli.expect_failure("-n install mgit pickley2.a", "Would state: Installed mgit v", "'pickley2.a' is not pypi canonical")
+        cli.run("-n install mgit pickley2.a")
+        assert cli.failed
+        assert "Would state: Installed mgit v100.0" in cli.logged
+        assert "Can't install pickley2-a: does not exist on" in cli.logged
 
-        cli.expect_failure("check", "not installed")
         cli.expect_success("list", "mgit")
         cli.expect_success("list -fcsv", "mgit")
         cli.expect_success("list -fjson", "mgit")
@@ -301,7 +311,7 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
         installed_version = m.version
         m.version = simulate_version
         runez.save_json(m.to_dict(), dot_meta(f"{package}.manifest.json"))
-        cli.expect_success("check", f"{installed_version} (currently {simulate_version})")
+        cli.expect_success("check", f"{installed_version} (currently {simulate_version} unhealthy)")
 
 
 def test_install_pypi(cli):

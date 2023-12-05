@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 import runez
 
-from pickley import __version__, PackageSpec, PICKLEY, PickleyConfig
+from pickley import __version__, PackageSpec, PICKLEY
 from pickley.delivery import DeliveryMethod
 from pickley.package import PythonVenv
 
@@ -15,12 +15,10 @@ BREW_CELLAR = "/brew/install/Cellar"
 BREW_INSTALLED = ["tox", "twine"]
 
 
-def test_edge_cases(temp_folder, logged):
-    cfg = PickleyConfig()
-    pspec = PackageSpec(cfg, "mgit==1.0.0")
-    venv = MagicMock(pspec=pspec)
+def test_edge_cases(temp_cfg, logged):
+    pspec = PackageSpec(temp_cfg, "mgit==1.0.0")
+    venv = MagicMock(folder=pspec.venv_path(pspec.given_version), pspec=pspec)
     entry_points = {"some-source": ""}
-    cfg.set_base(".")
     d = DeliveryMethod()
     with pytest.raises(SystemExit):
         d.install(venv, entry_points)
@@ -44,7 +42,7 @@ class SimulatedInstallation:
         self.venv = PythonVenv(folder, self.pspec, create=False)
         venv_exe = os.path.join(folder, "bin", name)
         runez.write(venv_exe, f"#!/bin/bash\n\necho {version}\n")
-        runez.symlink(folder, self.pspec.active_install_path)
+        runez.symlink(folder, self.pspec.venv_path(version))
         runez.make_executable(venv_exe)
 
     def check_wrap(self, wrap_method):

@@ -305,7 +305,7 @@ class VenvPackager(Packager):
             args.append("--no-binary")
             args.append(no_binary)
 
-        venv = PythonVenv(pspec.active_install_path, pspec)
+        venv = PythonVenv(pspec.venv_path(pspec.desired_track.version), pspec)
         args.extend(pspec.pip_spec())
         venv.pip_install(*args)
         contents = PackageContents(venv)

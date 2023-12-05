@@ -153,7 +153,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
             inform(f"Skipping installation of {pspec}: {runez.bold(skip_reason)}")
             return None
 
-        if is_upgrade and not pspec.is_currently_installed and not quiet:
+        if is_upgrade and not pspec.currently_installed_version and not quiet:
             abort(f"'{runez.red(pspec)}' is not installed")
 
         if force:
@@ -275,7 +275,7 @@ def auto_heal():
     total = healed = 0
     for spec in CFG.installed_specs():
         total += 1
-        if spec.is_healthily_installed():
+        if spec.is_healthily_installed:
             print("%s is healthy" % runez.bold(spec))
             continue
 
@@ -315,7 +315,7 @@ def base(what):
         from pickley.delivery import DeliveryMethodWrap
 
         pspec = PackageSpec(CFG, f"{PICKLEY}=={__version__}")
-        venv = PythonVenv(pspec.active_install_path, pspec, create=False)
+        venv = PythonVenv(pspec.venv_path(__version__), pspec, create=False)
         wrap = DeliveryMethodWrap()
         wrap.install(venv, {PICKLEY: PICKLEY})
 
@@ -323,7 +323,7 @@ def base(what):
         old_meta = CFG.base.full_path(".pickley")
         if os.path.isdir(old_meta):
             runez.delete(old_meta)
-            runez.run(os.path.join(pspec.active_install_path, "bin", PICKLEY), "auto-heal")
+            runez.run(os.path.join(venv.folder, "bin", PICKLEY), "auto-heal")
 
         return
 
@@ -367,7 +367,7 @@ def check(force, packages):
             msg = pspec.desired_track.problem
             code = 1
 
-        elif not pspec.is_currently_installed:
+        elif not pspec.currently_installed_version:
             msg = f"{runez.bold(dv)} not installed"
             code = 1
 
@@ -375,8 +375,11 @@ def check(force, packages):
             msg = f"{dv} up-to-date"
 
         else:
-            msg = runez.dim(pspec.manifest.version) if pspec.is_healthily_installed() else "unhealthy"
-            msg = f"{runez.bold(dv)} (currently {msg})"
+            msg = f"currently {pspec.currently_installed_version}"
+            if not pspec.is_healthily_installed:
+                msg += runez.red(" unhealthy")
+
+            msg = f"{runez.bold(dv)} ({msg})"
 
         print(f"{pspec.dashed}: {msg}")
 
@@ -540,7 +543,7 @@ class RunSetup:
     def perform_run(cls, command, args):
         rs = cls.from_cli(command)
         pspec = PackageSpec(CFG, rs.specced)
-        if not pspec.is_currently_installed:
+        if not pspec.currently_installed_version:
             perform_install(pspec, quiet=True)
 
         runez.log.progress.stop()
