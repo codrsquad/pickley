@@ -10,7 +10,7 @@ import runez
 from runez.pyenv import PypiStd, PythonDepot, Version
 
 
-__version__ = "4.1.2"
+__version__ = "4.1.3"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
 DOT_META = ".pk"
