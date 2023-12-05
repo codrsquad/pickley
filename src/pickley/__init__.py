@@ -215,8 +215,9 @@ class PackageSpec:
             else:
                 self._desired_track = self.get_latest()  # By default, the latest is desired
                 candidates = []
-                if self.is_currently_installed:
-                    candidates.append(TrackedVersion.from_manifest(self.manifest))
+                manifest = self.manifest
+                if manifest and manifest.version:
+                    candidates.append(TrackedVersion.from_manifest(manifest))
 
                 if self.dashed == PICKLEY:
                     candidates.append(TrackedVersion(source="current", version=__version__))
@@ -232,7 +233,7 @@ class PackageSpec:
     @property
     def is_up_to_date(self):
         manifest = self.manifest
-        return manifest and manifest.version == self.desired_track.version and self.is_healthily_installed()
+        return manifest and manifest.version == self.desired_track.version and self.is_healthily_installed
 
     @property
     def manifest(self):
@@ -251,13 +252,12 @@ class PackageSpec:
         """Path to .ping file (for throttle auto-upgrade checks)"""
         return self.cfg.cache.full_path(f"{self.dashed}.ping")
 
-    @runez.cached_property
-    def active_install_path(self):
-        """Currently active installed venv (symlink)"""
-        return self.cfg.meta.full_path(f"{self.dashed}-{self.desired_track}")
+    def venv_path(self, version):
+        """Path to the .pk/ venv for `version` of this package"""
+        return self.cfg.meta.full_path(f"{self.dashed}-{version}")
 
-    @property
-    def is_currently_installed(self):
+    @runez.cached_property
+    def currently_installed_version(self):
         manifest = self.manifest
         return manifest and manifest.version
 
@@ -265,6 +265,21 @@ class PackageSpec:
     def is_already_installed_by_pickley(self):
         """bool: True if this package was already installed by pickley once"""
         return self.dashed == PICKLEY or os.path.exists(self.manifest_path)
+
+    @runez.cached_property
+    def is_healthily_installed(self):
+        """Double-check that current venv is still usable"""
+        manifest = self.manifest
+        if manifest and manifest.version:
+            if manifest.entrypoints:
+                for name in manifest.entrypoints:
+                    exe_path = self.exe_path(name)
+                    if not runez.is_executable(exe_path):
+                        return False
+
+            py_path = os.path.join(self.venv_path(manifest.version), "bin/python")
+            if runez.is_executable(py_path):
+                return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
     def pip_spec(self):
         if self.folder:
@@ -311,19 +326,6 @@ class PackageSpec:
 
     def exe_path(self, exe):
         return self.cfg.base.full_path(exe)
-
-    def is_healthily_installed(self):
-        """Double-check that current venv is still usable"""
-        manifest = self.manifest
-        if manifest and manifest.version:
-            if manifest.entrypoints:
-                for name in manifest.entrypoints:
-                    exe_path = self.exe_path(name)
-                    if not runez.is_executable(exe_path):
-                        return False
-
-            py_path = os.path.join(self.active_install_path, "bin/python")
-            return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
     def find_wheel(self, folder, fatal=True):
         """list[str]: Wheel for this package found in 'folder', if any"""
@@ -391,7 +393,7 @@ class PackageSpec:
         )
         payload = manifest.to_dict()
         runez.save_json(payload, self.manifest_path)
-        runez.save_json(payload, os.path.join(self.active_install_path, ".manifest.json"))
+        runez.save_json(payload, os.path.join(self.venv_path(manifest.version), ".manifest.json"))
         self._manifest = manifest
         return manifest
 
