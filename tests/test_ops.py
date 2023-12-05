@@ -408,7 +408,9 @@ def test_package_pex(cli, monkeypatch):
     assert " -mpex " in cli.logged.stdout
 
 
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_package_venv(cli):
+    # TODO: retire the `package` command, not worth the effort to support it
     # Verify that "debian mode" works as expected, with -droot/tmp <-> /tmp
     runez.delete("/tmp/pickley")
     cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--sanity-check=--version", "-sroot:root/usr/local/bin")
@@ -420,7 +422,9 @@ def test_package_venv(cli):
     runez.delete("/tmp/pickley")
 
 
+@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_package_venv_with_additional_packages(cli):
+    # TODO: retire the `package` command, not worth the effort to support it
     runez.delete("/tmp/pickley")
     cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder, "litecli")
     assert cli.succeeded
