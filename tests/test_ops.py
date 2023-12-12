@@ -402,9 +402,13 @@ def test_main(cli):
 @pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_package_pex(cli, monkeypatch):
     # TODO: Reconsider how to test `package` command without setuptools
+    from pickley.cli import find_symbolic_invoker
+
+    invoker = find_symbolic_invoker()
+
     cli.run("--dryrun", "-ppex", "package", cli.project_folder)
     assert cli.succeeded
-    assert cli.match(f"Using python: {runez.short(runez.SYS_INFO.invoker_python)}", stdout=True)
+    assert cli.match(f"Using python: {runez.short(invoker)}", stdout=True)
     assert " -mpex " in cli.logged.stdout
 
 
