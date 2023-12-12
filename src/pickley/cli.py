@@ -220,6 +220,21 @@ def clean_env_vars(*keys):
             del os.environ[key]
 
 
+def find_symbolic_invoker() -> str:
+    """Symbolic major/minor symlink to invoker, when applicable"""
+    invoker = runez.SYS_INFO.invoker_python
+    folder = invoker.real_exe.parent.parent
+    v = Version.extracted_from_text(folder.name)
+    if v and v.given_components_count == 3:
+        # For setups that provide a <folder>/pythonM.m -> <folder>/pythonM.m.p symlink, prefer the major/minor variant
+        candidates = [folder.parent / folder.name.replace(v.text, v.mm), folder.parent / f"python{v.mm}"]
+        for path in candidates:
+            if path.exists():
+                return path
+
+    return invoker.executable
+
+
 @runez.click.group()
 @click.pass_context
 @runez.click.version(message="%(version)s", version=__version__)
@@ -239,8 +254,9 @@ def main(ctx, debug, config, index, python, delivery, packager, virtualenv):
     runez.system.AbortException = SystemExit
     level = logging.WARNING
     if ctx.invoked_subcommand == "package":
+        # Default to using invoker for 'package' subcommand
         level = logging.INFO
-        python = python or "invoker"  # Default to using invoker for 'package' subcommand
+        python = python or find_symbolic_invoker()
 
     runez.log.setup(
         debug=debug or os.environ.get("PICKLEY_TRACE"),
