@@ -9,7 +9,6 @@ from datetime import datetime
 import runez
 from runez.pyenv import PypiStd, PythonDepot, Version
 
-
 __version__ = "4.1.4"
 LOG = logging.getLogger(__name__)
 PICKLEY = "pickley"
@@ -17,9 +16,7 @@ DOT_META = ".pk"
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
-K_LEAVES = {
-    "facultative", "install_timeout", "preferred_pythons", "python_installations", "pyenv", "version", "version_check_delay"
-}
+K_LEAVES = {"facultative", "install_timeout", "preferred_pythons", "python_installations", "pyenv", "version", "version_check_delay"}
 PLATFORM = platform.system().lower()
 
 DEFAULT_PYPI = "https://pypi.org/simple"
@@ -54,7 +51,7 @@ def despecced(text):
     if text and "==" in text:
         text = text.strip()
         i = text.index("==")
-        version = text[i + 2:].strip() or None
+        version = text[i + 2 :].strip() or None
         text = text[:i].strip()
 
     return text, version
@@ -135,7 +132,7 @@ def _dynamic_resolver(cfg, name_or_url):
             if r.failed or not package_version:
                 abort("Could not determine package version from setup.py")
 
-            runez.save_json(dict(resolved=[package_name, package_version]), cached_resolved)
+            runez.save_json({"resolved": [package_name, package_version]}, cached_resolved)
             return package_name, package_version, folder
 
     return package_name, package_version, None
@@ -171,7 +168,7 @@ class PackageSpec:
         runez.abort_if(pypi_name_problem(self.name))
         self.dashed = PypiStd.std_package_name(self.name)
         if self.name != self.dashed:
-            logging.warning(f"'{runez.red(self.name)}' is not pypi canonical, use dashes only and lowercase")
+            logging.warning("'%s' is not pypi canonical, use dashes only and lowercase", runez.red(self.name))
 
         self.wheelified = PypiStd.std_wheel_basename(self.name)
 
@@ -296,9 +293,8 @@ class PackageSpec:
 
     def skip_reason(self, force=False):
         """str: Reason for skipping installation, when applicable"""
-        if not force and self.cfg.facultative(pspec=self):
-            if not self.is_clear_for_installation():
-                return "not installed by pickley"
+        if not force and self.cfg.facultative(pspec=self) and not self.is_clear_for_installation():
+            return "not installed by pickley"
 
     def is_clear_for_installation(self):
         """
@@ -316,9 +312,8 @@ class PackageSpec:
         if path.startswith(self.cfg.meta.path):
             return True  # Pickley symlink
 
-        if os.path.isfile(target):
-            if os.path.getsize(target) == 0 or not runez.is_executable(target):
-                return True  # Empty file or not executable
+        if os.path.isfile(target) and os.path.getsize(target) == 0 or not runez.is_executable(target):
+            return True  # Empty file or not executable
 
         for line in runez.readlines(target, first=5):
             if PICKLEY in line:
@@ -347,7 +342,7 @@ class PackageSpec:
     def delete_all_files(self):
         """Delete all files in DOT_META/ folder related to this package spec"""
         runez.delete(self.manifest_path, fatal=False)
-        for candidate, version in self.installed_sibling_folders():
+        for candidate, _ in self.installed_sibling_folders():
             runez.delete(candidate, fatal=False)
 
     def installed_sibling_folders(self):
@@ -478,11 +473,7 @@ class PickleyConfig:
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
-        defaults = dict(
-            delivery="wrap",
-            install_timeout=1800,
-            version_check_delay=300,
-        )
+        defaults = {"delivery": "wrap", "install_timeout": 1800, "version_check_delay": 300}
         self.configs.append(RawConfig(self, "defaults", defaults))
 
     def set_cli(self, config_path, delivery, index, python, virtualenv):
@@ -802,13 +793,13 @@ class TrackedVersion:
             )
 
     def to_dict(self):
-        return dict(
-            index=self.index,
-            install_info=self.install_info.to_dict(),
-            problem=self.problem,
-            source=self.source,
-            version=self.version,
-        )
+        return {
+            "index": self.index,
+            "install_info": self.install_info.to_dict(),
+            "problem": self.problem,
+            "source": self.source,
+            "version": self.version,
+        }
 
 
 class TrackedManifest:
@@ -861,13 +852,13 @@ class TrackedManifest:
             return self.settings.python
 
     def to_dict(self):
-        return dict(
-            settings=self.settings.to_dict(),
-            entrypoints=self.entrypoints,
-            install_info=self.install_info.to_dict(),
-            pinned=self.pinned,
-            version=self.version,
-        )
+        return {
+            "settings": self.settings.to_dict(),
+            "entrypoints": self.entrypoints,
+            "install_info": self.install_info.to_dict(),
+            "pinned": self.pinned,
+            "version": self.version,
+        }
 
 
 class TrackedInstallInfo:
@@ -897,7 +888,7 @@ class TrackedInstallInfo:
             return cls(data.get("args"), runez.to_datetime(data.get("timestamp")), data.get("vpickley"))
 
     def to_dict(self):
-        return dict(args=self.args, timestamp=self.timestamp.strftime("%Y-%m-%d %H:%M:%S"), vpickley=self.vpickley)
+        return {"args": self.args, "timestamp": self.timestamp.strftime("%Y-%m-%d %H:%M:%S"), "vpickley": self.vpickley}
 
 
 class TrackedSettings:
@@ -923,7 +914,7 @@ class TrackedSettings:
             return cls(delivery=data.get("delivery"), index=data.get("index"), python=data.get("python"), virtualenv=data.get("virtualenv"))
 
     def to_dict(self):
-        return dict(delivery=self.delivery, index=self.index, python=self.python, virtualenv=self.virtualenv)
+        return {"delivery": self.delivery, "index": self.index, "python": self.python, "virtualenv": self.virtualenv}
 
 
 class FolderBase:

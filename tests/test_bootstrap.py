@@ -68,7 +68,7 @@ def test_bootstrap(cli, monkeypatch):
                 if args[0] == "--version":
                     return "0.0"
 
-                logging.info("Running %s %s" % (program, " ".join(args)))
+                logging.info("Running %s %s", program, " ".join(args))
 
             with patch("pickley.bstrap.run_program", side_effect=mocked_run):
                 # Verify fallback to virtualenv
@@ -87,7 +87,7 @@ def test_bootstrap(cli, monkeypatch):
                 assert "virtualenv" not in cli.logged
 
 
-def test_edge_cases(temp_folder, logged):
+def test_edge_cases(temp_cfg, logged):
     bstrap.DRYRUN = False
 
     # For coverage

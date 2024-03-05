@@ -2,9 +2,7 @@ import pytest
 import runez
 from runez.pyenv import PypiStd
 
-from pickley import __version__, despecced, DOT_META, get_default_index, PackageSpec
-from pickley import PickleyConfig, pypi_name_problem, specced
-
+from pickley import __version__, despecced, DOT_META, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
 
 PYPI_CLIENT = PypiStd.default_pypi_client()
 
@@ -56,7 +54,7 @@ def grab_sample(name):
     return cfg
 
 
-def test_bogus_config(temp_folder, logged):
+def test_bogus_config(temp_cfg, logged):
     cfg = grab_sample("bogus-config")
     assert cfg.resolved_bundle("") == []
     assert cfg.resolved_bundle("foo") == ["foo"]
@@ -82,7 +80,7 @@ def test_bogus_config(temp_folder, logged):
     assert "No suitable python" in logged.pop()
 
 
-def test_default_index(temp_folder, logged):
+def test_default_index(temp_cfg, logged):
     assert get_default_index() == (None, None)
 
     # Verify that we try 'a' (no such file), then find a configured index in 'b'
@@ -104,10 +102,8 @@ def test_edge_cases():
     assert p == cfg.available_pythons.invoker
 
 
-@PYPI_CLIENT.mock({
-    "https://pypi-mirror.mycompany.net/pypi/foo/": {"info": {"version": "0.1.2"}}
-})
-def test_good_config(temp_folder, logged):
+@PYPI_CLIENT.mock({"https://pypi-mirror.mycompany.net/pypi/foo/": {"info": {"version": "0.1.2"}}})
+def test_good_config(temp_cfg, logged):
     cfg = grab_sample("good-config")
 
     assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]

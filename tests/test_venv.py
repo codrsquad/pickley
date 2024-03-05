@@ -6,7 +6,6 @@ import runez
 from pickley import PackageSpec, RawConfig
 from pickley.package import PackageContents, PythonVenv
 
-
 PIP_SHOW_OUTPUT = """
 Name: ansible
 Version: 1.0.0
@@ -85,7 +84,7 @@ def test_pip_fail(temp_cfg, logged):
         with pytest.raises(SystemExit):
             venv.pip_install("foo")
 
-        assert "some\nerror" == logged.stdout.pop()
+        assert logged.stdout.pop() == "some\nerror"
 
     r = runez.program.RunResult("", "foo\nNo matching distribution for ...\nYou should consider upgrading pip", code=1)
     with patch("pickley.package.PythonVenv.run_pip", return_value=r):

@@ -1,13 +1,12 @@
 from setuptools import setup
 
-
 setup(
     name="pickley",
     setup_requires="setupmeta",
     versioning="dev",
     author="Zoran Simic zoran@simicweb.com",
     url="https://github.com/codrsquad/pickley",
-    python_requires='>=3.6',
+    python_requires=">=3.6",
     entry_points={
         "console_scripts": [
             "pickley = pickley.__main__:main",

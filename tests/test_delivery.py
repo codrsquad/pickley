@@ -8,7 +8,6 @@ from pickley import __version__, PackageSpec, PICKLEY
 from pickley.delivery import DeliveryMethod
 from pickley.package import PythonVenv
 
-
 BREW_INSTALL = "/brew/install/bin"
 BREW = os.path.join(BREW_INSTALL, "brew")
 BREW_CELLAR = "/brew/install/Cellar"

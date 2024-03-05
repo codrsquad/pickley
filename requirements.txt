@@ -1,4 +1,5 @@
 click~=8.0
 requests~=2.27
-runez~=5.0.0
+#runez~=5.0.0
+-e file:///Users/zsimic/github/runez
 urllib3~=1.26

@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 import time
-from collections import namedtuple
+from typing import NamedTuple, Optional, Sequence
 
 import click
 import runez
@@ -16,12 +16,15 @@ from runez.render import PrettyTable
 from pickley import __version__, abort, despecced, DOT_META, inform, PackageSpec, PICKLEY, PickleyConfig, specced
 from pickley.package import PexPackager, PythonVenv, VenvPackager
 
-
 LOG = logging.getLogger(__name__)
 PACKAGER = VenvPackager  # Packager to use for this run
 CFG = PickleyConfig()
 
-Requirements = namedtuple("Requirements", ["requirement_files", "additional_packages", "project"])
+
+class Requirements(NamedTuple):
+    requirement_files: Sequence[str]
+    additional_packages: Optional[Sequence[str]]
+    project: str
 
 
 def setup_audit_log(cfg=CFG):
@@ -151,7 +154,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
         skip_reason = pspec.skip_reason(force)
         if skip_reason:
             inform(f"Skipping installation of {pspec}: {runez.bold(skip_reason)}")
-            return None
+            return
 
         if is_upgrade and not pspec.currently_installed_version and not quiet:
             abort(f"'{runez.red(pspec)}' is not installed")
@@ -462,17 +465,17 @@ class TabularReport:
         self.values.append(values)
         self.table.add_row(values)
 
-    def represented(self, format):
-        if format in ("csv", "tsv"):
-            delimiter = "\t" if format == "tsv" else ","
+    def represented(self, fmt):
+        if fmt in ("csv", "tsv"):
+            delimiter = "\t" if fmt == "tsv" else ","
             lines = [runez.joined(self.columns, delimiter=delimiter)]
             lines.extend(runez.joined([runez.uncolored(x) for x in v], delimiter=delimiter) for v in self.values)
             return runez.joined(lines, delimiter="\n")
 
-        if format == "json":
+        if fmt == "json":
             return runez.represented_json(self.mapped_values)
 
-        if format == "yaml":
+        if fmt == "yaml":
             lines = []
             for value in self.mapped_values:
                 text = [f" {k}: {value[k]}" for k in sorted(value)]
@@ -484,11 +487,11 @@ class TabularReport:
         return self.table.get_string()
 
 
-@main.command()
+@main.command(name="list")
 @runez.click.border("-b", default="github")
 @click.option("--format", "-f", type=click.Choice(["csv", "json", "tsv", "yaml"]), help="Representation format")
 @click.option("--verbose", "-v", is_flag=True, help="Show more information")
-def list(border, format, verbose):
+def cmd_list(border, format, verbose):
     """List installed packages"""
     packages = CFG.package_specs(include_pickley=verbose)
     if not packages:
@@ -504,7 +507,7 @@ def list(border, format, verbose):
             Version=manifest and manifest.version,
             Python=python,
             Delivery=manifest and manifest.delivery,
-            Index=manifest and manifest.index
+            Index=manifest and manifest.index,
         )
 
     print(report.represented(format))
@@ -576,7 +579,7 @@ class RunSetup:
         return cls("pip-compile", package="pip-tools")
 
 
-@main.command(add_help_option=False, context_settings=dict(ignore_unknown_options=True))
+@main.command(add_help_option=False, context_settings={"ignore_unknown_options": True})
 @click.argument("command")
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def run(command, args):
@@ -775,7 +778,7 @@ class PackageFinalizer:
             abort(f"Folder {runez.red(runez.short(self.folder))} does not exist")
 
         self.pspec = PackageSpec(self.cfg, self.folder)
-        LOG.info(f"Using python: {self.pspec.python}")
+        LOG.info("Using python: %s", self.pspec.python)
         if self.dist.startswith("root/"):
             # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
             target = self.dist[4:]
@@ -838,7 +841,7 @@ class Symlinker:
                 inform(f"Symlinked {runez.short(dest)} -> {runez.short(exe)}")
 
         else:
-            LOG.debug(f"'{exe}' does not exist, skipping symlink")
+            LOG.debug("'%s' does not exist, skipping symlink", exe)
 
 
 def delete_file(path):
@@ -849,7 +852,7 @@ def delete_file(path):
 
 
 def should_clean(basename):
-    return basename == "__pycache__" or (basename.endswith(".pyc") or basename.endswith(".pyo"))
+    return basename == "__pycache__" or basename.endswith((".pyc", ".pyo"))
 
 
 def clean_compiled_artifacts(folder):
