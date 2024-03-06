@@ -6,7 +6,6 @@ import runez
 from pickley import abort, PICKLEY
 from pickley.delivery import DeliveryMethod
 
-
 LOG = logging.getLogger(__name__)
 
 
@@ -31,7 +30,7 @@ class PackageFolder:
         if self.folder is None:
             self.folder = os.path.basename(os.path.dirname(path))
 
-        relative = path[len(self.location) + 1:]
+        relative = path[len(self.location) + 1 :]
         self.files[relative] = path
 
 
@@ -140,7 +139,6 @@ class PackageContents:
 
 
 class PythonVenv:
-
     _vv_fallback = "20.16.1"
 
     def __init__(self, folder, pspec, create=True):
@@ -212,7 +210,6 @@ class PythonVenv:
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
-        # kwargs.setdefault("short_exe", True)
         exe = self.bin_path("python", try_variant=True)
         return runez.run(exe, *args, **kwargs)
 
@@ -281,11 +278,19 @@ class PexPackager(Packager):
                 target = os.path.join(dist_folder, name)
                 runez.delete(target)
                 pex_venv.run_python(
-                    "-mpex", f"-o{target}", "--pex-root", pex_root, "--tmpdir", tmp,
-                    "--no-index", "--find-links", wheels,  # resolver options
+                    "-mpex",
+                    f"-o{target}",
+                    "--pex-root",
+                    pex_root,
+                    "--tmpdir",
+                    tmp,
+                    "--no-index",
+                    "--find-links",
+                    wheels,  # resolver options
                     None if run_compile_all else "--no-compile",  # output options
                     f"-c{name}",  # entry point options
-                    "--python-shebang", f"/usr/bin/env python{pspec.python.full_version.major}",
+                    "--python-shebang",
+                    f"/usr/bin/env python{pspec.python.full_version.major}",
                     wheel_path,
                 )
                 result.append(target)
@@ -321,8 +326,10 @@ class VenvPackager(Packager):
         venv = PythonVenv(dist_folder, pspec)
         for requirement_file in requirements.requirement_files:
             venv.pip_install("-r", requirement_file)
+
         if requirements.additional_packages:
             venv.pip_install(*requirements.additional_packages)
+
         venv.pip_install(requirements.project)
         if run_compile_all:
             venv.run_python("-mcompileall", dist_folder)

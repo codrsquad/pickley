@@ -92,7 +92,7 @@ def mock_latest_pypi_version(package_name, **_):
         return Version("100.0")
 
 
-def test_dryrun(cli, monkeypatch):
+def test_dryrun(cli):
     cli.run("-n config")
     assert cli.succeeded
     assert not cli.logged.stderr
@@ -186,7 +186,7 @@ def test_dryrun(cli, monkeypatch):
         cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
 
 
-def test_dev_mode(cli, monkeypatch):
+def test_dev_mode(cli):
     with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install pickley")
         assert cli.succeeded
@@ -321,7 +321,7 @@ def test_install_pypi(cli):
 
     # Simulate the presence of an old entry point
     manifest_path = dot_meta("mgit.manifest.json")
-    runez.save_json(dict(entrypoints=["mgit", "old-mgit-entrypoint"]), manifest_path)
+    runez.save_json({"entrypoints": ["mgit", "old-mgit-entrypoint"]}, manifest_path)
     runez.touch("old-mgit-entrypoint")
 
     check_install_from_pypi(cli, "symlink", "mgit", "1.3.0")
@@ -371,7 +371,7 @@ def test_invalid(cli):
     assert "not a valid pypi package name" in cli.logged
 
 
-def test_lock(temp_cfg, logged):
+def test_lock(temp_cfg):
     pspec = PackageSpec(temp_cfg, "foo")
     lock_path = dot_meta("foo.lock")
     with SoftLock(pspec, give_up=600) as lock:
@@ -400,7 +400,7 @@ def test_main(cli):
 
 
 @pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
-def test_package_pex(cli, monkeypatch):
+def test_package_pex(cli):
     # TODO: Reconsider how to test `package` command without setuptools
     from pickley.cli import find_symbolic_invoker
 

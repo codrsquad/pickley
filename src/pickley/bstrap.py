@@ -51,9 +51,8 @@ def download(target, url, dryrun=None):
 
 
 def ensure_folder(path):
-    if path and not os.path.isdir(path):
-        if not hdry("Would create %s" % short(path)):
-            os.makedirs(path)
+    if path and not os.path.isdir(path) and not hdry("Would create %s" % short(path)):
+        os.makedirs(path)
 
 
 def find_base(base):
@@ -129,7 +128,7 @@ def run_program(program, *args, **kwargs):
             stdout = stderr = None
             print("Running: %s" % description)
 
-        p = subprocess.Popen([program] + list(args), stdout=stdout, stderr=stderr)
+        p = subprocess.Popen([program, *args], stdout=stdout, stderr=stderr)
         if capture:
             output, _ = p.communicate()
             if output is not None:
