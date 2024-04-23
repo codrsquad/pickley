@@ -173,9 +173,9 @@ class PythonVenv:
 
     @property
     def pip_path(self):
-        return self.bin_path("pip", try_variant=True)
+        return self.bin_path("pip")
 
-    def bin_path(self, name, try_variant=False):
+    def bin_path(self, name):
         """
         Args:
             name (str): File name
@@ -187,11 +187,6 @@ class PythonVenv:
         if runez.DRYRUN or os.path.exists(path):
             return path
 
-        if try_variant:
-            path = os.path.join(self.folder, "bin", f"{name}3")
-            if os.path.exists(path):
-                return path
-
     def pip_install(self, *args):
         """Allows to not forget to state the -i index..."""
         r = self.run_pip("install", "-i", self.pspec.index, *args, fatal=False)
@@ -201,16 +196,12 @@ class PythonVenv:
 
         return r
 
-    def pip_wheel(self, *args):
-        """Allows to not forget to state the -i index..."""
-        return self.run_pip("wheel", "-i", self.pspec.index, *args)
-
     def run_pip(self, *args, **kwargs):
         return runez.run(self.pip_path, *args, **kwargs)
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
-        exe = self.bin_path("python", try_variant=True)
+        exe = self.bin_path("python")
         return runez.run(exe, *args, **kwargs)
 
 
@@ -248,54 +239,6 @@ class Packager:
             (list | None): List of packaged executables
         """
         raise NotImplementedError("Packaging with packager '{packager}' is not supported")
-
-
-class PexPackager(Packager):
-    """Package via pex (https://pypi.org/project/pex/)"""
-
-    @staticmethod
-    def install(pspec, ping=True, no_binary=None):
-        raise NotImplementedError("Installation with 'PexPackager' is not supported")
-
-    @staticmethod
-    def package(pspec, build_folder, dist_folder, requirements, run_compile_all):
-        runez.ensure_folder(build_folder, clean=True)
-        runez.abort_if(pspec.python.problem, f"Can't package with {pspec.python}")
-        runez.abort_if(pspec.python.full_version.major < 3, "Packaging with pex is not supported any more with python2")
-        pex_root = os.path.join(build_folder, "pex-root")
-        tmp = os.path.join(build_folder, "pex-tmp")
-        wheels = os.path.join(build_folder, "wheels")
-        runez.ensure_folder(tmp, logger=False)
-        runez.ensure_folder(wheels, logger=False)
-        pex_venv = PythonVenv(os.path.join(build_folder, "pex-venv"), pspec)
-        pex_venv.pip_install("pex==2.1.102", *requirements)
-        pex_venv.pip_wheel("--cache-dir", wheels, "--wheel-dir", wheels, *requirements)
-        contents = PackageContents(pex_venv)
-        if contents.entry_points:
-            wheel_path = pspec.find_wheel(wheels)
-            result = []
-            for name in contents.entry_points:
-                target = os.path.join(dist_folder, name)
-                runez.delete(target)
-                pex_venv.run_python(
-                    "-mpex",
-                    f"-o{target}",
-                    "--pex-root",
-                    pex_root,
-                    "--tmpdir",
-                    tmp,
-                    "--no-index",
-                    "--find-links",
-                    wheels,  # resolver options
-                    None if run_compile_all else "--no-compile",  # output options
-                    f"-c{name}",  # entry point options
-                    "--python-shebang",
-                    f"/usr/bin/env python{pspec.python.full_version.major}",
-                    wheel_path,
-                )
-                result.append(target)
-
-            return result
 
 
 class VenvPackager(Packager):

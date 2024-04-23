@@ -14,10 +14,9 @@ from runez.pyenv import Version
 from runez.render import PrettyTable
 
 from pickley import __version__, abort, despecced, DOT_META, inform, PackageSpec, PICKLEY, PickleyConfig, specced
-from pickley.package import PexPackager, PythonVenv, VenvPackager
+from pickley.package import PythonVenv, VenvPackager
 
 LOG = logging.getLogger(__name__)
-PACKAGER = VenvPackager  # Packager to use for this run
 CFG = PickleyConfig()
 
 
@@ -174,7 +173,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
             return
 
         setup_audit_log()
-        manifest = PACKAGER.install(pspec, no_binary=no_binary)
+        manifest = VenvPackager.install(pspec, no_binary=no_binary)
         if manifest and not quiet:
             note = f" in {runez.represented_duration(time.time() - started)}"
             verb += "d" if verb.endswith("e") else "ed"
@@ -248,12 +247,9 @@ def find_symbolic_invoker() -> str:
 @click.option("--index", "-i", metavar="PATH", help="Pypi index to use")
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", help="Delivery method to use")
-@click.option("--packager", "-p", type=click.Choice(["pex", "venv"]), help="Packager to use")
 @click.option("--virtualenv", help="Version of virtualenv to use (instead of built-in 'venv' module)")
-def main(ctx, debug, config, index, python, delivery, packager, virtualenv):
+def main(ctx, debug, config, index, python, delivery, virtualenv):
     """Package manager for python CLIs"""
-    global PACKAGER
-    PACKAGER = PexPackager if packager == "pex" else VenvPackager
     runez.system.AbortException = SystemExit
     level = logging.WARNING
     if ctx.invoked_subcommand == "package":
@@ -796,7 +792,7 @@ class PackageFinalizer:
         with runez.Anchored(self.folder, self.cfg.base.path):
             runez.ensure_folder(self.cfg.base.path, clean=True, logger=False)
             dist_folder = runez.resolved_path(self.dist)
-            exes = PACKAGER.package(self.pspec, self.cfg.base.path, dist_folder, self.requirements, self.compile)
+            exes = VenvPackager.package(self.pspec, self.cfg.base.path, dist_folder, self.requirements, self.compile)
             if exes:
                 report = PrettyTable(["Packaged executable", self.sanity_check], border=self.border)
                 report.header.style = "bold"
