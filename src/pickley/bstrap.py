@@ -16,6 +16,7 @@ HOME = os.path.expanduser("~")
 TMP_FOLDER = None  # type: (str | None)
 RX_VERSION = re.compile(r"^\D*(\d+)\.(\d+).*$")
 DEFAULT_BASE = "~/.local/bin"
+CONFIG = {}
 
 
 def abort(message):
@@ -145,19 +146,16 @@ def run_program(program, *args, **kwargs):
 
 def seed_config(pickley_base, desired_cfg, force=False):
     """Seed pickley config"""
-    if desired_cfg:
-        desired_cfg = read_json(desired_cfg)
-        if desired_cfg and isinstance(desired_cfg, dict):
-            pickley_config = os.path.join(pickley_base, ".pk", "config.json")
-            cfg = read_optional_json(pickley_config)
-            if force or cfg != desired_cfg:
-                msg = "%s with %s" % (short(pickley_config), desired_cfg)
-                if not hdry("Would seed %s" % msg):
-                    print("Seeding %s" % msg)
-                    ensure_folder(os.path.dirname(pickley_config))
-                    with open(pickley_config, "wt") as fh:
-                        json.dump(desired_cfg, fh, sort_keys=True, indent=2)
-                        fh.write("\n")
+    pickley_config = os.path.join(pickley_base, ".pk", "config.json")
+    cfg = read_optional_json(pickley_config)
+    if force or cfg != desired_cfg:
+        msg = "%s with %s" % (short(pickley_config), desired_cfg)
+        if not hdry("Would seed %s" % msg):
+            print("Seeding %s" % msg)
+            ensure_folder(os.path.dirname(pickley_config))
+            with open(pickley_config, "wt") as fh:
+                json.dump(desired_cfg, fh, sort_keys=True, indent=2)
+                fh.write("\n")
 
 
 def seed_mirror(mirror, force=False):
@@ -217,12 +215,14 @@ def find_venv_exe(folder, name):
 
 def main(args=None):
     """Bootstrap pickley"""
+    global CONFIG
     global DRYRUN
     global TMP_FOLDER
 
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--dryrun", "-n", action="store_true", help="Perform a dryrun")
     parser.add_argument("--base", "-b", help="Base folder to use (default: ~/.local/bin)")
+    parser.add_argument("--check-path", action="store_true", help="Verify that stated --base is on PATH env var")
     parser.add_argument("--cfg", "-c", help="Seed pickley config with given contents (file or serialized json)")
     parser.add_argument("--force", "-f", action="store_true", help="Force a rerun (even if already done)")
     parser.add_argument("--mirror", "-m", help="Seed pypi mirror in pip.conf")
@@ -234,14 +234,18 @@ def main(args=None):
         del os.environ["__PYVENV_LAUNCHER__"]
 
     pickley_base = find_base(args.base)
-    if args.cfg:
-        # When --cfg is used, make sure chosen base is in PATH
+    if args.check_path:
         path_dirs = os.environ.get("PATH", "").split(os.pathsep)
         if pickley_base not in path_dirs:
             abort("Make sure %s is in your PATH environment variable." % pickley_base)
 
     print("Using %s, base: %s" % (sys.executable, short(pickley_base)))
-    seed_config(pickley_base, args.cfg, force=args.force)
+    if args.cfg:
+        cfg = read_json(args.cfg)
+        if cfg and isinstance(cfg, dict):
+            CONFIG = cfg
+            seed_config(pickley_base, cfg, force=args.force)
+
     seed_mirror(args.mirror, force=args.force)
     TMP_FOLDER = os.path.realpath(tempfile.mkdtemp())
     try:
