@@ -142,7 +142,12 @@ class PackageSpec:
     """
     Formalizes a pypi package specification
 
-    - accepted chars are: alpha numeric, or "-" and "."
+    Examples:
+        - poetry
+        - poetry==1.0.0
+        - git+https://..
+
+    - accepted chars are: alphanumeric, or "-" and "."
     - pypi assumes names are lower-cased and dash-separated
     - wheel transforms dashes to underscores
     """
@@ -151,7 +156,6 @@ class PackageSpec:
     name = None  # type: str
     folder = None  # type: str
     dashed = None  # type: str
-    wheelified = None  # type: str
     _desired_track = None  # type: TrackedVersion
     _latest = None  # type: TrackedVersion
     _manifest = None  # type: TrackedManifest
@@ -169,8 +173,6 @@ class PackageSpec:
         self.dashed = PypiStd.std_package_name(self.name)
         if self.name != self.dashed:
             logging.warning("'%s' is not pypi canonical, use dashes only and lowercase", runez.red(self.name))
-
-        self.wheelified = PypiStd.std_wheel_basename(self.name)
 
     def __repr__(self):
         return specced(self.dashed, self.given_version)
@@ -321,23 +323,6 @@ class PackageSpec:
 
     def exe_path(self, exe):
         return self.cfg.base.full_path(exe)
-
-    def find_wheel(self, folder, fatal=True):
-        """list[str]: Wheel for this package found in 'folder', if any"""
-        if runez.DRYRUN:
-            return [f"{self.wheelified}-{self.desired_track.version}-py3-none-any.whl"]
-
-        result = []
-        if folder and os.path.isdir(folder):
-            prefix = f"{self.wheelified}-"
-            for fname in os.listdir(folder):
-                if fname.startswith(prefix):
-                    result.append(os.path.join(folder, fname))
-
-            if len(result) == 1:
-                return result[0]
-
-        return runez.abort(f"Expecting 1 wheel, found: {runez.short(result)}", fatal=fatal, return_value=None)
 
     def delete_all_files(self):
         """Delete all files in DOT_META/ folder related to this package spec"""

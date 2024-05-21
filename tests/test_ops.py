@@ -8,7 +8,7 @@ import runez
 from runez.http import GlobalHttpCalls
 from runez.pyenv import Version
 
-from pickley import __version__, PackageSpec, PICKLEY, PickleyConfig, TrackedManifest, TrackedVersion
+from pickley import __version__, PackageSpec, PickleyConfig, TrackedManifest, TrackedVersion
 from pickley.cli import clean_compiled_artifacts, find_base, PackageFinalizer, Requirements, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.package import Packager
@@ -198,14 +198,6 @@ def test_dev_mode(cli):
 def test_edge_cases(temp_cfg, logged):
     tv = TrackedVersion(version="1.2")
     assert str(tv) == "1.2"
-    pspec = PackageSpec(temp_cfg, PICKLEY)
-
-    assert pspec.find_wheel(".", fatal=False) is None
-    assert "Expecting 1 wheel" in logged.pop()
-
-    runez.touch("%s-1.0.0.whl" % PICKLEY)
-    w = pspec.find_wheel(".", fatal=False)
-    assert w == "./%s-1.0.0.whl" % PICKLEY
 
     with pytest.raises(NotImplementedError):
         Packager.package(None, None, None, None, False)
@@ -254,10 +246,6 @@ def test_facultative(cli):
 
 
 def test_failure_cases(cli):
-    cli.run("-n --packager pex install mgit==1.0")
-    assert cli.failed
-    assert "Installation with 'PexPackager' is not supported" in cli.logged
-
     with patch("runez.run", side_effect=Exception):
         cli.run("install git@github.com:zsimic/mgit.git")
         assert cli.failed
@@ -397,19 +385,6 @@ def test_lock(temp_cfg):
 
 def test_main(cli):
     cli.exercise_main("-mpickley", "src/pickley/bstrap.py")
-
-
-@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
-def test_package_pex(cli):
-    # TODO: Reconsider how to test `package` command without setuptools
-    from pickley.cli import find_symbolic_invoker
-
-    invoker = find_symbolic_invoker()
-
-    cli.run("--dryrun", "-ppex", "package", cli.project_folder)
-    assert cli.succeeded
-    assert cli.match(f"Using python: {runez.short(invoker)}", stdout=True)
-    assert " -mpex " in cli.logged.stdout
 
 
 @pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")

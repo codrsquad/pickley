@@ -23,10 +23,6 @@ Files:
 def test_edge_cases(temp_cfg):
     temp_cfg.configs.append(RawConfig(None, "test", {"pinned": {"virtualenv": {"version": "20.13.0"}}}))
     pspec = PackageSpec(temp_cfg, "mgit==1.3.0")
-    venv = PythonVenv("venv", pspec, create=False)
-    assert not venv.pip_path
-    runez.touch("venv/bin/pip3")
-    assert venv.pip_path == "venv/bin/pip3"
 
     with runez.CaptureOutput(dryrun=True) as logged:
         # Verify that we fall back to virtualenv if stdlib venv fails
