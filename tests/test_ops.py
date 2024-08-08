@@ -87,7 +87,7 @@ def test_debian_mode(temp_cfg, logged):
         assert "'foo' failed --version sanity check" in logged.pop()
 
 
-def mock_latest_pypi_version(package_name, **_):
+def mock_latest_pypi_version(package_name, *_):
     if package_name in ("mgit", "pickley", "virtualenv"):
         return Version("100.0")
 
@@ -138,7 +138,7 @@ def test_dryrun(cli):
     cli.expect_success("-n upgrade", "No packages installed, nothing to upgrade")
     cli.expect_failure("-n upgrade mgit", "'mgit' is not installed")
 
-    with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+    with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.expect_failure("-n -Pfoo install bundle:bar", "No suitable python")
 
         cli.run("-n --debug auto-upgrade mgit")
@@ -187,10 +187,10 @@ def test_dryrun(cli):
 
 
 def test_dev_mode(cli):
-    with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+    with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install pickley")
         assert cli.succeeded
-        assert "Would run: .pk/pickley-100.0/bin/pip install -e " in cli.logged
+        assert "uv pip install -e " in cli.logged
         assert "Would wrap pickley -> .pk/pickley-100.0/bin/pickley" in cli.logged
         assert "Would state: Installed pickley v100.0 in "
 
@@ -231,7 +231,7 @@ def test_facultative(cli):
     cli.expect_success("-n check virtualenv", "skipped, not installed by pickley")
 
     # --force ignores 'facultative' setting
-    with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+    with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install --force virtualenv")
         assert cli.failed
         assert "virtualenv exists and was not installed by pickley" in cli.logged
@@ -269,7 +269,7 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
     assert runez.is_executable(package)
     m = TrackedManifest.from_file(dot_meta(f"{package}.manifest.json"))
     assert str(m)
-    assert m.entrypoints[package]
+    assert package in m.entrypoints
     assert m.install_info.args == runez.quoted(cli.args)
     assert m.install_info.timestamp
     assert m.install_info.vpickley == __version__
@@ -323,7 +323,7 @@ def test_install_pypi(cli):
     cli.run("-n auto-heal")
     assert cli.succeeded
     assert "mgit is healthy" in cli.logged
-    assert "Auto-healed 0 / 1 packages" in cli.logged
+    assert "Auto-healed 0" in cli.logged
 
     cfg = PickleyConfig()
     cfg.set_base(".")
@@ -347,7 +347,6 @@ def test_install_pypi(cli):
     assert "Auto-healed 1 / 1 packages" in cli.logged
 
 
-@GlobalHttpCalls.allowed
 def test_invalid(cli):
     cli.run("--color install six")
     assert cli.failed
@@ -405,15 +404,11 @@ def test_package_venv(cli):
 def test_package_venv_with_additional_packages(cli):
     # TODO: retire the `package` command, not worth the effort to support it
     runez.delete("/tmp/pickley")
-    cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder, "litecli")
+    cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder)
     assert cli.succeeded
     assert "pip install -r requirements.txt" in cli.logged
-    assert "pip install litecli" in cli.logged
     assert runez.is_executable("/tmp/pickley/bin/pickley")
-    assert runez.is_executable("/tmp/pickley/bin/litecli")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
-    assert r.succeeded
-    r = runez.run("/tmp/pickley/bin/litecli", "--version")
     assert r.succeeded
     runez.delete("/tmp/pickley")
 

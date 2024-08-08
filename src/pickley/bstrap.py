@@ -1,68 +1,156 @@
 """
-Bootstrap pickley
+This script is designed to be run standalone, and will bootstrap pickley in a given base folder.
+
+Usage example:
+    /usr/bin/python3 bstrap.py --base ~/.local/bin --mirror https://example.org/pypi
 """
 
 import argparse
 import json
 import os
-import re
-import shutil
 import subprocess
 import sys
-import tempfile
+from pathlib import Path
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
+DOT_META = ".pk"
 DRYRUN = False
 HOME = os.path.expanduser("~")
-TMP_FOLDER = None  # type: (str | None)
-RX_VERSION = re.compile(r"^\D*(\d+)\.(\d+).*$")
-DEFAULT_BASE = "~/.local/bin"
+PICKLEY = "pickley"
 
 
 def abort(message):
-    sys.exit("--------\n\n%s\n\n--------" % message)
+    sys.exit(f"--------\n\n{message}\n\n--------")
+
+
+class Bootstrap:
+
+    def __init__(self, pickley_base, pickley_version):
+        self.pickley_base = Path(pickley_base)
+        self.pickley_version = pickley_version or get_latest_version(PICKLEY)
+        self.pickley_exe = self.pickley_base / PICKLEY
+        self.pk_path = self.pickley_base / DOT_META
+        self.pickley_venv = self.pk_path / f"{PICKLEY}-{self.pickley_version}"
+        self.mirror = None
+
+    def seed_mirror(self, mirror):
+        self.mirror = mirror
+        if mirror:
+            seed_mirror(mirror, "~/.config/pip/pip.conf", "global")
+            seed_mirror(mirror, "~/.config/uv/uv.toml", "pip")
+
+    def seed_pickley_config(self, desired_cfg, force=False):
+        pickley_config = self.pk_path / "config.json"
+        cfg = read_optional_json(pickley_config)
+        if force or cfg != desired_cfg:
+            msg = f"{short(pickley_config)} with {desired_cfg}"
+            if not hdry(f"Would seed {msg}"):
+                print(f"Seeding {msg}")
+                ensure_folder(os.path.dirname(pickley_config))
+                with open(pickley_config, "wt") as fh:
+                    json.dump(desired_cfg, fh, sort_keys=True, indent=2)
+                    fh.write("\n")
+
+    def find_uv(self, uv_version):
+        uv_path = self.pickley_base / "uv"
+        if is_executable(uv_path):
+            v = run_program(uv_path, "--version", dryrun=False, fatal=False)
+            if v and len(v) < 64 and v.startswith("uv "):
+                return uv_path
+
+        uv_base = self.pk_path / ".uv"
+        uv_path = uv_base / "bin/uv"
+        if not is_executable(uv_path):
+            ensure_folder(uv_base)
+            download_uv(self.pk_path / ".cache", uv_base, version=uv_version)
+
+        return uv_path
+
+
+def uv_url(version):
+    if version:
+        return f"https://github.com/astral-sh/uv/releases/download/{version}/uv-installer.sh"
+
+    return "https://astral.sh/uv/install.sh"
+
+
+def download_uv(pk_cache, target, version=None, dryrun=None):
+    script = os.path.join(pk_cache, "uv-installer.sh")
+    url = uv_url(version)
+    download(script, url, dryrun=dryrun)
+    env = dict(os.environ)
+    env["CARGO_DIST_FORCE_INSTALL_DIR"] = str(target)
+    env.setdefault("HOME", str(target))  # uv's installer unfortunately assumes HOME is always defined (it is not in tox tests)
+    run_program("/bin/sh", script, "--no-modify-path", env=env, dryrun=dryrun)
+
+
+def http_get(url, timeout=5):
+    try:
+        request = Request(url)
+        with urlopen(request, timeout=timeout) as response:
+            data = response.read()
+
+    except URLError:  # py3.6 ssl error
+        import tempfile
+
+        with tempfile.NamedTemporaryFile() as tmpf:
+            tmpf.close()
+            curl_download(tmpf.name, url, dryrun=False)
+            with open(tmpf.name, "rb") as fh:
+                data = fh.read()
+
+    except Exception as e:
+        abort(f"Failed to fetch {url}: {e}")
+
+    if data:
+        data = data.decode("utf-8").strip()
+
+    return data
 
 
 def built_in_download(target, url):
-    from urllib.request import Request, urlopen
-
     request = Request(url)
     response = urlopen(request, timeout=5)
     with open(target, "wb") as fh:
         fh.write(response.read())
 
 
+def curl_download(target, url, dryrun=None):
+    curl = which("curl")
+    if curl:
+        return run_program(curl, "-fsSL", "-o", target, url, dryrun=dryrun)
+
+    wget = which("wget")
+    if wget:
+        return run_program(wget, "-q", "-O", target, url, dryrun=dryrun)
+
+    abort(f"No curl, nor wget, can't download {url} to '{target}'")
+
+
 def download(target, url, dryrun=None):
-    if not hdry("Would download %s" % url, dryrun=dryrun):
+    if not hdry(f"Would download {url}", dryrun=dryrun):
         try:
             return built_in_download(target, url)
 
         except Exception:
-            print("Built-in download of %s failed, trying curl or wget" % url)
-
-        curl = which("curl")
-        if curl:
-            return run_program(curl, "-fsSL", "-o", target, url, dryrun=dryrun)
-
-        wget = which("wget")
-        if wget:
-            return run_program(wget, "-q", "-O", target, url, dryrun=dryrun)
-
-        abort("No curl, nor wget, can't download %s to %s" % (url, target))
+            print(f"Built-in download of {url} failed, trying curl or wget")
+            return curl_download(target, url)
 
 
 def ensure_folder(path):
-    if path and not os.path.isdir(path) and not hdry("Would create %s" % short(path)):
+    if path and not os.path.isdir(path) and not hdry(f"Would create {short(path)}"):
         os.makedirs(path)
 
 
 def find_base(base):
     if not base:
-        base = which("pickley")
+        base = which(PICKLEY)
         if base:
-            print("Found existing %s" % short(base))
+            print(f"Found existing {PICKLEY}: '{short(base)}'")
             return os.path.dirname(base)
 
-        base = DEFAULT_BASE
+        base = "~/.local/bin"
 
     candidates = base.split(os.pathsep)
     for c in candidates:
@@ -70,13 +158,12 @@ def find_base(base):
         if c and os.path.isdir(c) and is_writable(c):
             return c
 
-    abort("Make sure %s is writeable." % candidates[0])
+    abort(f"Make sure '{candidates[0]}' is writeable.")
 
 
-def get_latest_pickley_version():
-    pickley_meta = os.path.join(TMP_FOLDER, "pickley-meta.json")
-    download(pickley_meta, "https://pypi.org/pypi/pickley/json", dryrun=False)
-    data = read_json(pickley_meta)
+def get_latest_version(package_name):
+    data = http_get(f"https://pypi.org/pypi/{package_name}/json")
+    data = json.loads(data)
     return data["info"]["version"]
 
 
@@ -116,67 +203,61 @@ def read_optional_json(path):
 
 
 def run_program(program, *args, **kwargs):
-    capture = kwargs.pop("capture", False)
-    dryrun = kwargs.pop("dryrun", None)
     fatal = kwargs.pop("fatal", True)
-    description = "%s %s" % (short(program), " ".join(short(x) for x in args))
-    if not hdry("Would run: %s" % description, dryrun=dryrun):
-        if capture:
-            stdout = stderr = subprocess.PIPE
+    description = " ".join(short(x) for x in args)
+    description = f"{short(program)} {description}"
+    if not hdry(f"Would run: {description}", dryrun=kwargs.pop("dryrun", None)):
+        if fatal:
+            stdout = stderr = None
+            print(f"Running: {description}")
 
         else:
-            stdout = stderr = None
-            print("Running: %s" % description)
+            stdout = stderr = subprocess.PIPE
 
-        p = subprocess.Popen([program, *args], stdout=stdout, stderr=stderr)
-        if capture:
-            output, _ = p.communicate()
-            if output is not None:
-                output = output.decode("utf-8").strip()
+        p = subprocess.Popen([program, *args], stdout=stdout, stderr=stderr, env=kwargs.pop("env", None))
+        if fatal:
+            p.wait()
+            if p.returncode:
+                abort(f"'{short(program)}' exited with code {p.returncode}")
 
-            return None if p.returncode else output
+            return p.returncode
 
-        p.wait()
-        if fatal and p.returncode:
-            abort("'%s' exited with code %s" % (short(program), p.returncode))
+        output, _ = p.communicate()
+        if output is not None:
+            output = output.decode("utf-8").strip()
 
-        return p.returncode
-
-
-def seed_config(pickley_base, desired_cfg, force=False):
-    """Seed pickley config"""
-    if desired_cfg:
-        desired_cfg = read_json(desired_cfg)
-        if desired_cfg and isinstance(desired_cfg, dict):
-            pickley_config = os.path.join(pickley_base, ".pk", "config.json")
-            cfg = read_optional_json(pickley_config)
-            if force or cfg != desired_cfg:
-                msg = "%s with %s" % (short(pickley_config), desired_cfg)
-                if not hdry("Would seed %s" % msg):
-                    print("Seeding %s" % msg)
-                    ensure_folder(os.path.dirname(pickley_config))
-                    with open(pickley_config, "wt") as fh:
-                        json.dump(desired_cfg, fh, sort_keys=True, indent=2)
-                        fh.write("\n")
+        return None if p.returncode else output
 
 
-def seed_mirror(mirror, force=False):
-    if mirror:
-        pip_conf = os.path.expanduser("~/.config/pip/pip.conf")
-        if force or not os.path.exists(pip_conf):
-            ensure_folder(os.path.dirname(pip_conf))
-            msg = "%s with %s" % (short(pip_conf), mirror)
-            if not hdry("Would seed %s" % msg):
-                print("Seeding %s" % msg)
-                with open(pip_conf, "wt") as fh:
-                    fh.write("[global]\nindex-url = %s\n" % mirror)
+def seed_mirror(mirror, path, section):
+    config_path = os.path.expanduser(path)
+    if not os.path.exists(config_path):
+        ensure_folder(os.path.dirname(config_path))
+        msg = f"{short(config_path)} with {mirror}"
+        if not hdry(f"Would seed {msg}"):
+            print(f"Seeding {msg}")
+            with open(config_path, "wt") as fh:
+                fh.write(f"[{section}]\nindex-url = {mirror}\n")
 
 
 def short(text):
-    if TMP_FOLDER:
-        text = text.replace(TMP_FOLDER + os.path.sep, "")
+    return str(text).replace(HOME, "~")
 
-    return text.replace(HOME, "~")
+
+def _add_uv_env(logger, env, env_var, value):
+    if value:
+        env[env_var] = value
+        if logger:
+            logger(f"{env_var}: {value}")
+
+
+def uv_env(mirror=None, python=None, venv=None, logger=None):
+    if python or mirror or venv:
+        env = dict(os.environ)
+        _add_uv_env(logger, env, "UV_PYTHON", python)
+        _add_uv_env(logger, env, "UV_INDEX_URL", mirror)
+        _add_uv_env(logger, env, "VIRTUAL_ENV", venv)
+        return env
 
 
 def which(program):
@@ -185,47 +266,21 @@ def which(program):
         if p != prefix_bin:
             fp = os.path.join(p, program)
             if fp and is_executable(fp):
-                return fp
-
-
-def create_virtualenv(tmp_folder, python_exe, venv_folder, runner=None, dryrun=None):
-    """
-    Args:
-        tmp_folder (str): Temp folder to use, virtualenv.pyz is downloaded there
-        python_exe (str): Target python executable
-        venv_folder (str): Target venv folder
-        runner (callable): Function to use to run virtualenv
-    """
-    pv = "%s.%s" % (sys.version_info[0], sys.version_info[1])
-    zipapp = os.path.join(tmp_folder, "virtualenv-%s.pyz" % pv)
-    if not os.path.exists(zipapp):
-        url = "https://bootstrap.pypa.io/virtualenv/%s/virtualenv.pyz" % pv
-        download(zipapp, url, dryrun=dryrun)
-
-    if runner is None:
-        runner = run_program
-
-    return runner(sys.executable, zipapp, "-q", "-p", python_exe, venv_folder)
-
-
-def find_venv_exe(folder, name):
-    for bname in (name, "%s3" % name):
-        path = os.path.join(folder, "bin", bname)
-        if is_executable(path):
-            return path
+                return Path(fp)
 
 
 def main(args=None):
     """Bootstrap pickley"""
     global DRYRUN
-    global TMP_FOLDER
 
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--dryrun", "-n", action="store_true", help="Perform a dryrun")
-    parser.add_argument("--base", "-b", help="Base folder to use (default: ~/.local/bin)")
+    parser.add_argument("--base", "-b", default="~/.local/bin", help="Base folder to use (default: ~/.local/bin)")
+    parser.add_argument("--check-path", action="store_true", help="Verify that stated --base is on PATH env var")
     parser.add_argument("--cfg", "-c", help="Seed pickley config with given contents (file or serialized json)")
     parser.add_argument("--force", "-f", action="store_true", help="Force a rerun (even if already done)")
     parser.add_argument("--mirror", "-m", help="Seed pypi mirror in pip.conf")
+    parser.add_argument("--venv-packager", help="Venv packager to use (default: `uv` latest version)")
     parser.add_argument("version", nargs="?", help="Version to bootstrap (default: latest)")
     args = parser.parse_args(args=args)
 
@@ -233,48 +288,66 @@ def main(args=None):
     if "__PYVENV_LAUNCHER__" in os.environ:
         del os.environ["__PYVENV_LAUNCHER__"]
 
-    pickley_base = find_base(args.base)
-    if args.cfg:
-        # When --cfg is used, make sure chosen base is in PATH
+    bstrap = Bootstrap(find_base(args.base), args.version)
+    if args.check_path:
         path_dirs = os.environ.get("PATH", "").split(os.pathsep)
-        if pickley_base not in path_dirs:
-            abort("Make sure %s is in your PATH environment variable." % pickley_base)
+        if bstrap.pickley_base not in path_dirs:
+            abort(f"Make sure '{bstrap.pickley_base}' is in your PATH environment variable.")
 
-    print("Using %s, base: %s" % (sys.executable, short(pickley_base)))
-    seed_config(pickley_base, args.cfg, force=args.force)
-    seed_mirror(args.mirror, force=args.force)
-    TMP_FOLDER = os.path.realpath(tempfile.mkdtemp())
-    try:
-        pickley_exe = os.path.join(pickley_base, "pickley")
-        pickley_version = args.version or get_latest_pickley_version()
-        if not args.force and is_executable(pickley_exe):
-            v = run_program(pickley_exe, "--version", capture=True, dryrun=False)
-            if v == pickley_version:
-                print("%s version %s is already installed" % (short(pickley_exe), v))
-                sys.exit(0)
+    print(f"Using {sys.executable}, base: {short(bstrap.pickley_base)}")
+    bstrap.seed_mirror(args.mirror)
+    if args.cfg:
+        cfg = read_json(args.cfg)
+        if cfg and isinstance(cfg, dict):
+            bstrap.seed_pickley_config(cfg, force=args.force)
 
-            if v and len(v) < 24:  # If long output -> old pickley is busted (stacktrace)
-                print("Replacing older pickley %s" % v)
+    if not args.force and is_executable(bstrap.pickley_exe):
+        v = run_program(bstrap.pickley_exe, "--version", dryrun=False, fatal=False)
+        if v == bstrap.pickley_version:
+            print(f"{short(bstrap.pickley_exe)} version {v} is already installed")
+            sys.exit(0)
 
-        pickley_venv = os.path.join(pickley_base, ".pk", "pickley-%s" % pickley_version)
-        needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", pickley_venv, fatal=False)
+        if v and len(v) < 24:  # If long output -> old pickley is busted (stacktrace)
+            print(f"Replacing older {PICKLEY} v{v}")
+
+    venv_packager = args.venv_packager
+    if venv_packager is None:
+        venv_packager = "pip==21.3.1" if sys.version_info[:2] <= (3, 7) else "uv"
+
+    if venv_packager.startswith("pip"):
+        needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", bstrap.pickley_venv, fatal=False)
         if not needs_virtualenv and not DRYRUN:
-            needs_virtualenv = not find_venv_exe(pickley_venv, "pip")
+            needs_virtualenv = not is_executable(bstrap.pickley_venv / "bin/pip")
 
         if needs_virtualenv:
             print("-mvenv failed, falling back to virtualenv")
-            create_virtualenv(TMP_FOLDER, sys.executable, pickley_venv)
+            pv = "%s.%s" % (sys.version_info[0], sys.version_info[1])
+            zipapp = bstrap.pk_path / f".cache/virtualenv-{pv}.pyz"
+            ensure_folder(zipapp.parent)
+            if not os.path.exists(zipapp):
+                url = f"https://bootstrap.pypa.io/virtualenv/{pv}/virtualenv.pyz"
+                download(zipapp, url)
 
-        if sys.version_info[:2] <= (3, 7):
-            # TODO: remove this when py3.6 and 3.7 are truly buried
-            run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", "-U", "pip==21.3.1")
+            run_program(sys.executable, zipapp, "-q", "-p", sys.executable, bstrap.pickley_venv)
 
-        run_program(os.path.join(pickley_venv, "bin", "pip"), "-q", "install", "pickley==%s" % pickley_version)
-        run_program(os.path.join(pickley_venv, "bin", "pickley"), "base", "bootstrap-own-wrapper")
+        run_program(bstrap.pickley_venv / "bin/pip", "-q", "install", "-U", venv_packager)
+        run_program(bstrap.pickley_venv / "bin/pip", "-q", "install", f"{PICKLEY}=={bstrap.pickley_version}")
 
-    finally:
-        shutil.rmtree(TMP_FOLDER, ignore_errors=True)
-        TMP_FOLDER = None
+    elif venv_packager == "uv" or venv_packager.startswith("uv=="):
+        uv_version = None
+        if "==" in venv_packager:
+            uv_version = venv_packager[4:]
+
+        uv_path = bstrap.find_uv(uv_version)
+        run_program(uv_path, "-q", "venv", bstrap.pickley_venv, env=uv_env(mirror=args.mirror, python=sys.executable))
+
+        env = uv_env(mirror=args.mirror, venv=bstrap.pickley_venv)
+        run_program(uv_path, "-q", "pip", "install", f"{PICKLEY}=={bstrap.pickley_version}", env=env)
+
+    else:
+        abort(f"Unsupported venv packager '{venv_packager}', state `uv` or `pip` (== pinning optional)")
+
+    run_program(bstrap.pickley_venv / f"bin/{PICKLEY}", "base", "bootstrap-own-wrapper")
 
 
 if __name__ == "__main__":

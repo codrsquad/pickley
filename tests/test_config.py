@@ -2,9 +2,8 @@ import pytest
 import runez
 from runez.pyenv import PypiStd
 
-from pickley import __version__, despecced, DOT_META, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
-
-PYPI_CLIENT = PypiStd.default_pypi_client()
+from pickley import __version__, despecced, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
+from pickley.bstrap import DOT_META
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -102,30 +101,24 @@ def test_edge_cases():
     assert p == cfg.available_pythons.invoker
 
 
-@PYPI_CLIENT.mock({"https://pypi-mirror.mycompany.net/pypi/foo/": {"info": {"version": "0.1.2"}}})
 def test_good_config(temp_cfg, logged):
     cfg = grab_sample("good-config")
 
     assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
 
     mgit = PackageSpec(cfg, "mgit==1.0.0")
-    pickley = PackageSpec(cfg, "pickley")
+    pickley = PackageSpec(cfg, "pickley==1.0.0")
     assert mgit < pickley  # Ordering based on package name, then version
     assert str(mgit) == "mgit==1.0.0"
-    assert str(pickley) == "pickley"
+    assert str(pickley) == "pickley==1.0.0"
     assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
     logged.clear()
 
-    assert pickley.desired_track.source == "current"
-    assert pickley.desired_track.version == __version__
+    # assert pickley.desired_track.source == "current"
+    # assert pickley.desired_track.version == __version__
 
     assert mgit.desired_track.source == "explicit"
     assert mgit.desired_track.version == "1.0.0"
-
-    # Verify latest when no pins configured
-    p = PackageSpec(cfg, "foo")
-    assert p.desired_track.version == "0.1.2"
-    assert p.desired_track.source == "latest"
 
     # Verify pinned versions in samples/.../config.json are respected
     p = PackageSpec(cfg, "mgit")

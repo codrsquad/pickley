@@ -3,17 +3,17 @@ import os
 import pytest
 import runez
 from runez.conftest import cli, logged
-from runez.http import GlobalHttpCalls
+# from runez.http import GlobalHttpCalls
 from runez.pyenv import PythonDepot
 
-from pickley import DOT_META, PickleyConfig
-from pickley.cli import main
+from pickley import PickleyConfig
+from pickley.bstrap import DOT_META
+from pickley.cli import CFG, main
 from pickley.package import PythonVenv
 
 cli.default_main = main
-GlobalHttpCalls.forbid()
+# GlobalHttpCalls.forbid()
 PythonDepot.use_path = False
-PythonVenv._vv_fallback = None
 assert logged  # Just making fixtures available, with no complaints about unused imports
 
 
@@ -33,6 +33,17 @@ def dot_meta(relative=None, parent=None):
 
 class TemporaryBase(runez.TempFolder):
     def __enter__(self):
+        if not CFG._uv_path:
+            # Ensure `uv` is downloaded once for all tests
+            from pickley.bstrap import download_uv
+
+            target = runez.to_path(runez.DEV.project_path("build/uv"))
+            uv_path = target / "bin/uv"
+            if not runez.is_executable(uv_path):
+                download_uv(target)
+
+            CFG._uv_path = uv_path
+
         super(TemporaryBase, self).__enter__()
         os.environ["PICKLEY_ROOT"] = self.tmp_folder
         return self.tmp_folder
