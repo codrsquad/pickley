@@ -11,7 +11,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 DOT_META = ".pk"
@@ -89,7 +89,16 @@ def http_get(url, timeout=5):
         with urlopen(request, timeout=timeout) as response:
             data = response.read()
 
-    except URLError:  # py3.6 ssl error
+    except HTTPError as e:
+        if e.code == 404:
+            return None
+
+        abort(f"Failed to fetch {url}: {e}")
+
+    except URLError as e:  # py3.6 ssl error
+        if "ssl" not in str(e).lower():
+            abort(f"Failed to fetch {url}: {e}")
+
         import tempfile
 
         with tempfile.NamedTemporaryFile() as tmpf:
@@ -154,8 +163,9 @@ def find_base(base):
 
 def get_latest_version(package_name):
     data = http_get(f"https://pypi.org/pypi/{package_name}/json")
-    data = json.loads(data)
-    return data["info"]["version"]
+    if data:
+        data = json.loads(data)
+        return data["info"]["version"]
 
 
 def hdry(message, dryrun=None):
@@ -276,6 +286,9 @@ def main(args=None):
         del os.environ["__PYVENV_LAUNCHER__"]
 
     bstrap = Bootstrap(find_base(args.base), args.version)
+    if not bstrap.pickley_version:
+        abort(f"Failed to determine latest {PICKLEY} version")
+
     if args.check_path:
         path_dirs = os.environ.get("PATH", "").split(os.pathsep)
         if bstrap.pickley_base not in path_dirs:

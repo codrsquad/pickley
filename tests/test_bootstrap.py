@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 from unittest.mock import patch
+from urllib.error import HTTPError, URLError
 
 import pytest
 import runez
@@ -144,3 +145,20 @@ def test_edge_cases(temp_cfg, logged):
                 with pytest.raises(SystemExit) as exc:
                     bstrap.download("test", "test")
                 assert "No `curl` nor `wget`" in str(exc)
+
+
+def test_failure(cli):
+    with patch("pickley.bstrap.Request", side_effect=HTTPError("url", 404, "msg", None, None)):
+        cli.run("--base .", main=bstrap.main)
+        assert cli.failed
+        assert "Failed to determine latest pickley version" in cli.logged
+
+    with patch("pickley.bstrap.Request", side_effect=HTTPError("url", 500, "msg", None, None)):
+        cli.run("--base .", main=bstrap.main)
+        assert cli.failed
+        assert "Failed to fetch https://pypi.org/pypi/pickley/json: HTTP Error 500: msg" in cli.logged
+
+    with patch("pickley.bstrap.Request", side_effect=URLError("foo")):
+        cli.run("--base .", main=bstrap.main)
+        assert cli.failed
+        assert "Failed to fetch https://pypi.org/pypi/pickley/json: <urlopen error foo>" in cli.logged
