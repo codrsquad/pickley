@@ -1,15 +1,16 @@
 import os
-from typing import Optional, Sequence
+import sys
+from typing import Sequence
+
 import runez
 from runez.pyenv import PypiStd, Version
 
-from pickley import abort, PICKLEY
+from pickley import abort, LOG, PICKLEY
 from pickley.bstrap import uv_env
 from pickley.delivery import DeliveryMethod
 
 
 class PythonVenv:
-
     def __init__(self, folder, pspec, use_pip=None):
         """
         Args:
@@ -21,7 +22,8 @@ class PythonVenv:
         self.pspec = pspec
         self.python = pspec.python or pspec.cfg.find_python(pspec)
         if use_pip is None:
-            use_pip = pspec.use_pip
+            vp = pspec.cfg.venv_packager(pspec)
+            use_pip = sys.version_info[:2] <= (3, 7) if vp is None else vp == "pip"
 
         self.use_pip = use_pip
 
@@ -43,7 +45,7 @@ class PythonVenv:
             return
 
         uv_path = self.pspec.cfg.find_uv()
-        return runez.run(uv_path, "-q", "venv", self.folder, env=uv_env(python=self.python.executable))
+        return runez.run(uv_path, "-q", "venv", self.folder, env=uv_env(python=self.python.executable, logger=LOG.debug))
 
     def create_venv_with_pip(self):
         runez.ensure_folder(self.folder, clean=True, logger=False)
@@ -51,26 +53,29 @@ class PythonVenv:
         if self.python.mm <= "3.7":
             # Older versions of python come with very old `ensurepip`, sometimes pip 9.0.1 from 2016
             # pip versions newer than 21.3.1 for those old pythons is also known not to work
-            self.run_python("-mpip", "install", "-U", "pip==21.3.1")
+            self.run_pip("install", "-U", "pip==21.3.1")
 
     def pip_install(self, *args):
         """`pip install` into target venv`"""
         if self.use_pip:
-            r = self.run_python("-mpip", "install", "-i", self.pspec.index, *args, fatal=False)
-            if r.failed:
-                message = "\n".join(simplified_pip_error(r.error, r.output))
-                abort(message)
+            return self.run_pip("install", "-i", self.pspec.index, *args)
 
-            return r
+        quiet = () if runez.log.debug else ("-q",)
+        return self.run_uv(*quiet, "pip", "install", *args, passthrough=runez.log.debug)
 
-        quiet = ("-q",) if runez.log.debug else ()
-        return self.run_uv(*quiet, "pip", "install", *args)
-
-    def run_uv(self, *args, fatal=True):
+    def run_uv(self, *args, fatal=True, **kwargs):
         uv_path = self.pspec.cfg.find_uv()
         assert self.pspec.dashed != "uv"
-        env = uv_env(mirror=self.pspec.index, venv=self.folder)
-        return runez.run(uv_path, *args, env=env, fatal=fatal)
+        env = uv_env(mirror=self.pspec.index, venv=self.folder, logger=LOG.debug)
+        return runez.run(uv_path, *args, env=env, fatal=fatal, **kwargs)
+
+    def run_pip(self, *args):
+        r = self.run_python("-mpip", *args, fatal=False)
+        if r.failed:
+            message = "\n".join(simplified_pip_error(r.error, r.output))
+            abort(message)
+
+        return r
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
@@ -100,39 +105,37 @@ class PythonVenv:
         # Use `uv pip show` to get location on disk and version of package
         package_name = self.actual_package_name(package_name)
         r = self.run_uv("pip", "show", package_name, fatal=False)
-        if r.succeeded:
-            location = None
-            version = None
-            for line in r.output.splitlines():
-                if line.startswith("Location:"):
-                    location = line.partition(":")[2].strip()
+        runez.abort_if(r.failed or not r.output, f"`uv pip show` failed for '{package_name}': {r.full_output}")
+        location = None
+        version = None
+        for line in r.output.splitlines():
+            if line.startswith("Location:"):
+                location = line.partition(":")[2].strip()
 
-                if line.startswith("Version:"):
-                    version = line.partition(":")[2].strip()
+            if line.startswith("Version:"):
+                version = line.partition(":")[2].strip()
 
-            if location and version:
-                wheel_name = PypiStd.std_wheel_basename(package_name)
-                folder = os.path.join(location, f"{wheel_name}-{version}.dist-info")
-                data = runez.file.ini_to_dict(os.path.join(folder, "entry_points.txt"))
-                if data and "console_scripts" in data:
-                    data = data["console_scripts"]
-                    if isinstance(data, dict):
-                        return sorted(data)  # Package has a standard entry_points.txt file
+        runez.abort_if(not location or not version, f"Failed to parse `uv pip show` output for '{package_name}': {r.full_output}")
+        wheel_name = PypiStd.std_wheel_basename(package_name)
+        folder = os.path.join(location, f"{wheel_name}-{version}.dist-info")
+        data = runez.file.ini_to_dict(os.path.join(folder, "entry_points.txt"))
+        if data and "console_scripts" in data:
+            data = data["console_scripts"]
+            if isinstance(data, dict):
+                return sorted(data)  # Package has a standard entry_points.txt file
 
-                # No standard entry_points.txt, let's try to find executables in bin/
-                # For example: `awscli` does this (no proper entry points, has bin-scripts only)
-                records = os.path.join(folder, "RECORD")
-                entry_points = []
-                for line in runez.readlines(records):
-                    if line.startswith(".."):
-                        path = line.partition(",")[0]
-                        dirname = os.path.dirname(path)
-                        if os.path.basename(dirname) == "bin":
-                            entry_points.append(os.path.basename(path))
+        # No standard entry_points.txt, let's try to find executables in bin/
+        # For example: `awscli` does this (no proper entry points, has bin-scripts only)
+        records = os.path.join(folder, "RECORD")
+        entry_points = []
+        for line in runez.readlines(records):
+            if line.startswith(".."):
+                path = line.partition(",")[0]
+                dirname = os.path.dirname(path)
+                if os.path.basename(dirname) == "bin":
+                    entry_points.append(os.path.basename(path))
 
-                return entry_points
-
-        return ()
+        return entry_points
 
 
 def simplified_pip_error(error, output):
@@ -189,11 +192,12 @@ class VenvPackager(Packager):
             args.extend(pspec.pip_spec())
             venv.pip_install(*args)
 
-        entry_points = [n for n in venv.entry_points() if "_completer" not in n]
+        entry_points = venv.entry_points()
         if not entry_points:
             pspec.delete_all_files()
             abort(f"Can't install '{runez.bold(pspec.dashed)}', it is {runez.red('not a CLI')}")
 
+        entry_points = [n for n in venv.entry_points() if "_completer" not in n]
         return delivery.install(venv, entry_points)
 
     @staticmethod

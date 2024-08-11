@@ -107,14 +107,13 @@ def _dynamic_resolver(cfg, name_or_url):
 
         if is_git and not os.path.isdir(folder):
             runez.ensure_folder(folder, clean=True)
+            runez.run("git", "clone", name_or_url, folder)
             if runez.DRYRUN:
                 package_name = os.path.basename(name_or_url)
                 if package_name.endswith(".git"):
                     package_name = package_name[:-4]
 
                 return package_name, "0.0.0", folder
-
-            runez.run("git", "clone", name_or_url, folder)
 
     if folder:
         setup_py = os.path.join(folder, "setup.py")
@@ -191,7 +190,7 @@ class PackageSpec:
             delivery=self.cfg.delivery_method(self),
             index=self.cfg.index(self) or self.cfg.default_index,
             python=self.python.executable,
-            venv_packager=self.cfg.get_venv_packager(self),
+            venv_packager=self.cfg.venv_packager(self),
         )
 
     @runez.cached_property
@@ -202,11 +201,6 @@ class PackageSpec:
     def index(self):
         """Index to use for this package spec"""
         return self.cfg.index(self)
-
-    @runez.cached_property
-    def use_pip(self):
-        """Should `pip` be used to install this package? (default: uv is used)"""
-        return self.cfg.get_value("use_pip", pspec=self, validator=runez.to_boolean)
 
     @property
     def desired_track(self):
@@ -445,16 +439,13 @@ class PickleyConfig:
     def find_uv(self):
         """Path to uv installation"""
         if self._uv_path is None:
-            for candidate in ("uv", ".uv/bin/uv"):
+            for candidate in ("uv", f"{DOT_META}/.uv/bin/uv"):
                 uv_path = os.path.join(self.base.path, candidate)
                 if runez.is_executable(uv_path):
                     self._uv_path = uv_path
                     break
 
-            if not self._uv_path:
-                self._uv_path = runez.which("uv")
-
-        runez.abort_if(not self._uv_path, "`uv` is not installed")
+        runez.abort_if(not self._uv_path, "`uv` is not installed, please reinstall with `pickley install uv`")
         return self._uv_path
 
     def set_base(self, base_path):
@@ -481,9 +472,6 @@ class PickleyConfig:
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
         defaults = {"delivery": "wrap", "install_timeout": 1800, "version_check_delay": 300}
-        if sys.version_info[:2] <= (3, 7):
-            defaults["use_pip"] = True
-
         self.configs.append(RawConfig(self, "defaults", defaults))
 
     def set_cli(self, config_path, delivery, index, python, venv_packager):
@@ -715,7 +703,7 @@ class PickleyConfig:
         """
         return self.get_value("version_check_delay", pspec=pspec, validator=runez.to_int)
 
-    def get_venv_packager(self, pspec):
+    def venv_packager(self, pspec):
         """
         Args:
             pspec (PackageSpec | None): Package spec, when applicable
@@ -921,7 +909,12 @@ class TrackedSettings:
     @classmethod
     def from_dict(cls, data):
         if data:
-            return cls(delivery=data.get("delivery"), index=data.get("index"), python=data.get("python"), venv_packager=data.get("venv_packager"))
+            return cls(
+                delivery=data.get("delivery"),
+                index=data.get("index"),
+                python=data.get("python"),
+                venv_packager=data.get("venv_packager"),
+            )
 
     def to_dict(self):
         return {"delivery": self.delivery, "index": self.index, "python": self.python, "venv_packager": self.venv_packager}

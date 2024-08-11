@@ -1,8 +1,7 @@
 import pytest
 import runez
-from runez.pyenv import PypiStd
 
-from pickley import __version__, despecced, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
+from pickley import despecced, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
 from pickley.bstrap import DOT_META
 
 SAMPLE_CONFIG = """
@@ -101,7 +100,16 @@ def test_edge_cases():
     assert p == cfg.available_pythons.invoker
 
 
-def test_good_config(temp_cfg, logged):
+def test_good_config(temp_cfg, monkeypatch):
+    monkeypatch.setattr(temp_cfg, "_uv_path", None)
+    with pytest.raises(runez.system.AbortException, match="`uv` is not installed"):
+        temp_cfg.find_uv()
+
+    tmp_uv = temp_cfg.base.full_path("uv")
+    runez.touch(tmp_uv)
+    runez.make_executable(tmp_uv)
+    assert temp_cfg.find_uv() == tmp_uv
+
     cfg = grab_sample("good-config")
 
     assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
@@ -112,10 +120,6 @@ def test_good_config(temp_cfg, logged):
     assert str(mgit) == "mgit==1.0.0"
     assert str(pickley) == "pickley==1.0.0"
     assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
-    logged.clear()
-
-    # assert pickley.desired_track.source == "current"
-    # assert pickley.desired_track.version == __version__
 
     assert mgit.desired_track.source == "explicit"
     assert mgit.desired_track.version == "1.0.0"

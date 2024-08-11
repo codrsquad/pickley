@@ -8,17 +8,17 @@ def test_run(cli):
 
     cli.run("-n run pip-compile==1.0 foo")
     assert cli.succeeded
-    assert "uv pip install pip-tools==1.0" in cli.logged
+    assert "pip install pip-tools==1.0" in cli.logged
     assert "pip-compile foo" in cli.logged
 
     cli.run("-n run mgit:mgit==1.3.0 -f")
     assert cli.succeeded
-    assert "uv pip install mgit==1.3.0" in cli.logged
+    assert "pip install mgit==1.3.0" in cli.logged
     assert "mgit -f" in cli.logged
 
     cli.run("-n run aws==1.0 foo -bar")
     assert cli.succeeded
-    assert "uv pip install awscli==1.0" in cli.logged
+    assert "pip install awscli==1.0" in cli.logged
     assert "aws foo -bar" in cli.logged
 
 

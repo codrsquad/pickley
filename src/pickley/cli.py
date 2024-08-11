@@ -229,7 +229,7 @@ def find_symbolic_invoker() -> str:
             if path.exists():
                 return path
 
-    return invoker.executable
+    return invoker.executable  # pragma: no cover
 
 
 @runez.click.group()
@@ -242,7 +242,7 @@ def find_symbolic_invoker() -> str:
 @click.option("--index", "-i", metavar="PATH", help="Pypi index to use")
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", help="Delivery method to use")
-@click.option("--venv-packager", type=click.Choice(("uv", "pip", "virtualenv")), help="What to use to create venvs? (default: uv)")
+@click.option("--venv-packager", type=click.Choice(("uv", "pip")), help="What to use to create venvs? (default: uv)")
 def main(ctx, debug, config, index, python, delivery, venv_packager):
     """Package manager for python CLIs"""
     runez.system.AbortException = SystemExit

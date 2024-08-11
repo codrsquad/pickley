@@ -3,16 +3,13 @@ import os
 import pytest
 import runez
 from runez.conftest import cli, logged
-# from runez.http import GlobalHttpCalls
 from runez.pyenv import PythonDepot
 
 from pickley import PickleyConfig
 from pickley.bstrap import DOT_META
 from pickley.cli import CFG, main
-from pickley.package import PythonVenv
 
 cli.default_main = main
-# GlobalHttpCalls.forbid()
 PythonDepot.use_path = False
 assert logged  # Just making fixtures available, with no complaints about unused imports
 
@@ -39,8 +36,8 @@ class TemporaryBase(runez.TempFolder):
 
             target = runez.to_path(runez.DEV.project_path("build/uv"))
             uv_path = target / "bin/uv"
-            if not runez.is_executable(uv_path):
-                download_uv(target)
+            if not runez.is_executable(uv_path):  # pragma: no cover
+                download_uv(target, target)
 
             CFG._uv_path = uv_path
 

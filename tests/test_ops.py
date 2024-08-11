@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import pytest
 import runez
-from runez.http import GlobalHttpCalls
 from runez.pyenv import Version
 
 from pickley import __version__, PackageSpec, PickleyConfig, TrackedManifest, TrackedVersion
@@ -104,13 +103,18 @@ def test_dryrun(cli):
 
     cli.expect_success("-n auto-heal", "Auto-healed 0 / 0 packages")
 
+    if sys.version_info[:2] < (3, 12):
+        # TODO: modernize installs from folder (and/or git) once `uv` has an `describe` command
+        cli.run("-n", "install", runez.DEV.project_folder)
+        assert cli.succeeded
+        assert "Would state: Installed pickley" in cli.logged
+
+    cli.run("-n install https://github.com/codrsquad/portable-python.git")
+    assert cli.succeeded
+    assert "git clone https://github.com/codrsquad/portable-python.git" in cli.logged
+
     cli.run("-n -Pfoo diagnostics")
     assert "preferred python : foo [not available]" in cli.logged
-
-    cli.run("-n install git@github.com:zsimic/mgit.git")
-    assert cli.succeeded
-    checkout = dot_meta(".cache/checkout")
-    assert f"pip install {checkout}/git-github-com-zsimic-mgit-git" in cli.logged
 
     cli.expect_success("-n list", "No packages installed")
 
@@ -125,9 +129,10 @@ def test_dryrun(cli):
         runez.write("setup.py", "import sys\nfrom setuptools import setup\nif sys.argv[1]=='--version': sys.exit(1)\nsetup(name='foo')")
         cli.expect_failure("-n package .", "Could not determine package version")
 
-        cli.run("-n", "package", cli.project_folder)
+        cli.run("-n", "package", cli.project_folder, "mgit")
         assert cli.succeeded
         cli.match("Would run: ...pip...install -r requirements.txt")
+        cli.match("Would run: ...pip...install mgit")
 
     cli.expect_failure("-n uninstall", "Specify packages to uninstall, or --all")
     cli.expect_failure("-n uninstall pickley", "Run 'uninstall --all' if you wish to uninstall pickley itself")
@@ -137,6 +142,12 @@ def test_dryrun(cli):
 
     cli.expect_success("-n upgrade", "No packages installed, nothing to upgrade")
     cli.expect_failure("-n upgrade mgit", "'mgit' is not installed")
+
+    with patch("pickley.latest_pypi_version", side_effect=lambda *_: Version("1.0")):
+        # If latest is too low, we remain on current (we upgrade "up" only)
+        cli.run("-n --debug auto-upgrade pickley")
+        assert cli.succeeded
+        assert f"Would wrap pickley -> .pk/pickley-{__version__}/bin/pickley" in cli.logged
 
     with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.expect_failure("-n -Pfoo install bundle:bar", "No suitable python")
@@ -176,7 +187,7 @@ def test_dryrun(cli):
         cli.expect_success("list -fyaml", "mgit")
         runez.delete(dot_meta("mgit"))
 
-        cli.run("-n --virtualenv latest -Pinvoker install --no-binary :all: mgit==1.3.0")
+        cli.run("-n -Pinvoker install --no-binary :all: mgit==1.3.0")
         assert cli.succeeded
         assert " --no-binary :all: mgit==1.3.0" in cli.logged
         assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
@@ -190,7 +201,7 @@ def test_dev_mode(cli):
     with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install pickley")
         assert cli.succeeded
-        assert "uv pip install -e " in cli.logged
+        assert "pip install -e " in cli.logged
         assert "Would wrap pickley -> .pk/pickley-100.0/bin/pickley" in cli.logged
         assert "Would state: Installed pickley v100.0 in "
 
@@ -243,12 +254,6 @@ def test_facultative(cli):
         cli.run("-n install virtualenv")
         assert cli.succeeded
         assert "Would state: Installed virtualenv" in cli.logged
-
-
-def test_failure_cases(cli):
-    with patch("runez.run", side_effect=Exception):
-        cli.run("install git@github.com:zsimic/mgit.git")
-        assert cli.failed
 
 
 def check_is_wrapper(path, is_wrapper):
