@@ -104,8 +104,13 @@ class PythonVenv:
 
         # Use `uv pip show` to get location on disk and version of package
         package_name = self.actual_package_name(package_name)
-        r = self.run_uv("pip", "show", package_name, fatal=False)
-        runez.abort_if(r.failed or not r.output, f"`uv pip show` failed for '{package_name}': {r.full_output}")
+        if self.use_pip:
+            r = self.run_pip("show", package_name)
+
+        else:
+            r = self.run_uv("pip", "show", package_name, fatal=False)
+
+        runez.abort_if(r.failed or not r.output, f"`pip show` failed for '{package_name}': {r.full_output}")
         location = None
         version = None
         for line in r.output.splitlines():
@@ -115,7 +120,10 @@ class PythonVenv:
             if line.startswith("Version:"):
                 version = line.partition(":")[2].strip()
 
-        runez.abort_if(not location or not version, f"Failed to parse `uv pip show` output for '{package_name}': {r.full_output}")
+            if location and version:
+                break
+
+        runez.abort_if(not location or not version, f"Failed to parse `pip show` output for '{package_name}': {r.full_output}")
         wheel_name = PypiStd.std_wheel_basename(package_name)
         folder = os.path.join(location, f"{wheel_name}-{version}.dist-info")
         data = runez.file.ini_to_dict(os.path.join(folder, "entry_points.txt"))
