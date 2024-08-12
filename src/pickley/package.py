@@ -45,7 +45,23 @@ class PythonVenv:
             return
 
         uv_path = self.pspec.cfg.find_uv()
-        return runez.run(uv_path, "-q", "venv", self.folder, env=uv_env(python=self.python.executable, logger=LOG.debug))
+        r = runez.run(uv_path, "-q", "venv", self.folder, env=uv_env(python=self.python.executable, logger=LOG.debug))
+        venv_python = self.folder / "bin/python"
+        if venv_python.is_symlink():
+            # `uv` fully expands symlinks, use the simplest location instead
+            # This would replace for example `.../python-3.10.1/bin/python3.10` with for example `/usr/local/bin/python-3.10`
+            actual_path = venv_python.resolve()
+            installation = self.pspec.cfg.available_pythons.find_python(actual_path)
+            if installation.executable != actual_path:
+                runez.symlink(installation.executable, venv_python, overwrite=True)
+
+        # Provide a convenience `pip` wrapper, this will allow to conveniently inspect an installed venv with for example:
+        # .../.pk/package-M.m.p/bin/pip freeze
+        pip_path = self.folder / "bin/pip"
+        pip_wrapper = '#!/bin/sh -e\n\nVIRTUAL_ENV="$(cd $(dirname $0)/..; pwd)" exec uv pip "$@"'
+        runez.write(pip_path, pip_wrapper)
+        runez.make_executable(pip_path)
+        return r
 
     def create_venv_with_pip(self):
         runez.ensure_folder(self.folder, clean=True, logger=False)
@@ -63,14 +79,15 @@ class PythonVenv:
         quiet = () if runez.log.debug else ("-q",)
         return self.run_uv(*quiet, "pip", "install", *args, passthrough=runez.log.debug)
 
-    def run_uv(self, *args, fatal=True, **kwargs):
+    def run_uv(self, *args, **kwargs):
         uv_path = self.pspec.cfg.find_uv()
         assert self.pspec.dashed != "uv"
         env = uv_env(mirror=self.pspec.index, venv=self.folder, logger=LOG.debug)
-        return runez.run(uv_path, *args, env=env, fatal=fatal, **kwargs)
+        return runez.run(uv_path, *args, env=env, **kwargs)
 
-    def run_pip(self, *args):
-        r = self.run_python("-mpip", *args, fatal=False)
+    def run_pip(self, *args, **kwargs):
+        kwargs.setdefault("fatal", False)
+        r = self.run_python("-mpip", *args, **kwargs)
         if r.failed:
             message = "\n".join(simplified_pip_error(r.error, r.output))
             abort(message)
@@ -105,10 +122,10 @@ class PythonVenv:
         # Use `uv pip show` to get location on disk and version of package
         package_name = self.actual_package_name(package_name)
         if self.use_pip:
-            r = self.run_pip("show", package_name)
+            r = self.run_pip("show", package_name, dryrun=False)
 
         else:
-            r = self.run_uv("pip", "show", package_name, fatal=False)
+            r = self.run_uv("pip", "show", package_name, dryrun=False, fatal=False)
 
         runez.abort_if(r.failed or not r.output, f"`pip show` failed for '{package_name}': {r.full_output}")
         location = None

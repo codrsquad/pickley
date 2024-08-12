@@ -83,7 +83,7 @@ def download_uv(pk_cache, target, version=None, dryrun=None):
     run_program("/bin/sh", script, "--no-modify-path", env=env, dryrun=dryrun)
 
 
-def http_get(url, timeout=5):
+def http_get(url, timeout=10):
     try:
         request = Request(url)
         with urlopen(request, timeout=timeout) as response:
@@ -118,7 +118,7 @@ def http_get(url, timeout=5):
 
 def built_in_download(target, url):
     request = Request(url)
-    response = urlopen(request, timeout=5)
+    response = urlopen(request, timeout=10)
     with open(target, "wb") as fh:
         fh.write(response.read())
 

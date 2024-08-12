@@ -102,6 +102,7 @@ def test_edge_cases():
 
 def test_good_config(temp_cfg, monkeypatch):
     monkeypatch.setattr(temp_cfg, "_uv_path", None)
+    monkeypatch.setattr(runez.DEV, "project_folder", None)
     with pytest.raises(runez.system.AbortException, match="`uv` is not installed"):
         temp_cfg.find_uv()
 

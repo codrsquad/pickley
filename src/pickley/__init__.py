@@ -445,6 +445,9 @@ class PickleyConfig:
                     self._uv_path = uv_path
                     break
 
+            if runez.DEV.project_folder:  # pragma: no cover, for dev mode
+                self._uv_path = runez.which("uv")
+
         runez.abort_if(not self._uv_path, "`uv` is not installed, please reinstall with `pickley install uv`")
         return self._uv_path
 
