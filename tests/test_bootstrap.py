@@ -51,7 +51,7 @@ def test_bootstrap(cli, monkeypatch):
             assert "Would run: .local/bin/.pk/pickley-4.1/bin/pip -q install pickley==4.1" in cli.logged
 
             # Temporary: verify uv default for v4.2+
-            cli.run("-n 4.2", main=bstrap.main)
+            cli.run("-n 4.3", main=bstrap.main)
             assert cli.succeeded
             assert "Would run: .local/bin/uv -q venv .local/bin/.pk/pickley-" in cli.logged
 

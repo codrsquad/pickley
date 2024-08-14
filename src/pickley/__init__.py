@@ -16,7 +16,16 @@ LOG = logging.getLogger(__name__)
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
-K_LEAVES = {"facultative", "install_timeout", "preferred_pythons", "python_installations", "pyenv", "version", "version_check_delay"}
+K_LEAVES = {
+    "facultative",
+    "install_timeout",
+    "package_manager",
+    "preferred_pythons",
+    "python_installations",
+    "pyenv",
+    "version",
+    "version_check_delay",
+}
 PLATFORM = platform.system().lower()
 RX_HREF = re.compile(r'href=".+/([^/#]+\.(tar\.gz|whl))#', re.IGNORECASE)
 
@@ -474,7 +483,8 @@ class PickleyConfig:
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
-        defaults = {"delivery": "wrap", "install_timeout": 1800, "version_check_delay": 300}
+        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER") or "pip"
+        defaults = {"delivery": "wrap", "install_timeout": 1800, "version_check_delay": 300, "package_manager": package_manager}
         self.configs.append(RawConfig(self, "defaults", defaults))
 
     def set_cli(self, config_path, delivery, index, python, package_manager):

@@ -314,15 +314,18 @@ def main(args=None):
             print(f"Replacing older {PICKLEY} v{v}")
 
     package_manager = args.package_manager
-    if package_manager is None:
+    if not package_manager:
+        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER")
+
+    if not package_manager:
         if sys.version_info[:2] <= (3, 7):
             package_manager = "pip==21.3.1"
 
-        elif bstrap.pickley_version <= "4.1":  # Temporary: continue using pip until next bump
-            package_manager = "pip"
+        elif bstrap.pickley_version >= "4.3":  # Temporary: continue using pip by default until 4.3+
+            package_manager = "uv"
 
         else:
-            package_manager = "uv"
+            package_manager = "pip"
 
     pickley_venv = bstrap.pk_path / f"{PICKLEY}-{bstrap.pickley_version}"
     if package_manager.startswith("pip"):

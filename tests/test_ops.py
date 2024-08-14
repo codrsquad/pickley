@@ -87,7 +87,7 @@ def test_debian_mode(temp_cfg, logged):
 
 
 def mock_latest_pypi_version(package_name, *_):
-    if package_name in ("mgit", "pickley", "virtualenv"):
+    if package_name in ("mgit", "pickley", "virtualenv", "uv"):
         return Version("100.0")
 
 
@@ -151,6 +151,11 @@ def test_dryrun(cli):
 
     with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.expect_failure("-n -Pfoo install bundle:bar", "No suitable python")
+
+        cli.run("-n --package-manager=uv install uv")
+        assert cli.succeeded
+        assert "Would download https://github.com/astral-sh/uv/releases/download/100.0/uv-installer.sh" in cli.logged
+        assert "Would wrap uv -> .pk/uv-100.0/bin/uv" in cli.logged
 
         cli.run("-n --debug auto-upgrade mgit")
         assert cli.succeeded
@@ -268,7 +273,7 @@ def check_is_wrapper(path, is_wrapper):
 
 def check_install_from_pypi(cli, delivery, package, version, simulate_version=None):
     runez.write(".pk/.cache/mgit.latest", f'{{"version": "{version}"}}')
-    cli.run("--debug", f"-d{delivery}", "install", package)
+    cli.run("--debug", "--package-manager=uv", f"-d{delivery}", "install", package)
     assert cli.succeeded
     assert cli.match(f"Installed {package} v{version}")
     assert runez.is_executable(package)
@@ -399,6 +404,7 @@ def test_package_venv(cli):
     cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--sanity-check=--version", "-sroot:root/usr/local/bin")
     assert cli.succeeded
     assert "--version" in cli.logged
+    assert runez.is_executable("/tmp/pickley/bin/pip3")
     assert runez.is_executable("/tmp/pickley/bin/pickley")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
     assert r.succeeded
@@ -412,6 +418,7 @@ def test_package_venv_with_additional_packages(cli):
     cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder)
     assert cli.succeeded
     assert "pip install -r requirements.txt" in cli.logged
+    assert runez.is_executable("/tmp/pickley/bin/pip3")
     assert runez.is_executable("/tmp/pickley/bin/pickley")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
     assert r.succeeded

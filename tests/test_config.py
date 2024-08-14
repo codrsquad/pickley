@@ -38,6 +38,7 @@ cli:  # empty
 defaults:
   delivery: wrap
   install_timeout: 1800
+  package_manager: pip
   version_check_delay: 300
 """
 
