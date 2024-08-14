@@ -242,9 +242,9 @@ def find_symbolic_invoker() -> str:
 @click.option("--index", "-i", metavar="PATH", help="Pypi index to use")
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", help="Delivery method to use")
-@click.option("--venv-packager", type=click.Choice(("uv", "pip")), help="What to use to create venvs? (default: uv)")
-def main(ctx, debug, config, index, python, delivery, venv_packager):
-    """Package manager for python CLIs"""
+@click.option("--package-manager", type=click.Choice(("uv", "pip")), help="What to use to create venvs? (default: uv)")
+def main(ctx, debug, config, index, python, delivery, package_manager):
+    """Install python CLIs that keeps themselves up-to-date"""
     runez.system.AbortException = SystemExit
     level = logging.WARNING
     if ctx.invoked_subcommand == "package":
@@ -267,7 +267,7 @@ def main(ctx, debug, config, index, python, delivery, venv_packager):
         runez.log.trace(f"Setting ARCHFLAGS={archflags}")
         os.environ["ARCHFLAGS"] = archflags
 
-    CFG.set_cli(config, delivery, index, python, venv_packager)
+    CFG.set_cli(config, delivery, index, python, package_manager)
     if ctx.invoked_subcommand != "package":
         CFG.set_base(find_base())
 

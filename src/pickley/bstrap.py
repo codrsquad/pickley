@@ -277,7 +277,7 @@ def main(args=None):
     parser.add_argument("--cfg", "-c", help="Seed pickley config with given contents (file or serialized json)")
     parser.add_argument("--force", "-f", action="store_true", help="Force bootstrap (even if already done)")
     parser.add_argument("--mirror", "-m", help="Seed pypi mirror in pip.conf")
-    parser.add_argument("--venv-packager", help="Venv packager to use (default: `uv` latest version)")
+    parser.add_argument("--package-manager", help="Package manager to use (default: `uv` latest version)")
     parser.add_argument("version", nargs="?", help="Version to bootstrap (default: latest)")
     args = parser.parse_args(args=args)
 
@@ -313,19 +313,19 @@ def main(args=None):
         if v and len(v) < 24:  # If long output -> old pickley is busted (stacktrace)
             print(f"Replacing older {PICKLEY} v{v}")
 
-    venv_packager = args.venv_packager
-    if venv_packager is None:
+    package_manager = args.package_manager
+    if package_manager is None:
         if sys.version_info[:2] <= (3, 7):
-            venv_packager = "pip==21.3.1"
+            package_manager = "pip==21.3.1"
 
         elif bstrap.pickley_version <= "4.1":  # Temporary: continue using pip until next bump
-            venv_packager = "pip"
+            package_manager = "pip"
 
         else:
-            venv_packager = "uv"
+            package_manager = "uv"
 
     pickley_venv = bstrap.pk_path / f"{PICKLEY}-{bstrap.pickley_version}"
-    if venv_packager.startswith("pip"):
+    if package_manager.startswith("pip"):
         needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", pickley_venv, fatal=False)
         if not needs_virtualenv and not DRYRUN:  # pragma: no cover, tricky to test, virtualenv fallback is on its way out
             needs_virtualenv = not is_executable(pickley_venv / "bin/pip")
@@ -341,10 +341,10 @@ def main(args=None):
 
             run_program(sys.executable, zipapp, "-q", "-p", sys.executable, pickley_venv)
 
-        run_program(pickley_venv / "bin/pip", "-q", "install", "-U", venv_packager)
+        run_program(pickley_venv / "bin/pip", "-q", "install", "-U", package_manager)
         run_program(pickley_venv / "bin/pip", "-q", "install", f"{PICKLEY}=={bstrap.pickley_version}")
 
-    elif venv_packager == "uv":
+    elif package_manager == "uv":
         uv_path = bstrap.find_uv()
         run_program(uv_path, "-q", "venv", pickley_venv, env=uv_env(mirror=args.mirror, python=sys.executable))
 
@@ -352,7 +352,7 @@ def main(args=None):
         run_program(uv_path, "-q", "pip", "install", f"{PICKLEY}=={bstrap.pickley_version}", env=env)
 
     else:
-        abort(f"Unsupported venv packager '{venv_packager}', state `uv` or `pip`")
+        abort(f"Unsupported package manager '{package_manager}', state `uv` or `pip`")
 
     run_program(pickley_venv / f"bin/{PICKLEY}", "base", "bootstrap-own-wrapper")
 

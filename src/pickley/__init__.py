@@ -190,7 +190,7 @@ class PackageSpec:
             delivery=self.cfg.delivery_method(self),
             index=self.cfg.index(self) or self.cfg.default_index,
             python=self.python.executable,
-            venv_packager=self.cfg.venv_packager(self),
+            package_manager=self.cfg.package_manager(self),
         )
 
     @runez.cached_property
@@ -477,17 +477,17 @@ class PickleyConfig:
         defaults = {"delivery": "wrap", "install_timeout": 1800, "version_check_delay": 300}
         self.configs.append(RawConfig(self, "defaults", defaults))
 
-    def set_cli(self, config_path, delivery, index, python, venv_packager):
+    def set_cli(self, config_path, delivery, index, python, package_manager):
         """
         Args:
             config_path (str | None): Optional configuration to use
             delivery (str | None): Optional delivery method to use
             index (str | None): Optional pypi index to use
             python (str | None): Optional python interpreter to use
-            venv_packager (str | None): Optional venv packager to use (default: uv)
+            package_manager (str | None): Optional package manager to use
         """
         self.config_path = config_path
-        self.cli = TrackedSettings(delivery, index, python, venv_packager)
+        self.cli = TrackedSettings(delivery, index, python, package_manager)
 
     def _add_config_file(self, path, base=None):
         path = runez.resolved_path(path, base=base)
@@ -706,15 +706,15 @@ class PickleyConfig:
         """
         return self.get_value("version_check_delay", pspec=pspec, validator=runez.to_int)
 
-    def venv_packager(self, pspec):
+    def package_manager(self, pspec):
         """
         Args:
             pspec (PackageSpec | None): Package spec, when applicable
 
         Returns:
-            (str): Venv packager to use to create venvs
+            (str): Package manager to use to create venvs
         """
-        return self.get_value("venv_packager", pspec=pspec)
+        return self.get_value("package_manager", pspec=pspec)
 
     @staticmethod
     def colored_key(key, indent):
@@ -896,13 +896,13 @@ class TrackedSettings:
     delivery = None  # type: str # Delivery method name
     index = None  # type: str # Pypi url used
     python = None  # type: str # Desired python
-    venv_packager = None  # type: str # Desired venv packager
+    package_manager = None  # type: str # Desired package manager
 
-    def __init__(self, delivery, index, python, venv_packager):
+    def __init__(self, delivery, index, python, package_manager):
         self.delivery = delivery
         self.index = index
         self.python = runez.short(python) if python else None
-        self.venv_packager = venv_packager
+        self.package_manager = package_manager
 
     @classmethod
     def from_manifest_data(cls, data):
@@ -916,11 +916,11 @@ class TrackedSettings:
                 delivery=data.get("delivery"),
                 index=data.get("index"),
                 python=data.get("python"),
-                venv_packager=data.get("venv_packager"),
+                package_manager=data.get("package_manager"),
             )
 
     def to_dict(self):
-        return {"delivery": self.delivery, "index": self.index, "python": self.python, "venv_packager": self.venv_packager}
+        return {"delivery": self.delivery, "index": self.index, "python": self.python, "package_manager": self.package_manager}
 
 
 class FolderBase:

@@ -61,15 +61,15 @@ def test_bootstrap(cli, monkeypatch):
         assert "__PYVENV_LAUNCHER__" not in os.environ
         assert "Replacing older pickley v0.1" in cli.logged
 
-        cli.run("-n --venv-packager foo", main=bstrap.main)
+        cli.run("-n --package-manager foo", main=bstrap.main)
         assert cli.failed
-        assert "Unsupported venv packager 'foo'" in cli.logged
+        assert "Unsupported package manager 'foo'" in cli.logged
 
-        cli.run("-n --venv-packager uv", main=bstrap.main)
+        cli.run("-n --package-manager uv", main=bstrap.main)
         assert cli.succeeded
         assert "uv -q venv " in cli.logged
 
-        cli.run("-n --venv-packager pip", main=bstrap.main)
+        cli.run("-n --package-manager pip", main=bstrap.main)
         assert cli.succeeded
         assert "Replacing older pickley v0.1" in cli.logged
         assert " -mvenv --clear " in cli.logged
@@ -115,7 +115,7 @@ def test_bootstrap(cli, monkeypatch):
 
         with patch("pickley.bstrap.run_program", side_effect=mocked_run):
             # Verify fallback to virtualenv
-            cli.run("--venv-packager=pip 1.0", main=bstrap.main)
+            cli.run("--package-manager=pip 1.0", main=bstrap.main)
             assert cli.succeeded
             assert "-mvenv failed, falling back to virtualenv" in cli.logged
             assert "python .local/bin/.pk/.cache/virtualenv-" in cli.logged

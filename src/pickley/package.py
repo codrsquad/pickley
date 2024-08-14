@@ -22,8 +22,8 @@ class PythonVenv:
         self.pspec = pspec
         self.python = pspec.python or pspec.cfg.find_python(pspec)
         if use_pip is None:
-            vp = pspec.cfg.venv_packager(pspec)
-            use_pip = sys.version_info[:2] <= (3, 7) if vp is None else vp == "pip"
+            pm = pspec.cfg.package_manager(pspec)
+            use_pip = sys.version_info[:2] <= (3, 7) if pm is None else pm == "pip"
 
         self.use_pip = use_pip
 
