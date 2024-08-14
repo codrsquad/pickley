@@ -102,6 +102,15 @@ def test_bootstrap(cli, monkeypatch):
         assert list(runez.readlines(".config/uv/uv.toml")) == ["[pip]", "index-url = my-mirror"]
         assert list(runez.readlines(f".local/bin/{dot_meta('config.json')}")) == ["{", f"  {sample_config}", "}"]
 
+        # Ensure failing to seed uv/pip config files is not fatal
+        runez.delete(".config", logger=None)
+        runez.touch(".config/pip", logger=None)
+        runez.touch(".config/uv", logger=None)
+        cli.run("0.1", "-m", "my-mirror", main=bstrap.main)
+        assert cli.succeeded
+        assert "Seeding ~/.config/pip/pip.conf failed" in cli.logged
+        assert "Seeding ~/.config/uv/uv.toml failed" in cli.logged
+
         monkeypatch.setattr(bstrap, "DRYRUN", False)
 
         def mocked_run(program, *args, **__):

@@ -223,14 +223,18 @@ def run_program(program, *args, **kwargs):
 
 
 def seed_mirror(mirror, path, section):
-    config_path = os.path.expanduser(path)
-    if not os.path.exists(config_path):
-        ensure_folder(os.path.dirname(config_path))
-        msg = f"{short(config_path)} with {mirror}"
-        if not hdry(f"Would seed {msg}"):
-            print(f"Seeding {msg}")
-            with open(config_path, "wt") as fh:
-                fh.write(f"[{section}]\nindex-url = {mirror}\n")
+    try:
+        config_path = os.path.expanduser(path)
+        if not os.path.exists(config_path):
+            ensure_folder(os.path.dirname(config_path))
+            msg = f"{short(config_path)} with {mirror}"
+            if not hdry(f"Would seed {msg}"):
+                print(f"Seeding {msg}")
+                with open(config_path, "wt") as fh:
+                    fh.write(f"[{section}]\nindex-url = {mirror}\n")
+
+    except Exception as e:
+        print(f"Seeding {path} failed: {e}")
 
 
 def short(text):
