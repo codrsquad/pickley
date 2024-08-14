@@ -315,7 +315,14 @@ def main(args=None):
 
     venv_packager = args.venv_packager
     if venv_packager is None:
-        venv_packager = "pip==21.3.1" if sys.version_info[:2] <= (3, 7) else "uv"
+        if sys.version_info[:2] <= (3, 7):
+            venv_packager = "pip==21.3.1"
+
+        elif bstrap.pickley_version <= "4.1":  # Temporary: continue using pip until next bump
+            venv_packager = "pip"
+
+        else:
+            venv_packager = "uv"
 
     pickley_venv = bstrap.pk_path / f"{PICKLEY}-{bstrap.pickley_version}"
     if venv_packager.startswith("pip"):

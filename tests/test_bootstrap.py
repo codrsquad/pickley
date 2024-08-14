@@ -45,7 +45,13 @@ def test_bootstrap(cli, monkeypatch):
         if sys.version_info[:2] >= (3, 8):
             runez.write(".local/bin/uv", "#!/bin/sh\necho uv 0.0.1")  # Pretend we have uv already
             runez.make_executable(".local/bin/uv")
-            cli.run("-n", main=bstrap.main)
+            # Temporary: verify pip default for v4.1
+            cli.run("-n 4.1", main=bstrap.main)
+            assert cli.succeeded
+            assert "Would run: .local/bin/.pk/pickley-4.1/bin/pip -q install pickley==4.1" in cli.logged
+
+            # Temporary: verify uv default for v4.2+
+            cli.run("-n 4.2", main=bstrap.main)
             assert cli.succeeded
             assert "Would run: .local/bin/uv -q venv .local/bin/.pk/pickley-" in cli.logged
 
