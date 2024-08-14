@@ -247,11 +247,10 @@ def _add_uv_env(env, env_var, value):
         return f"{env_var}={short(value)}"
 
 
-def uv_env(mirror=None, python=None, venv=None, logger=None):
-    if python or mirror or venv:
+def uv_env(mirror=None, venv=None, logger=None):
+    if mirror or venv:
         env = dict(os.environ)
         logged = (
-            _add_uv_env(env, "UV_PYTHON", python),
             _add_uv_env(env, "UV_INDEX_URL", mirror),
             _add_uv_env(env, "VIRTUAL_ENV", venv),
         )
@@ -353,7 +352,7 @@ def main(args=None):
 
     elif package_manager == "uv":
         uv_path = bstrap.find_uv()
-        run_program(uv_path, "-q", "venv", pickley_venv, env=uv_env(mirror=args.mirror, python=sys.executable))
+        run_program(uv_path, "-q", "venv", "-p", sys.executable, pickley_venv, env=uv_env(mirror=args.mirror))
 
         env = uv_env(mirror=args.mirror, venv=pickley_venv)
         run_program(uv_path, "-q", "pip", "install", f"{PICKLEY}=={bstrap.pickley_version}", env=env)

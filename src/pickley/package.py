@@ -45,7 +45,7 @@ class PythonVenv:
             return
 
         uv_path = self.pspec.cfg.find_uv()
-        r = runez.run(uv_path, "-q", "venv", self.folder, env=uv_env(python=self.python.executable, logger=LOG.debug))
+        r = runez.run(uv_path, "-q", "venv", "-p", self.python.executable, self.folder)
         venv_python = self.folder / "bin/python"
         if venv_python.is_symlink():
             # `uv` fully expands symlinks, use the simplest location instead

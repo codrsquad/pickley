@@ -53,7 +53,7 @@ def test_bootstrap(cli, monkeypatch):
             # Temporary: verify uv default for v4.2+
             cli.run("-n 4.3", main=bstrap.main)
             assert cli.succeeded
-            assert "Would run: .local/bin/uv -q venv .local/bin/.pk/pickley-" in cli.logged
+            assert "Would run: .local/bin/uv -q venv -p " in cli.logged
 
         monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")  # macOS's oddity
         cli.run("-n", main=bstrap.main)
