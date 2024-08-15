@@ -1077,9 +1077,11 @@ def latest_pypi_version(package_name, index):
         url = f"{index.rstrip('/')}/{package_name}/"
         response = http_get(url)
         if response:
-            versions = sorted(i.version for i in _parsed_simple_html(response) if i.version.is_final)
-            if versions:
-                return versions[-1]
+            try:
+                return max(i.version for i in _parsed_simple_html(response) if i.version.is_final)
+
+            except ValueError:
+                return None
 
 
 def _parsed_simple_html(text):
