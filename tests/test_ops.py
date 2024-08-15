@@ -273,7 +273,12 @@ def check_is_wrapper(path, is_wrapper):
 
 def check_install_from_pypi(cli, delivery, package, version, simulate_version=None):
     runez.write(".pk/.cache/mgit.latest", f'{{"version": "{version}"}}')
-    cli.run(f"-v --package-manager=uv -d{delivery} install {package}")
+    cmd = "-v"
+    if sys.version_info[:2] >= (3, 7):
+        # `uv` fails with py3.6 on github actions (even though it usually works with py3.6), not worth investigating
+        cmd += " --package-manager=uv"
+
+    cli.run(f"{cmd} -d{delivery} install {package}")
     assert cli.succeeded
     assert cli.match(f"Installed {package} v{version}")
     assert runez.is_executable(package)
