@@ -53,7 +53,7 @@ class TemporaryBase(runez.TempFolder):
 cli.context = TemporaryBase
 
 
-@pytest.fixture()
+@pytest.fixture
 def temp_cfg():
     with TemporaryBase() as base:
         cfg = PickleyConfig()
