@@ -143,15 +143,11 @@ class PythonVenv:
         runez.abort_if(not location or not version, f"Failed to parse `pip show` output for '{package_name}': {r.full_output}")
         wheel_name = PypiStd.std_wheel_basename(package_name)
         folder = os.path.join(location, f"{wheel_name}-{version}.dist-info")
-        data = runez.file.ini_to_dict(os.path.join(folder, "entry_points.txt"))
-        if data and "console_scripts" in data:
-            data = data["console_scripts"]
-            if isinstance(data, dict):
-                return sorted(data)  # Package has a standard entry_points.txt file
-
-        if "tox" in data:  # pragma: no cover
-            # Special case for `tox` plugins (is there a better way to detect this?)
-            return ("tox",)
+        declared_entry_points = runez.file.ini_to_dict(os.path.join(folder, "entry_points.txt"))
+        if declared_entry_points and "console_scripts" in declared_entry_points:
+            console_scripts = declared_entry_points["console_scripts"]
+            if console_scripts and isinstance(console_scripts, dict):
+                return sorted(console_scripts)  # Package has a standard entry_points.txt file
 
         # No standard entry_points.txt, let's try to find executables in bin/
         # For example: `awscli` does this (no proper entry points, has bin-scripts only)
@@ -163,6 +159,10 @@ class PythonVenv:
                 dirname = os.path.dirname(path)
                 if os.path.basename(dirname) == "bin":
                     entry_points.append(os.path.basename(path))
+
+        if not entry_points and "tox" in declared_entry_points:
+            # Special case for `tox` plugins (is there a better way to detect this?)
+            entry_points.append("tox")
 
         return entry_points
 

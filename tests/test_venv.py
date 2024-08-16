@@ -28,8 +28,10 @@ def simulate_venv(path):
 def test_entry_points(cli):
     simulate_venv("ansible-1.0")
     simulate_venv("ansible-9.0")
+    simulate_venv("tox-uv-9.0")
     runez.write("ansible_base-1.0.dist-info/RECORD", "../../bin/ansible-b")
     runez.write("ansible_core-9.0.dist-info/RECORD", "../../bin/ansible-c")
+    runez.write("tox_uv-9.0.dist-info/entry_points.txt", "[tox]\ntox-uv = tox_uv.plugin")
     with patch("runez.run", side_effect=simulated_run):
         cli.run("-n install ansible==1.0")
         assert cli.succeeded
@@ -40,6 +42,10 @@ def test_entry_points(cli):
         assert cli.succeeded
         assert "Would wrap ansible-c -> .pk/ansible-9.0/bin/ansible-c" in cli.logged
         assert "Installed ansible v9.0" in cli.logged
+
+        cli.run("-n install tox-uv==9.0")
+        assert cli.succeeded
+        assert "Would wrap tox -> .pk/tox-uv-9.0/bin/tox" in cli.logged
 
 
 def test_pip_fail(temp_cfg, logged):
