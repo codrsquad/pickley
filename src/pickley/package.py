@@ -149,6 +149,10 @@ class PythonVenv:
             if isinstance(data, dict):
                 return sorted(data)  # Package has a standard entry_points.txt file
 
+        if "tox" in data:  # pragma: no cover
+            # Special case for `tox` plugins (is there a better way to detect this?)
+            return ("tox",)
+
         # No standard entry_points.txt, let's try to find executables in bin/
         # For example: `awscli` does this (no proper entry points, has bin-scripts only)
         records = os.path.join(folder, "RECORD")
@@ -222,8 +226,9 @@ class VenvPackager(Packager):
             pspec.delete_all_files()
             abort(f"Can't install '{runez.bold(pspec.dashed)}', it is {runez.red('not a CLI')}")
 
-        entry_points = [n for n in venv.entry_points() if "_completer" not in n]
-        return delivery.install(venv, entry_points)
+        actual_entry_points = [n for n in entry_points if "_completer" not in n]
+        runez.abort_if(not actual_entry_points, f"No entry points found for '{pspec.dashed}'")
+        return delivery.install(venv, actual_entry_points)
 
     @staticmethod
     def package(pspec, build_folder, dist_folder, requirements, run_compile_all):
