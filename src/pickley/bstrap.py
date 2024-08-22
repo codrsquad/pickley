@@ -40,8 +40,7 @@ class Bootstrap:
 
     def seed_pickley_config(self, desired_cfg):
         pickley_config = self.pk_path / "config.json"
-        cfg = read_optional_json(pickley_config)
-        if cfg != desired_cfg:
+        if not pickley_config.exists():
             msg = f"{short(pickley_config)} with {desired_cfg}"
             if not hdry(f"Would seed {msg}"):
                 print(f"Seeding {msg}")
@@ -184,15 +183,6 @@ def is_executable(path):
 
 def is_writable(path):
     return path and os.access(path, os.W_OK)
-
-
-def read_optional_json(path):
-    try:
-        with open(path) as fh:
-            return json.load(fh)
-
-    except Exception:  # pragma: no cover
-        return None
 
 
 def run_program(program, *args, **kwargs):

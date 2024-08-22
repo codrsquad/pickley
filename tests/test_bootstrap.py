@@ -91,7 +91,6 @@ def test_bootstrap(cli, monkeypatch):
         # Simulate seeding
         sample_config = '"python-installations": "~/.pyenv/version/**"'
         monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
-        runez.write(".local/bin/.pk/config.json", "{}")
         cli.run("0.1", "-m", "my-mirror", "-c", f"{{{sample_config}}}", main=bstrap.main)
         assert "base: .local/bin" in cli.logged
         assert f"Seeding .local/bin/{dot_meta('config.json')} with " in cli.logged
