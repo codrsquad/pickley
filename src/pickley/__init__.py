@@ -285,9 +285,15 @@ class PackageSpec:
                     if not runez.is_executable(exe_path):
                         return False
 
-            py_path = os.path.join(self.venv_path(manifest.version), "bin/python")
-            if runez.is_executable(py_path):
-                return runez.run(py_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
+            if self.dashed == "uv":
+                # uv does not need a typical venv with bin/python
+                exe_path = os.path.join(self.venv_path(manifest.version), "bin/uv")
+
+            else:
+                exe_path = os.path.join(self.venv_path(manifest.version), "bin/python")
+
+            if runez.is_executable(exe_path):
+                return runez.run(exe_path, "--version", dryrun=False, fatal=False, logger=False).succeeded
 
     def pip_spec(self):
         if self.folder:

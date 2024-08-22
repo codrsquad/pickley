@@ -37,13 +37,6 @@ class PythonVenv:
         return self.create_venv_with_uv()
 
     def create_venv_with_uv(self):
-        if self.pspec.dashed == "uv":
-            # Special case for uv, this allows to install `uv` even for python versions prior to 3.8
-            from pickley.bstrap import download_uv
-
-            download_uv(self.pspec.cfg.cache.path, self.folder, version=self.pspec.desired_track.version, dryrun=runez.DRYRUN)
-            return
-
         uv_path = self.pspec.cfg.find_uv()
         r = runez.run(uv_path, "-q", "venv", "-p", self.python.executable, self.folder)
         venv_python = self.folder / "bin/python"
@@ -113,11 +106,11 @@ class PythonVenv:
     def entry_points(self) -> Sequence[str]:
         """Entry-points for `self.pspec` package in its virtual environment"""
         package_name = self.pspec.dashed
-        if runez.DRYRUN and not runez.is_executable(self.folder / "bin/python"):
-            return (package_name,)  # Pretend an entry point exists in dryrun mode
+        if package_name == "uv":
+            return "uv", "uvx"
 
-        if package_name in (PICKLEY, "uv"):
-            return (package_name,)  # When pickley is installed with -e (--editable), metadata is not "standard"
+        if package_name == PICKLEY or (runez.DRYRUN and not runez.is_executable(self.folder / "bin/python")):
+            return (package_name,)
 
         # Use `uv pip show` to get location on disk and version of package
         package_name = self.actual_package_name(package_name)
@@ -210,14 +203,20 @@ class VenvPackager(Packager):
     def install(pspec, ping=True, no_binary=None):
         delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
         delivery.ping = ping
-        args = []
-        if no_binary:
-            args.append("--no-binary")
-            args.append(no_binary)
-
         venv = PythonVenv(pspec.venv_path(pspec.desired_track.version), pspec)
-        venv.create_venv()
-        if pspec.dashed != "uv":
+        if pspec.dashed == "uv":
+            # Special case for uv: it does not need a venv
+            from pickley.bstrap import download_uv
+
+            download_uv(pspec.cfg.cache.path, venv.folder, version=pspec.desired_track.version, dryrun=runez.DRYRUN)
+
+        else:
+            args = []
+            if no_binary:
+                args.append("--no-binary")
+                args.append(no_binary)
+
+            venv.create_venv()
             args.extend(pspec.pip_spec())
             venv.pip_install(*args)
 

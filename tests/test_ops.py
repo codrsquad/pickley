@@ -109,6 +109,11 @@ def test_dryrun(cli):
         assert cli.succeeded
         assert "Would state: Installed pickley" in cli.logged
 
+    cli.run("-n install uv==0.3.1")
+    assert cli.succeeded
+    assert "Would wrap uv -> .pk/uv-0.3.1/bin/uv" in cli.logged
+    assert "Would wrap uvx -> .pk/uv-0.3.1/bin/uvx" in cli.logged
+
     cli.run("-n install https://github.com/codrsquad/portable-python.git")
     assert cli.succeeded
     assert "git clone https://github.com/codrsquad/portable-python.git" in cli.logged
@@ -271,8 +276,10 @@ def check_is_wrapper(path, is_wrapper):
     assert r.succeeded
 
 
-def check_install_from_pypi(cli, delivery, package, version, simulate_version=None):
-    runez.write(".pk/.cache/mgit.latest", f'{{"version": "{version}"}}')
+def check_install_from_pypi(cli, delivery, package, version=None, simulate_version=None):
+    if version:
+        runez.write(f".pk/.cache/{package}.latest", f'{{"version": "{version}"}}', logger=None)
+
     cmd = "-v"
     if sys.version_info[:2] >= (3, 7):
         # `uv` fails with py3.6 on github actions (even though it usually works with py3.6), not worth investigating
@@ -280,7 +287,11 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
 
     cli.run(f"{cmd} -d{delivery} install {package}")
     assert cli.succeeded
-    assert cli.match(f"Installed {package} v{version}")
+    expected = f"Installed {package} v"
+    if version:
+        expected += version
+
+    assert cli.match(expected)
     assert runez.is_executable(package)
     m = TrackedManifest.from_file(dot_meta(f"{package}.manifest.json"))
     assert str(m)
@@ -290,14 +301,20 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
     assert m.install_info.vpickley == __version__
     assert m.settings.delivery == delivery
     assert m.settings.python
-    assert m.version == version
+    if version:
+        assert m.version == version
 
     r = runez.run(f"./{package}", "--version")
     assert r.succeeded
-    assert version in r.full_output
+    if version:
+        assert version in r.full_output
 
-    cli.expect_success(f"--debug auto-upgrade {package}", "Skipping auto-upgrade, checked recently")
-    cli.expect_success(f"install {package}", "is already installed")
+    cli.run(f"--debug auto-upgrade {package}")
+    assert cli.succeeded
+    assert "Skipping auto-upgrade, checked recently" in cli.logged
+    cli.run(f"install {package}")
+    assert cli.succeeded
+    assert "is already installed" in cli.logged
     if simulate_version:
         # Edge case: simulated user manually deletes the installed wrapper or symlink
         assert os.path.exists(package)
@@ -318,6 +335,8 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
 
 
 def test_install_pypi(cli):
+    check_install_from_pypi(cli, "symlink", "uv")
+
     runez.touch(dot_meta("mgit-0.0.1/pyenv.cfg"))
     time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
     runez.touch(dot_meta("mgit-0.0.2/pyenv.cfg"))
@@ -327,7 +346,7 @@ def test_install_pypi(cli):
     runez.save_json({"entrypoints": ["mgit", "old-mgit-entrypoint"]}, manifest_path)
     runez.touch("old-mgit-entrypoint")
 
-    check_install_from_pypi(cli, "symlink", "mgit", "1.3.0")
+    check_install_from_pypi(cli, "symlink", "mgit", version="1.3.0")
     assert not os.path.exists("old-mgit-entrypoint")
     assert os.path.islink("mgit")
     assert os.path.exists(dot_meta("mgit.manifest.json"))
@@ -353,13 +372,13 @@ def test_install_pypi(cli):
     assert not os.path.exists(dot_meta("mgit-1.3.0"))
     assert os.path.exists(dot_meta("audit.log"))
 
-    check_install_from_pypi(cli, "wrap", "mgit", "1.3.0", simulate_version="0.0.0")
+    check_install_from_pypi(cli, "wrap", "mgit", version="1.3.0", simulate_version="0.0.0")
     check_is_wrapper("./mgit", True)
 
     runez.delete(dot_meta("mgit-1.3.0"))
     cli.run("-n auto-heal")
     assert cli.succeeded
-    assert "Auto-healed 1 / 1 packages" in cli.logged
+    assert "Auto-healed 1 / 2 packages" in cli.logged
 
 
 def test_invalid(cli):
