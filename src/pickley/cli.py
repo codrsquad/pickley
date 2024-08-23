@@ -13,7 +13,8 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, despecced, DOT_META, inform, PackageSpec, PICKLEY, PickleyConfig, specced
+from pickley import __version__, abort, despecced, inform, PackageSpec, PickleyConfig, specced
+from pickley.bstrap import DOT_META, PICKLEY
 from pickley.package import PythonVenv, VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -95,9 +96,6 @@ class SoftLock:
 
     def __enter__(self):
         """Acquire lock"""
-        if CFG.base:
-            runez.Anchored.add(CFG.base.path)
-
         cutoff = time.time() + self.give_up
         holder_args = self._locked_by()
         while holder_args:
@@ -126,9 +124,6 @@ class SoftLock:
 
         else:
             runez.log.trace(f"Released {runez.short(self.lock_path)}")
-
-        if CFG.base:
-            runez.Anchored.pop(CFG.base.path)
 
         runez.delete(self.lock_path, logger=False)
 
@@ -234,7 +229,7 @@ def find_symbolic_invoker() -> str:
             if path.exists():
                 return path
 
-    return invoker.executable
+    return invoker.executable  # pragma: no cover
 
 
 @runez.click.group()
@@ -247,9 +242,9 @@ def find_symbolic_invoker() -> str:
 @click.option("--index", "-i", metavar="PATH", help="Pypi index to use")
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", help="Delivery method to use")
-@click.option("--virtualenv", help="Version of virtualenv to use (instead of built-in 'venv' module)")
-def main(ctx, debug, config, index, python, delivery, virtualenv):
-    """Package manager for python CLIs"""
+@click.option("--package-manager", type=click.Choice(("uv", "pip")), help="What to use to create venvs? (default: uv)")
+def main(ctx, debug, config, index, python, delivery, package_manager):
+    """Install python CLIs that keeps themselves up-to-date"""
     runez.system.AbortException = SystemExit
     level = logging.WARNING
     if ctx.invoked_subcommand == "package":
@@ -272,9 +267,11 @@ def main(ctx, debug, config, index, python, delivery, virtualenv):
         runez.log.trace(f"Setting ARCHFLAGS={archflags}")
         os.environ["ARCHFLAGS"] = archflags
 
-    CFG.set_cli(config, delivery, index, python, virtualenv)
+    CFG.set_cli(config, delivery, index, python, package_manager)
     if ctx.invoked_subcommand != "package":
         CFG.set_base(find_base())
+
+    runez.Anchored.add(CFG.base.path)
 
 
 @main.command()
@@ -327,18 +324,35 @@ def base(what):
     path = CFG.base.path
     if what == "bootstrap-own-wrapper":
         # Internal: called by bootstrap script
-        from pickley.delivery import DeliveryMethodWrap
+        from pickley.delivery import DeliveryMethod
 
         pspec = PackageSpec(CFG, f"{PICKLEY}=={__version__}")
-        venv = PythonVenv(pspec.venv_path(__version__), pspec, create=False)
-        wrap = DeliveryMethodWrap()
-        wrap.install(venv, {PICKLEY: PICKLEY})
+        venv = PythonVenv(pspec.venv_path(__version__), pspec)
+        delivery = DeliveryMethod.delivery_method_by_name(pspec.settings.delivery)
+        delivery.install(venv, (PICKLEY,))
+
+        tmp_uv = runez.to_path(CFG.meta.full_path(".uv"))
+        uv_spec = PackageSpec(CFG, "uv")
+        if not uv_spec.is_healthily_installed:
+            if runez.is_executable(tmp_uv / "bin/uv"):
+                # Use the .uv/bin/uv obtained during bootstrap
+                uv_version = uv_spec.desired_track.version
+                dest = uv_spec.venv_path(uv_version)
+                runez.move(tmp_uv, dest)
+                delivery = DeliveryMethod.delivery_method_by_name(uv_spec.settings.delivery)
+                uv_venv = PythonVenv(uv_spec.venv_path(uv_version), uv_spec)
+                delivery.install(uv_venv, ("uv",))
+
+            else:
+                perform_install(uv_spec, is_upgrade=False, quiet=False)
+
+        runez.delete(tmp_uv)
 
         # TODO: Remove once pickley 3.4 is phased out
         old_meta = CFG.base.full_path(".pickley")
         if os.path.isdir(old_meta):
             runez.delete(old_meta)
-            runez.run(os.path.join(venv.folder, "bin", PICKLEY), "auto-heal")
+            runez.run(venv.folder / f"bin/{PICKLEY}", "auto-heal")
 
         return
 

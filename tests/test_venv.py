@@ -1,89 +1,65 @@
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 import runez
 
-from pickley import PackageSpec, RawConfig
-from pickley.package import PackageContents, PythonVenv
-
-PIP_SHOW_OUTPUT = """
-Name: ansible
-Version: 1.0.0
-Location: .
-Files:
-  ../bin/ansible
-  ../bin/ansible_completer
-  ansible.dist-info/metadata.json
-  foo/__pycache__/bar.py
-  foo/bar.py
-  foo/bar.pyc
-"""
-
-
-def test_edge_cases(temp_cfg):
-    temp_cfg.configs.append(RawConfig(None, "test", {"pinned": {"virtualenv": {"version": "20.13.0"}}}))
-    pspec = PackageSpec(temp_cfg, "mgit==1.3.0")
-
-    with runez.CaptureOutput(dryrun=True) as logged:
-        # Verify that we fall back to virtualenv if stdlib venv fails
-        with patch("runez.run", side_effect=simulated_run):
-            PythonVenv("venv", pspec, create=True)
-            assert f"virtualenv-{temp_cfg.available_pythons.invoker.mm}.pyz -q -p " in logged
+from pickley import PackageSpec
+from pickley.bstrap import DOT_META
+from pickley.package import PythonVenv
 
 
 def simulated_run(*args, **_):
-    if "ansible-core" in args:
-        return runez.program.RunResult(PIP_SHOW_OUTPUT, code=0)
+    if "show" in args:
+        v = "1.0" if "ansible-base" in args else "9.0"
+        return runez.program.RunResult(f"Version: {v}\nLocation: .", code=0)
 
-    if "no-location" in args:
-        return runez.program.RunResult("Files:\n  no-location.dist-info/metadata.json", code=0)
-
-    return runez.program.RunResult("", code=1)
+    return runez.program.RunResult("", code=0)
 
 
-def test_entry_points(temp_cfg):
-    with runez.CaptureOutput(dryrun=True):
-        pspec = PackageSpec(temp_cfg, "mgit")
-        contents = PackageContents(PythonVenv("", pspec, create=False))
-        assert str(contents) == "mgit [None]"
-        assert str(contents.bin) == "bin [1 files]"
-        assert contents.entry_points == {"mgit": "dryrun"}
+def simulate_venv(path):
+    py = Path(DOT_META) / path / "bin/python"
+    runez.write(py, "echo ok")
+    runez.make_executable(py)
 
-    runez.write("ansible.dist-info/metadata.json", '{"extensions": {"python.commands": {"wrap_console": ["ansible"]}}}')
+
+@pytest.mark.skipif(sys.version_info[:2] <= (3, 7), reason="to keep test case simple (uv only)")
+def test_entry_points(cli):
+    simulate_venv("ansible-1.0")
+    simulate_venv("ansible-9.0")
+    simulate_venv("tox-uv-9.0")
+    runez.write("ansible_base-1.0.dist-info/RECORD", "../../bin/ansible-b")
+    runez.write("ansible_core-9.0.dist-info/RECORD", "../../bin/ansible-c")
+    runez.write("tox_uv-9.0.dist-info/entry_points.txt", "[tox]\ntox-uv = tox_uv.plugin")
     with patch("runez.run", side_effect=simulated_run):
-        pspec = PackageSpec(temp_cfg, "ansible==5.0")  # Used to trigger ansible edge case
-        contents = PackageContents(PythonVenv("", pspec, create=False))
-        assert str(contents) == "ansible==5.0 [.]"
-        assert str(contents.bin) == "bin [0 files]"
-        assert str(contents.completers) == "bin [1 files]"
-        assert str(contents.dist_info) == "ansible.dist-info [1 files]"
-        assert contents.entry_points == ["ansible"]
-        assert str(contents.files) == " [1 files]"
-        assert contents.files.files.get("foo/bar.py")
-        assert contents.info == {"Name": "ansible", "Version": "1.0.0", "Location": "."}
-        assert contents.location == "."
+        cli.run("-n install ansible==1.0")
+        assert cli.succeeded
+        assert "Would wrap ansible-b -> .pk/ansible-1.0/bin/ansible-b" in cli.logged
+        assert "Installed ansible v1.0" in cli.logged
 
-        contents = PackageContents(PythonVenv("", PackageSpec(temp_cfg, "no-location"), create=False))
-        assert contents.files is None
-        assert contents.entry_points is None
+        cli.run("-n install ansible==9.0")
+        assert cli.succeeded
+        assert "Would wrap ansible-c -> .pk/ansible-9.0/bin/ansible-c" in cli.logged
+        assert "Installed ansible v9.0" in cli.logged
 
-        contents = PackageContents(PythonVenv("", PackageSpec(temp_cfg, "no-such-package"), create=False))
-        assert contents.files is None
-        assert contents.entry_points is None
+        cli.run("-n install tox-uv==9.0")
+        assert cli.succeeded
+        assert "Would wrap tox -> .pk/tox-uv-9.0/bin/tox" in cli.logged
 
 
 def test_pip_fail(temp_cfg, logged):
     pspec = PackageSpec(temp_cfg, "bogus")
-    venv = PythonVenv("", pspec, create=False)
-    assert str(venv) == ""
-    with patch("pickley.package.PythonVenv.run_pip", return_value=runez.program.RunResult("", "some\nerror", code=1)):
+    venv = PythonVenv(".", pspec, use_pip=True)
+    assert str(venv) == "."
+    with patch("pickley.package.PythonVenv.run_python", return_value=runez.program.RunResult("", "some\nerror", code=1)):
         with pytest.raises(SystemExit):
             venv.pip_install("foo")
 
         assert logged.stdout.pop() == "some\nerror"
 
     r = runez.program.RunResult("", "foo\nNo matching distribution for ...\nYou should consider upgrading pip", code=1)
-    with patch("pickley.package.PythonVenv.run_pip", return_value=r):
+    with patch("pickley.package.PythonVenv.run_python", return_value=r):
         with pytest.raises(SystemExit):
             venv.pip_install("foo")
 

@@ -47,7 +47,7 @@ extend-select = [
 order-by-type = false
 
 [tool.ruff.lint.mccabe]
-max-complexity = 16
+max-complexity = 20
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

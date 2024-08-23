@@ -87,7 +87,7 @@ class DeliveryMethod:
         """
         Args:
             venv (pickley.package.PythonVenv): Virtual env where executables reside (DOT_META/<package>/...)
-            entry_points (dict | list): Full path of executable to deliver (<base>/<entry_point>)
+            entry_points (dict | list | tuple): Full path of executable to deliver (<base>/<entry_point>)
         """
         if not venv.pspec.is_clear_for_installation():
             abort(f"{runez.short(venv.pspec.exe_path(venv.pspec.dashed))} exists and was not installed by pickley")

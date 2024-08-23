@@ -38,7 +38,7 @@ class SimulatedInstallation:
         self.pspec = PackageSpec(cfg, f"{name}=={version}")
         self.pspec.save_manifest(self.entry_points)
         folder = self.cfg.meta.full_path(f"{name}-{version}")
-        self.venv = PythonVenv(folder, self.pspec, create=False)
+        self.venv = PythonVenv(folder, self.pspec)
         venv_exe = os.path.join(folder, "bin", name)
         runez.write(venv_exe, f"#!/bin/bash\n\necho {version}\n")
         runez.symlink(folder, self.pspec.venv_path(version))

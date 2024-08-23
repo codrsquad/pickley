@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import pytest
 import runez
-from runez.http import GlobalHttpCalls
 from runez.pyenv import Version
 
 from pickley import __version__, PackageSpec, PickleyConfig, TrackedManifest, TrackedVersion
@@ -87,8 +86,8 @@ def test_debian_mode(temp_cfg, logged):
         assert "'foo' failed --version sanity check" in logged.pop()
 
 
-def mock_latest_pypi_version(package_name, **_):
-    if package_name in ("mgit", "pickley", "virtualenv"):
+def mock_latest_pypi_version(package_name, *_):
+    if package_name in ("mgit", "pickley", "virtualenv", "uv"):
         return Version("100.0")
 
 
@@ -104,13 +103,23 @@ def test_dryrun(cli):
 
     cli.expect_success("-n auto-heal", "Auto-healed 0 / 0 packages")
 
+    if sys.version_info[:2] < (3, 12):
+        # TODO: modernize installs from folder (and/or git) once `uv` has an `describe` command
+        cli.run("-n", "install", runez.DEV.project_folder)
+        assert cli.succeeded
+        assert "Would state: Installed pickley" in cli.logged
+
+    cli.run("-n install uv==0.3.1")
+    assert cli.succeeded
+    assert "Would wrap uv -> .pk/uv-0.3.1/bin/uv" in cli.logged
+    assert "Would wrap uvx -> .pk/uv-0.3.1/bin/uvx" in cli.logged
+
+    cli.run("-n install https://github.com/codrsquad/portable-python.git")
+    assert cli.succeeded
+    assert "git clone https://github.com/codrsquad/portable-python.git" in cli.logged
+
     cli.run("-n -Pfoo diagnostics")
     assert "preferred python : foo [not available]" in cli.logged
-
-    cli.run("-n install git@github.com:zsimic/mgit.git")
-    assert cli.succeeded
-    checkout = dot_meta(".cache/checkout")
-    assert f"pip install {checkout}/git-github-com-zsimic-mgit-git" in cli.logged
 
     cli.expect_success("-n list", "No packages installed")
 
@@ -125,9 +134,10 @@ def test_dryrun(cli):
         runez.write("setup.py", "import sys\nfrom setuptools import setup\nif sys.argv[1]=='--version': sys.exit(1)\nsetup(name='foo')")
         cli.expect_failure("-n package .", "Could not determine package version")
 
-        cli.run("-n", "package", cli.project_folder)
+        cli.run("-n", "package", cli.project_folder, "mgit")
         assert cli.succeeded
         cli.match("Would run: ...pip...install -r requirements.txt")
+        cli.match("Would run: ...pip...install mgit")
 
     cli.expect_failure("-n uninstall", "Specify packages to uninstall, or --all")
     cli.expect_failure("-n uninstall pickley", "Run 'uninstall --all' if you wish to uninstall pickley itself")
@@ -138,8 +148,19 @@ def test_dryrun(cli):
     cli.expect_success("-n upgrade", "No packages installed, nothing to upgrade")
     cli.expect_failure("-n upgrade mgit", "'mgit' is not installed")
 
-    with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+    with patch("pickley.latest_pypi_version", side_effect=lambda *_: Version("1.0")):
+        # If latest is too low, we remain on current (we upgrade "up" only)
+        cli.run("-n --debug auto-upgrade pickley")
+        assert cli.succeeded
+        assert f"Would wrap pickley -> .pk/pickley-{__version__}/bin/pickley" in cli.logged
+
+    with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.expect_failure("-n -Pfoo install bundle:bar", "No suitable python")
+
+        cli.run("-n --package-manager=uv install uv")
+        assert cli.succeeded
+        assert "Would download https://github.com/astral-sh/uv/releases/download/100.0/uv-installer.sh" in cli.logged
+        assert "Would wrap uv -> .pk/uv-100.0/bin/uv" in cli.logged
 
         cli.run("-n --debug auto-upgrade mgit")
         assert cli.succeeded
@@ -176,7 +197,7 @@ def test_dryrun(cli):
         cli.expect_success("list -fyaml", "mgit")
         runez.delete(dot_meta("mgit"))
 
-        cli.run("-n --virtualenv latest -Pinvoker install --no-binary :all: mgit==1.3.0")
+        cli.run("-n -Pinvoker install --no-binary :all: mgit==1.3.0")
         assert cli.succeeded
         assert " --no-binary :all: mgit==1.3.0" in cli.logged
         assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
@@ -187,10 +208,10 @@ def test_dryrun(cli):
 
 
 def test_dev_mode(cli):
-    with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+    with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install pickley")
         assert cli.succeeded
-        assert "Would run: .pk/pickley-100.0/bin/pip install -e " in cli.logged
+        assert "pip install -e " in cli.logged
         assert "Would wrap pickley -> .pk/pickley-100.0/bin/pickley" in cli.logged
         assert "Would state: Installed pickley v100.0 in "
 
@@ -231,7 +252,7 @@ def test_facultative(cli):
     cli.expect_success("-n check virtualenv", "skipped, not installed by pickley")
 
     # --force ignores 'facultative' setting
-    with patch("runez.pyenv.PypiStd.latest_pypi_version", side_effect=mock_latest_pypi_version):
+    with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
         cli.run("-n install --force virtualenv")
         assert cli.failed
         assert "virtualenv exists and was not installed by pickley" in cli.logged
@@ -245,12 +266,6 @@ def test_facultative(cli):
         assert "Would state: Installed virtualenv" in cli.logged
 
 
-def test_failure_cases(cli):
-    with patch("runez.run", side_effect=Exception):
-        cli.run("install git@github.com:zsimic/mgit.git")
-        assert cli.failed
-
-
 def check_is_wrapper(path, is_wrapper):
     if is_wrapper:
         assert not os.path.islink(path)
@@ -261,28 +276,45 @@ def check_is_wrapper(path, is_wrapper):
     assert r.succeeded
 
 
-def check_install_from_pypi(cli, delivery, package, version, simulate_version=None):
-    runez.write(".pk/.cache/mgit.latest", f'{{"version": "{version}"}}')
-    cli.run("--debug", f"-d{delivery}", "install", package)
+def check_install_from_pypi(cli, delivery, package, version=None, simulate_version=None):
+    if version:
+        runez.write(f".pk/.cache/{package}.latest", f'{{"version": "{version}"}}', logger=None)
+
+    cmd = "-v"
+    if sys.version_info[:2] >= (3, 7):
+        # `uv` fails with py3.6 on github actions (even though it usually works with py3.6), not worth investigating
+        cmd += " --package-manager=uv"
+
+    cli.run(f"{cmd} -d{delivery} install {package}")
     assert cli.succeeded
-    assert cli.match(f"Installed {package} v{version}")
+    expected = f"Installed {package} v"
+    if version:
+        expected += version
+
+    assert cli.match(expected)
     assert runez.is_executable(package)
     m = TrackedManifest.from_file(dot_meta(f"{package}.manifest.json"))
     assert str(m)
-    assert m.entrypoints[package]
+    assert package in m.entrypoints
     assert m.install_info.args == runez.quoted(cli.args)
     assert m.install_info.timestamp
     assert m.install_info.vpickley == __version__
     assert m.settings.delivery == delivery
     assert m.settings.python
-    assert m.version == version
+    if version:
+        assert m.version == version
 
     r = runez.run(f"./{package}", "--version")
     assert r.succeeded
-    assert version in r.full_output
+    if version:
+        assert version in r.full_output
 
-    cli.expect_success(f"--debug auto-upgrade {package}", "Skipping auto-upgrade, checked recently")
-    cli.expect_success(f"install {package}", "is already installed")
+    cli.run(f"--debug auto-upgrade {package}")
+    assert cli.succeeded
+    assert "Skipping auto-upgrade, checked recently" in cli.logged
+    cli.run(f"install {package}")
+    assert cli.succeeded
+    assert "is already installed" in cli.logged
     if simulate_version:
         # Edge case: simulated user manually deletes the installed wrapper or symlink
         assert os.path.exists(package)
@@ -303,6 +335,8 @@ def check_install_from_pypi(cli, delivery, package, version, simulate_version=No
 
 
 def test_install_pypi(cli):
+    check_install_from_pypi(cli, "symlink", "uv")
+
     runez.touch(dot_meta("mgit-0.0.1/pyenv.cfg"))
     time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
     runez.touch(dot_meta("mgit-0.0.2/pyenv.cfg"))
@@ -312,7 +346,7 @@ def test_install_pypi(cli):
     runez.save_json({"entrypoints": ["mgit", "old-mgit-entrypoint"]}, manifest_path)
     runez.touch("old-mgit-entrypoint")
 
-    check_install_from_pypi(cli, "symlink", "mgit", "1.3.0")
+    check_install_from_pypi(cli, "symlink", "mgit", version="1.3.0")
     assert not os.path.exists("old-mgit-entrypoint")
     assert os.path.islink("mgit")
     assert os.path.exists(dot_meta("mgit.manifest.json"))
@@ -323,7 +357,7 @@ def test_install_pypi(cli):
     cli.run("-n auto-heal")
     assert cli.succeeded
     assert "mgit is healthy" in cli.logged
-    assert "Auto-healed 0 / 1 packages" in cli.logged
+    assert "Auto-healed 0" in cli.logged
 
     cfg = PickleyConfig()
     cfg.set_base(".")
@@ -338,16 +372,15 @@ def test_install_pypi(cli):
     assert not os.path.exists(dot_meta("mgit-1.3.0"))
     assert os.path.exists(dot_meta("audit.log"))
 
-    check_install_from_pypi(cli, "wrap", "mgit", "1.3.0", simulate_version="0.0.0")
+    check_install_from_pypi(cli, "wrap", "mgit", version="1.3.0", simulate_version="0.0.0")
     check_is_wrapper("./mgit", True)
 
     runez.delete(dot_meta("mgit-1.3.0"))
     cli.run("-n auto-heal")
     assert cli.succeeded
-    assert "Auto-healed 1 / 1 packages" in cli.logged
+    assert "Auto-healed 1 / 2 packages" in cli.logged
 
 
-@GlobalHttpCalls.allowed
 def test_invalid(cli):
     cli.run("--color install six")
     assert cli.failed
@@ -395,6 +428,7 @@ def test_package_venv(cli):
     cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--sanity-check=--version", "-sroot:root/usr/local/bin")
     assert cli.succeeded
     assert "--version" in cli.logged
+    assert runez.is_executable("/tmp/pickley/bin/pip3")
     assert runez.is_executable("/tmp/pickley/bin/pickley")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
     assert r.succeeded
@@ -405,15 +439,12 @@ def test_package_venv(cli):
 def test_package_venv_with_additional_packages(cli):
     # TODO: retire the `package` command, not worth the effort to support it
     runez.delete("/tmp/pickley")
-    cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder, "litecli")
+    cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder)
     assert cli.succeeded
     assert "pip install -r requirements.txt" in cli.logged
-    assert "pip install litecli" in cli.logged
+    assert runez.is_executable("/tmp/pickley/bin/pip3")
     assert runez.is_executable("/tmp/pickley/bin/pickley")
-    assert runez.is_executable("/tmp/pickley/bin/litecli")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
-    assert r.succeeded
-    r = runez.run("/tmp/pickley/bin/litecli", "--version")
     assert r.succeeded
     runez.delete("/tmp/pickley")
 

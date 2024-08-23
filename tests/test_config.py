@@ -1,10 +1,8 @@
 import pytest
 import runez
-from runez.pyenv import PypiStd
 
-from pickley import __version__, despecced, DOT_META, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
-
-PYPI_CLIENT = PypiStd.default_pypi_client()
+from pickley import despecced, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
+from pickley.bstrap import DOT_META
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -40,6 +38,7 @@ cli:  # empty
 defaults:
   delivery: wrap
   install_timeout: 1800
+  package_manager: pip
   version_check_delay: 300
 """
 
@@ -102,30 +101,30 @@ def test_edge_cases():
     assert p == cfg.available_pythons.invoker
 
 
-@PYPI_CLIENT.mock({"https://pypi-mirror.mycompany.net/pypi/foo/": {"info": {"version": "0.1.2"}}})
-def test_good_config(temp_cfg, logged):
+def test_good_config(temp_cfg, monkeypatch):
+    monkeypatch.setattr(temp_cfg, "_uv_path", None)
+    monkeypatch.setattr(runez.DEV, "project_folder", None)
+    with pytest.raises(runez.system.AbortException, match="`uv` is not installed"):
+        temp_cfg.find_uv()
+
+    tmp_uv = temp_cfg.base.full_path("uv")
+    runez.touch(tmp_uv)
+    runez.make_executable(tmp_uv)
+    assert temp_cfg.find_uv() == tmp_uv
+
     cfg = grab_sample("good-config")
 
     assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
 
     mgit = PackageSpec(cfg, "mgit==1.0.0")
-    pickley = PackageSpec(cfg, "pickley")
+    pickley = PackageSpec(cfg, "pickley==1.0.0")
     assert mgit < pickley  # Ordering based on package name, then version
     assert str(mgit) == "mgit==1.0.0"
-    assert str(pickley) == "pickley"
+    assert str(pickley) == "pickley==1.0.0"
     assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
-    logged.clear()
-
-    assert pickley.desired_track.source == "current"
-    assert pickley.desired_track.version == __version__
 
     assert mgit.desired_track.source == "explicit"
     assert mgit.desired_track.version == "1.0.0"
-
-    # Verify latest when no pins configured
-    p = PackageSpec(cfg, "foo")
-    assert p.desired_track.version == "0.1.2"
-    assert p.desired_track.source == "latest"
 
     # Verify pinned versions in samples/.../config.json are respected
     p = PackageSpec(cfg, "mgit")
