@@ -97,8 +97,8 @@ def test_bootstrap(cli, monkeypatch):
         assert "Seeding .config/pip/pip.conf with my-mirror" in cli.logged
         assert "Seeding .config/uv/uv.toml with my-mirror" in cli.logged
         assert "pickley version 0.1 is already installed" in cli.logged
-        assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", "index-url = my-mirror"]
-        assert list(runez.readlines(".config/uv/uv.toml")) == ["[pip]", "index-url = my-mirror"]
+        assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", 'index-url = my-mirror']
+        assert list(runez.readlines(".config/uv/uv.toml")) == ["[pip]", 'index-url = "my-mirror"']
         assert list(runez.readlines(f".local/bin/{dot_meta('config.json')}")) == ["{", f"  {sample_config}", "}"]
 
         # Ensure failing to seed uv/pip config files is not fatal
