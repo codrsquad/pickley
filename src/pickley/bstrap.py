@@ -221,6 +221,9 @@ def seed_mirror(mirror, path, section):
             if not hdry(f"Would seed {msg}"):
                 print(f"Seeding {msg}")
                 with open(config_path, "wt") as fh:
+                    if section == "pip" and not mirror.startswith('"'):
+                        mirror = f'"{mirror}"'
+
                     fh.write(f"[{section}]\nindex-url = {mirror}\n")
 
     except Exception as e:
