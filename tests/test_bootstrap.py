@@ -90,6 +90,7 @@ def test_bootstrap(cli, monkeypatch):
         assert "Make sure '.local/bin' is in your PATH environment variable." in cli.logged
 
         # Simulate seeding
+        uv_config = ".config/uv/uv.toml"
         sample_config = '"python-installations": "~/.pyenv/version/**"'
         monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
         mirror = "https://pypi.org/simple"
@@ -97,17 +98,23 @@ def test_bootstrap(cli, monkeypatch):
         assert "base: .local/bin" in cli.logged
         assert f"Seeding .local/bin/{dot_meta('config.json')} with " in cli.logged
         assert f"Seeding .config/pip/pip.conf with {mirror}" in cli.logged
-        assert f"Seeding .config/uv/uv.toml with {mirror}" in cli.logged
+        assert f"Seeding {uv_config} with {mirror}" in cli.logged
         assert "pickley version 0.1 is already installed" in cli.logged
         assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", f"index-url = {mirror}"]
-        assert list(runez.readlines(".config/uv/uv.toml")) == ["[pip]", f'index-url = "{mirror}"']
+        assert list(runez.readlines(uv_config)) == ["[pip]", f'index-url = "{mirror}"']
         assert list(runez.readlines(f".local/bin/{dot_meta('config.json')}")) == ["{", f"  {sample_config}", "}"]
 
         # Now verify that uv works with the seeded file
-        monkeypatch.setenv("UV_CONFIG_FILE", ".config/uv/uv.toml")
+        monkeypatch.setenv("UV_CONFIG_FILE", uv_config)
         uv_path = CFG.find_uv()
         r = runez.run(uv_path, "venv", ".venv", fatal=False)
         assert r.succeeded
+
+        # Verify that a bogus uv config file fails the run...
+        runez.write(uv_config, "[pip]\nindex-url = http://foo")
+        r = runez.run(uv_path, "venv", ".venv", fatal=False)
+        assert r.failed
+        assert "Failed to parse" in r.error
 
         # Ensure failing to seed uv/pip config files is not fatal
         runez.delete(".config", logger=None)
