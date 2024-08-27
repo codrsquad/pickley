@@ -222,6 +222,8 @@ def seed_mirror(mirror, path, section):
                 print(f"Seeding {msg}")
                 with open(config_path, "wt") as fh:
                     if section == "pip" and not mirror.startswith('"'):
+                        # This assumes user passed a reasonable URL as --mirror, no further validation is done
+                        # We only ensure the URL is quoted, as uv.toml requires it
                         mirror = f'"{mirror}"'
 
                     fh.write(f"[{section}]\nindex-url = {mirror}\n")
