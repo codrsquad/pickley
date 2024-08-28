@@ -271,7 +271,8 @@ def main(ctx, debug, config, index, python, delivery, package_manager):
     if ctx.invoked_subcommand != "package":
         CFG.set_base(find_base())
 
-    runez.Anchored.add(CFG.base.path)
+    if CFG.base:
+        runez.Anchored.add(CFG.base.path)
 
 
 @main.command()
