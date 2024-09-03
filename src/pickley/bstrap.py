@@ -165,7 +165,7 @@ def get_latest_pickley_version(mirror):
 
     # This is a temporary measure, eventually we'll use `uv describe` for this
     url = os.path.dirname(mirror.rstrip("/"))
-    url = f"{url}/pypi/pickley/json"
+    url = f"{url}/pypi/{PICKLEY}/json"
     print(f"Querying {url}")
     data = http_get(url)
     if data:
