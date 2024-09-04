@@ -25,9 +25,8 @@ def abort(message):
 
 
 class Bootstrap:
-    def __init__(self, pickley_base, pickley_version):
+    def __init__(self, pickley_base):
         self.pickley_base = Path(pickley_base)
-        self.pickley_version = pickley_version or get_latest_version(PICKLEY)
         self.pickley_exe = self.pickley_base / PICKLEY
         self.pk_path = self.pickley_base / DOT_META
         self.mirror = None
@@ -160,8 +159,15 @@ def find_base(base):
     abort(f"Make sure '{candidates[0]}' is writeable.")
 
 
-def get_latest_version(package_name):
-    data = http_get(f"https://pypi.org/pypi/{package_name}/json")
+def get_latest_pickley_version(mirror):
+    if not mirror:
+        mirror = "https://pypi.org/simple"
+
+    # This is a temporary measure, eventually we'll use `uv describe` for this
+    url = os.path.dirname(mirror.rstrip("/"))
+    url = f"{url}/pypi/{PICKLEY}/json"
+    print(f"Querying {url}")
+    data = http_get(url)
     if data:
         data = json.loads(data)
         return data["info"]["version"]
@@ -283,8 +289,9 @@ def main(args=None):
     if "__PYVENV_LAUNCHER__" in os.environ:
         del os.environ["__PYVENV_LAUNCHER__"]
 
-    bstrap = Bootstrap(find_base(args.base), args.version)
-    if not bstrap.pickley_version:
+    bstrap = Bootstrap(find_base(args.base))
+    pickley_version = args.version or get_latest_pickley_version(args.mirror)
+    if not pickley_version:
         abort(f"Failed to determine latest {PICKLEY} version")
 
     if args.check_path:
@@ -304,7 +311,7 @@ def main(args=None):
 
     if not args.force and is_executable(bstrap.pickley_exe):
         v = run_program(bstrap.pickley_exe, "--version", dryrun=False, fatal=False)
-        if v == bstrap.pickley_version:
+        if v == pickley_version:
             print(f"{short(bstrap.pickley_exe)} version {v} is already installed")
             sys.exit(0)
 
@@ -319,13 +326,13 @@ def main(args=None):
         if sys.version_info[:2] <= (3, 7):
             package_manager = "pip==21.3.1"
 
-        elif bstrap.pickley_version >= "4.3":  # Temporary: continue using pip by default until 4.3+
+        elif pickley_version >= "4.3":  # Temporary: continue using pip by default until 4.3+
             package_manager = "uv"
 
         else:
             package_manager = "pip"
 
-    pickley_venv = bstrap.pk_path / f"{PICKLEY}-{bstrap.pickley_version}"
+    pickley_venv = bstrap.pk_path / f"{PICKLEY}-{pickley_version}"
     if package_manager.startswith("pip"):
         needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", pickley_venv, fatal=False)
         if not needs_virtualenv and not DRYRUN:  # pragma: no cover, tricky to test, virtualenv fallback is on its way out
@@ -343,14 +350,14 @@ def main(args=None):
             run_program(sys.executable, zipapp, "-q", "-p", sys.executable, pickley_venv)
 
         run_program(pickley_venv / "bin/pip", "-q", "install", "-U", package_manager)
-        run_program(pickley_venv / "bin/pip", "-q", "install", f"{PICKLEY}=={bstrap.pickley_version}")
+        run_program(pickley_venv / "bin/pip", "-q", "install", f"{PICKLEY}=={pickley_version}")
 
     elif package_manager == "uv":
         uv_path = bstrap.find_uv()
         run_program(uv_path, "-q", "venv", "-p", sys.executable, pickley_venv, env=uv_env(mirror=args.mirror))
 
         env = uv_env(mirror=args.mirror, venv=pickley_venv)
-        run_program(uv_path, "-q", "pip", "install", f"{PICKLEY}=={bstrap.pickley_version}", env=env)
+        run_program(uv_path, "-q", "pip", "install", f"{PICKLEY}=={pickley_version}", env=env)
 
     else:
         abort(f"Unsupported package manager '{package_manager}', state `uv` or `pip`")

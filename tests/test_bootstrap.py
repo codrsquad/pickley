@@ -56,6 +56,19 @@ def test_bootstrap(cli, monkeypatch):
             assert cli.succeeded
             assert "Would run: .local/bin/uv -q venv -p " in cli.logged
 
+            # Temporary: stop testing the 4.2 / 4.3 transition after transition is over
+            with patch("pickley.bstrap.http_get", return_value='{"info":{"version":"4.2.1"}}'):
+                cli.run("-n -mhttps://my-company.net/simple/", main=bstrap.main)
+                assert cli.succeeded
+                assert "Querying https://my-company.net/pypi/pickley/json" in cli.logged
+                assert "bin/pip -q install pickley==4.2.1" in cli.logged
+
+            with patch("pickley.bstrap.http_get", return_value='{"info":{"version":"4.3.0"}}'):
+                cli.run("-n -mhttps://my-company.net/some-path/simple/", main=bstrap.main)
+                assert cli.succeeded
+                assert "Querying https://my-company.net/some-path/pypi/pickley/json" in cli.logged
+                assert "uv -q pip install pickley==4.3.0" in cli.logged
+
         monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")  # macOS's oddity
         cli.run("-n", main=bstrap.main)
         assert cli.succeeded
