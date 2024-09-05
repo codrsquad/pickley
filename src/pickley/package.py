@@ -38,7 +38,13 @@ class PythonVenv:
 
     def create_venv_with_uv(self):
         uv_path = self.pspec.cfg.find_uv()
-        r = runez.run(uv_path, "-q", "venv", "-p", self.python.executable, self.folder)
+        seed = None
+        if self.pspec.cfg.get_value("uv_seed", pspec=self.pspec):
+            # Temporarily accept `uv_seed: True` in config (undocumented config entry)
+            # Long term: CLIs should not assume setuptools is always there... (same problem with py3.12)
+            seed = "--seed"
+
+        r = runez.run(uv_path, "-q", "venv", seed, "-p", self.python.executable, self.folder)
         venv_python = self.folder / "bin/python"
         if venv_python.is_symlink():
             # `uv` fully expands symlinks, use the simplest location instead
