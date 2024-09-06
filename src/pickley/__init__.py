@@ -11,7 +11,7 @@ from runez.pyenv import ArtifactInfo, PypiStd, PythonDepot, Version
 
 from pickley.bstrap import DOT_META, http_get, PICKLEY
 
-__version__ = "4.2.1"
+__version__ = "4.2.2"
 LOG = logging.getLogger(__name__)
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
