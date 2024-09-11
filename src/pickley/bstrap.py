@@ -18,6 +18,7 @@ DOT_META = ".pk"
 DRYRUN = False
 HOME = os.path.expanduser("~")
 PICKLEY = "pickley"
+DEFAULT_MIRROR = "https://pypi.org/simple"
 
 
 def abort(message):
@@ -159,26 +160,23 @@ def find_base(base):
     abort(f"Make sure '{candidates[0]}' is writeable.")
 
 
-def globally_configured_pypi_mirror():  # pragma: no-cover, best-effort honoring of /etc/pip.conf
+def globally_configured_pypi_mirror(pip_conf_path="/etc/pip.conf"):
     """
     Honor the pypi mirror as configured in `/etc/pip.conf`.
     We can't rely on bringing in a library to help parse the config, as this script needs to be able to run ad-hoc.
     Best-effort parsing, any complex `pip.conf` will be ignored.
     """
     try:
-        import re
+        import configparser
 
-        regex = re.compile(r"^index-url\s*=\s*['\"]?(http[^'\"\s]+)['\"]?")
-        with open("/etc/pip.conf") as fh:
-            for line in fh:
-                m = regex.match(line)
-                if m:
-                    return m.group(1)
+        config = configparser.ConfigParser()
+        config.read(pip_conf_path)
+        return config["global"]["index-url"]
 
     except Exception:
         pass
 
-    return "https://pypi.org/simple"
+    return DEFAULT_MIRROR
 
 
 def get_latest_pickley_version(mirror):
