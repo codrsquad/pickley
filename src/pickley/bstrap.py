@@ -159,9 +159,31 @@ def find_base(base):
     abort(f"Make sure '{candidates[0]}' is writeable.")
 
 
+def globally_configured_pypi_mirror():  # pragma: no-cover, best-effort honoring of /etc/pip.conf
+    """
+    Honor the pypi mirror as configured in `/etc/pip.conf`.
+    We can't rely on bringing in a library to help parse the config, as this script needs to be able to run ad-hoc.
+    Best-effort parsing, any complex `pip.conf` will be ignored.
+    """
+    try:
+        import re
+
+        regex = re.compile(r"^index-url\s*=\s*['\"]?(http[^'\"\s]+)['\"]?")
+        with open("/etc/pip.conf") as fh:
+            for line in fh:
+                m = regex.match(line)
+                if m:
+                    return m.group(1)
+
+    except Exception:
+        pass
+
+    return "https://pypi.org/simple"
+
+
 def get_latest_pickley_version(mirror):
     if not mirror:
-        mirror = "https://pypi.org/simple"
+        mirror = globally_configured_pypi_mirror()
 
     # This is a temporary measure, eventually we'll use `uv describe` for this
     url = os.path.dirname(mirror.rstrip("/"))
