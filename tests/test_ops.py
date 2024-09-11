@@ -334,6 +334,7 @@ def check_install_from_pypi(cli, delivery, package, version=None, simulate_versi
         cli.expect_success("check", f"{installed_version} (currently {simulate_version} unhealthy)")
 
 
+@pytest.mark.skipif(sys.version_info[:2] <= (3, 6), reason="uv does not recognize py3.6")
 def test_install_pypi(cli):
     check_install_from_pypi(cli, "symlink", "uv")
 
@@ -381,6 +382,7 @@ def test_install_pypi(cli):
     assert "Auto-healed 1 / 2 packages" in cli.logged
 
 
+@pytest.mark.skipif(sys.version_info[:2] <= (3, 6), reason="uv does not recognize py3.6")
 def test_invalid(cli):
     cli.run("--color install six")
     assert cli.failed

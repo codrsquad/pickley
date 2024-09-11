@@ -489,7 +489,7 @@ class PickleyConfig:
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
-        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER") or "pip"
+        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER") or "uv"
         defaults = {"delivery": "wrap", "install_timeout": 1800, "version_check_delay": 300, "package_manager": package_manager}
         self.configs.append(RawConfig(self, "defaults", defaults))
 
