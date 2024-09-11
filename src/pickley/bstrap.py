@@ -162,9 +162,7 @@ def find_base(base):
 
 def globally_configured_pypi_mirror(pip_conf_path="/etc/pip.conf"):
     """
-    Honor the pypi mirror as configured in `/etc/pip.conf`.
-    We can't rely on bringing in a library to help parse the config, as this script needs to be able to run ad-hoc.
-    Best-effort parsing, any complex `pip.conf` will be ignored.
+    Best-effort parsing of /etc/pip.conf to honor globally configured mirror.
     """
     try:
         import configparser
@@ -173,10 +171,13 @@ def globally_configured_pypi_mirror(pip_conf_path="/etc/pip.conf"):
         config.read(pip_conf_path)
         return config["global"]["index-url"]
 
-    except Exception:
-        pass
+    except (KeyError, OSError):
+        return DEFAULT_MIRROR
 
-    return DEFAULT_MIRROR
+    except Exception as e:
+        # Ignore any issue reading pip.conf, not necessary for bootstrap
+        print(f"Could not read {pip_conf_path}: {e}")
+        return DEFAULT_MIRROR
 
 
 def get_latest_pickley_version(mirror):

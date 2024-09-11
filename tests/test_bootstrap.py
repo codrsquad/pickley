@@ -216,9 +216,14 @@ def test_pip_conf(logged):
         runez.write("pip.conf", f"[global]\nindex-url = {mirror}", logger=None)
         assert bstrap.globally_configured_pypi_mirror("pip.conf") == mirror
 
-        # Invalid file gets ignored (no crash, no complaints)
+        # Mirror not configured
         runez.write("pip.conf", "[foo]\nbar = baz", logger=None)
         assert bstrap.globally_configured_pypi_mirror("pip.conf") == bstrap.DEFAULT_MIRROR
 
-    # Check that no chatter occurred (no stack trace etc)
-    assert not logged
+        # Check that no chatter occurred so far (no stack trace etc.)
+        assert not logged
+
+        # Invalid file gets ignored (we do report error)
+        runez.write("pip.conf", "this is not an ini file", logger=None)
+        assert bstrap.globally_configured_pypi_mirror("pip.conf") == bstrap.DEFAULT_MIRROR
+        assert "Could not read pip.conf: "
