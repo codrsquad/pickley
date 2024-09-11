@@ -18,6 +18,7 @@ DOT_META = ".pk"
 DRYRUN = False
 HOME = os.path.expanduser("~")
 PICKLEY = "pickley"
+DEFAULT_MIRROR = "https://pypi.org/simple"
 
 
 def abort(message):
@@ -159,9 +160,29 @@ def find_base(base):
     abort(f"Make sure '{candidates[0]}' is writeable.")
 
 
+def globally_configured_pypi_mirror(pip_conf_path="/etc/pip.conf"):
+    """
+    Best-effort parsing of /etc/pip.conf to honor globally configured mirror.
+    """
+    try:
+        import configparser
+
+        config = configparser.ConfigParser()
+        config.read(pip_conf_path)
+        return config["global"]["index-url"]
+
+    except (KeyError, OSError):
+        return DEFAULT_MIRROR
+
+    except Exception as e:
+        # Ignore any issue reading pip.conf, not necessary for bootstrap
+        print(f"Could not read {pip_conf_path}: {e}")
+        return DEFAULT_MIRROR
+
+
 def get_latest_pickley_version(mirror):
     if not mirror:
-        mirror = "https://pypi.org/simple"
+        mirror = globally_configured_pypi_mirror()
 
     # This is a temporary measure, eventually we'll use `uv describe` for this
     url = os.path.dirname(mirror.rstrip("/"))

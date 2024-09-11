@@ -204,3 +204,26 @@ def test_failure(cli):
         cli.run("--base .", main=bstrap.main)
         assert cli.failed
         assert "Failed to fetch https://pypi.org/pypi/pickley/json: <urlopen error foo>" in cli.logged
+
+
+def test_pip_conf(logged):
+    # Verify non-existing /etc/pip.conf is OK (we just default to pypi.org)
+    assert bstrap.globally_configured_pypi_mirror("/dev/null/pip.conf") == bstrap.DEFAULT_MIRROR
+
+    with runez.TempFolder():
+        # Simulate an internal pypi mirror
+        mirror = "https://pypi.example.net/simple"
+        runez.write("pip.conf", f"[global]\nindex-url = {mirror}", logger=None)
+        assert bstrap.globally_configured_pypi_mirror("pip.conf") == mirror
+
+        # Mirror not configured
+        runez.write("pip.conf", "[foo]\nbar = baz", logger=None)
+        assert bstrap.globally_configured_pypi_mirror("pip.conf") == bstrap.DEFAULT_MIRROR
+
+        # Check that no chatter occurred so far (no stack trace etc.)
+        assert not logged
+
+        # Invalid file gets ignored (we do report error)
+        runez.write("pip.conf", "this is not an ini file", logger=None)
+        assert bstrap.globally_configured_pypi_mirror("pip.conf") == bstrap.DEFAULT_MIRROR
+        assert "Could not read pip.conf: "
