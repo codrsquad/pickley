@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 import runez
 
@@ -53,6 +55,7 @@ def grab_sample(name):
     return cfg
 
 
+@pytest.mark.skipif(sys.version_info[:2] <= (3, 7), reason="Default is uv only on py3.8+")
 def test_bogus_config(temp_cfg, logged):
     cfg = grab_sample("bogus-config")
     assert cfg.resolved_bundle("") == []

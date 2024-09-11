@@ -13,6 +13,7 @@ from pickley.bstrap import DOT_META, http_get, PICKLEY
 
 __version__ = "4.2.2"
 LOG = logging.getLogger(__name__)
+DEFAULT_PACKAGE_MANAGER = "uv" if sys.version_info[:2] >= (3, 8) else "pip"
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
 K_GROUPS = {"bundle", "pinned"}
@@ -489,7 +490,7 @@ class PickleyConfig:
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
-        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER") or "uv"
+        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER") or DEFAULT_PACKAGE_MANAGER
         defaults = {"delivery": "wrap", "install_timeout": 1800, "version_check_delay": 300, "package_manager": package_manager}
         self.configs.append(RawConfig(self, "defaults", defaults))
 
