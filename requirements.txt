@@ -1,2 +1,2 @@
 click~=8.0
-runez~=5.1.0
+runez~=5.2

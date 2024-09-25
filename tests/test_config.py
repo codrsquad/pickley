@@ -1,10 +1,7 @@
-import sys
-
 import pytest
 import runez
 
-from pickley import despecced, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
-from pickley.bstrap import DOT_META
+from pickley import bstrap, CFG, despecced, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -34,52 +31,39 @@ cli:  # empty
    - bogus.json
    - /dev/null/non-existent-config-file.json
   install_timeout: 250
-  python: /dev/null, /dev/null/foo
+  python: /dev/null/foo
   version_check_delay: 15
 
 defaults:
   delivery: wrap
   install_timeout: 1800
-  package_manager: uv
+  package_manager: {package_manager}
   version_check_delay: 300
 """
 
 
 def grab_sample(name):
-    cfg = PickleyConfig()
+    # cfg = PickleyConfig()
     path = runez.DEV.tests_path("samples", name)
-    runez.copy(path, DOT_META)
-    cfg.set_cli("config.json", None, None, None, None)
-    cfg.set_base(".")
-    assert str(cfg.configs[0]) == "cli (0 values)"
-    return cfg
+    runez.copy(path, bstrap.DOT_META)
+    CFG.set_cli("config.json", None, None, None, None)
+    CFG.set_base(".")
+    assert str(CFG.configs[0]) == "cli (0 values)"
 
 
-@pytest.mark.skipif(sys.version_info[:2] <= (3, 7), reason="Default is uv only on py3.8+")
 def test_bogus_config(temp_cfg, logged):
-    cfg = grab_sample("bogus-config")
-    assert cfg.resolved_bundle("") == []
-    assert cfg.resolved_bundle("foo") == ["foo"]
-    assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit"]
-    assert cfg.resolved_bundle("bundle:dev2") == ["tox", "mgit", "pipenv"]
-    actual = cfg.represented().strip()
+    grab_sample("bogus-config")
+    assert CFG.resolved_bundle("") == []
+    assert CFG.resolved_bundle("foo") == ["foo"]
+    assert CFG.resolved_bundle("bundle:dev") == ["tox", "mgit"]
+    assert CFG.resolved_bundle("bundle:dev2") == ["tox", "mgit", "pipenv"]
+    actual = CFG.represented().strip()
     expected = SAMPLE_CONFIG.strip().format(
-        base=runez.short(cfg.base),
-        meta=runez.short(cfg.meta),
+        base=runez.short(CFG.base),
+        meta=runez.short(CFG.meta),
+        package_manager=bstrap.default_package_manager(),
     )
     assert actual == expected
-
-    p = cfg.find_python(pspec=None, fatal=False)
-    assert p.executable == runez.to_path("/dev/null/foo")
-    assert p.problem == "not available"
-    assert "Skipped python /dev/null [not available]" in logged.pop()
-
-    assert not logged
-    p = PackageSpec(cfg, "mgit")
-    with pytest.raises(SystemExit):
-        _ = p.python  # Fails to resolve due to desired python configured to be /dev/null
-
-    assert "No suitable python" in logged.pop()
 
 
 def test_default_index(temp_cfg, logged):
@@ -94,45 +78,39 @@ def test_default_index(temp_cfg, logged):
 
 
 def test_edge_cases():
-    cfg = PickleyConfig()
-    assert str(cfg) == "<not-configured>"
     assert "intentionally refuses" in pypi_name_problem("0-0")
     assert pypi_name_problem("mgit") is None
 
-    # Verify that default 'invoker' (current python) when no preferred python nor locations are configured
-    p = cfg.find_python(pspec=None)
-    assert p == cfg.available_pythons.invoker
-
 
 def test_good_config(temp_cfg, monkeypatch):
-    monkeypatch.setattr(temp_cfg, "_uv_path", None)
+    monkeypatch.setattr(CFG, "_uv_path", None)
     monkeypatch.setattr(runez.DEV, "project_folder", None)
     with pytest.raises(runez.system.AbortException, match="`uv` is not installed"):
-        temp_cfg.find_uv()
+        CFG.find_uv()
 
-    tmp_uv = temp_cfg.base.full_path("uv")
+    tmp_uv = CFG.base.full_path("uv")
     runez.touch(tmp_uv)
     runez.make_executable(tmp_uv)
-    assert temp_cfg.find_uv() == tmp_uv
+    assert CFG.find_uv() == tmp_uv
 
-    cfg = grab_sample("good-config")
+    grab_sample("good-config")
 
-    assert cfg.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
+    assert CFG.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
 
-    mgit = PackageSpec(cfg, "mgit==1.0.0")
-    pickley = PackageSpec(cfg, "pickley==1.0.0")
+    mgit = PackageSpec("mgit==1.0.0")
+    pickley = PackageSpec("pickley==1.0.0")
     assert mgit < pickley  # Ordering based on package name, then version
     assert str(mgit) == "mgit==1.0.0"
     assert str(pickley) == "pickley==1.0.0"
-    assert mgit.index == "https://pypi-mirror.mycompany.net/pypi"
 
-    assert mgit.desired_track.source == "explicit"
-    assert mgit.desired_track.version == "1.0.0"
+    assert mgit.target_version == "1.0.0"
+    assert mgit.resolved_info.resolution_reason == "pinned"
 
     # Verify pinned versions in samples/.../config.json are respected
-    p = PackageSpec(cfg, "mgit")
-    assert p.desired_track.version == "1.2.1"
-    assert p.desired_track.source == "pinned"
+    p = PackageSpec("mgit")
+    assert str(p) == "mgit"
+    assert p.target_version == "1.2.1"
+    assert p.resolved_info.resolution_reason == "pinned by configuration"
 
 
 def test_speccing():

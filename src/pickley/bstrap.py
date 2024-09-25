@@ -14,11 +14,15 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+DEFAULT_BASE = "~/.local/bin"
 DOT_META = ".pk"
 DRYRUN = False
 HOME = os.path.expanduser("~")
 PICKLEY = "pickley"
 DEFAULT_MIRROR = "https://pypi.org/simple"
+CURRENT_PYTHON_MM = sys.version_info[:2]
+UV_CUTOFF = (3, 7)
+USE_UV = CURRENT_PYTHON_MM >= UV_CUTOFF  # Default to `uv` for python versions >= this
 
 
 def abort(message):
@@ -62,6 +66,13 @@ class Bootstrap:
             download_uv(self.pk_path / ".cache", uv_base)
 
         return uv_path
+
+
+def default_package_manager(*parts):
+    if not parts:
+        parts = CURRENT_PYTHON_MM
+
+    return "uv" if parts >= UV_CUTOFF else "pip"
 
 
 def uv_url(version):
@@ -291,13 +302,24 @@ def which(program):
                 return Path(fp)
 
 
+def pip_auto_upgrade():
+    if CURRENT_PYTHON_MM == (3, 6):
+        # Some ancient pip versions fail to upgrade themselves properly, use last known good version explicitly
+        return "pip==21.3.1", "setuptools==59.6.0"
+
+    if CURRENT_PYTHON_MM >= (3, 12):
+        return ("pip",)
+
+    return "pip", "setuptools"
+
+
 def main(args=None):
     """Bootstrap pickley"""
     global DRYRUN
 
     parser = argparse.ArgumentParser(description=main.__doc__)
     parser.add_argument("--dryrun", "-n", action="store_true", help="Perform a dryrun")
-    parser.add_argument("--base", "-b", default="~/.local/bin", help="Base folder to use (default: ~/.local/bin)")
+    parser.add_argument("--base", "-b", default=DEFAULT_BASE, help="Base folder to use (default: ~/.local/bin)")
     parser.add_argument("--check-path", action="store_true", help="Verify that stated --base is on PATH env var")
     parser.add_argument("--cfg", "-c", help="Seed pickley config with given contents (file or serialized json)")
     parser.add_argument("--force", "-f", action="store_true", help="Force bootstrap (even if already done)")
@@ -339,29 +361,16 @@ def main(args=None):
         if v and len(v) < 24:  # If long output -> old pickley is busted (stacktrace)
             print(f"Replacing older {PICKLEY} v{v}")
 
-    package_manager = args.package_manager
-    if not package_manager:
-        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER")
-
-    if not package_manager:
-        if sys.version_info[:2] <= (3, 7):
-            package_manager = "pip==21.3.1"
-
-        elif pickley_version >= "4.3":  # Temporary: continue using pip by default until 4.3+
-            package_manager = "uv"
-
-        else:
-            package_manager = "pip"
-
+    package_manager = args.package_manager or os.getenv("PICKLEY_PACKAGE_MANAGER") or default_package_manager()
     pickley_venv = bstrap.pk_path / f"{PICKLEY}-{pickley_version}"
-    if package_manager.startswith("pip"):
+    if package_manager == "pip":
         needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", pickley_venv, fatal=False)
         if not needs_virtualenv and not DRYRUN:  # pragma: no cover, tricky to test, virtualenv fallback is on its way out
             needs_virtualenv = not is_executable(pickley_venv / "bin/pip")
 
         if needs_virtualenv:
             print("-mvenv failed, falling back to virtualenv")
-            pv = "%s.%s" % (sys.version_info[0], sys.version_info[1])
+            pv = ".".join(str(x) for x in CURRENT_PYTHON_MM)
             zipapp = bstrap.pk_path / f".cache/virtualenv-{pv}.pyz"
             ensure_folder(zipapp.parent)
             if not os.path.exists(zipapp):
@@ -370,14 +379,13 @@ def main(args=None):
 
             run_program(sys.executable, zipapp, "-q", "-p", sys.executable, pickley_venv)
 
-        run_program(pickley_venv / "bin/pip", "-q", "install", "-U", package_manager)
+        run_program(pickley_venv / "bin/pip", "-q", "install", "-U", *pip_auto_upgrade())
         run_program(pickley_venv / "bin/pip", "-q", "install", f"{PICKLEY}=={pickley_version}")
 
     elif package_manager == "uv":
         uv_path = bstrap.find_uv()
-        run_program(uv_path, "-q", "venv", "-p", sys.executable, pickley_venv, env=uv_env(mirror=args.mirror))
-
         env = uv_env(mirror=args.mirror, venv=pickley_venv)
+        run_program(uv_path, "-q", "venv", "-p", sys.executable, pickley_venv, env=uv_env(mirror=args.mirror))
         run_program(uv_path, "-q", "pip", "install", f"{PICKLEY}=={pickley_version}", env=env)
 
     else:

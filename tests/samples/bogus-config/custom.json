@@ -3,6 +3,6 @@
     "foo": "bar",
     "include": ["bogus.json", "/dev/null/non-existent-config-file.json"],
     "install_timeout": 250,
-    "python": "/dev/null, /dev/null/foo",
+    "python": "/dev/null/foo",
     "version_check_delay": 15
 }

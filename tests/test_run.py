@@ -27,7 +27,7 @@ def test_run_setup():
     assert str(rs) == "pip-tools:pip-compile"
 
     rs = RunSetup.from_cli("foo:bar==1.0")
-    assert rs.canonical == "foo==1.0:bar"
+    assert str(rs) == "foo==1.0:bar"
     assert rs.command == "bar"
     assert rs.package == "foo"
     assert rs.pinned == "1.0"

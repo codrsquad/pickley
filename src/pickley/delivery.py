@@ -3,7 +3,7 @@ import os
 
 import runez
 
-from pickley import abort, PICKLEY
+from pickley import abort, CFG, PICKLEY
 
 LOG = logging.getLogger(__name__)
 
@@ -83,20 +83,18 @@ class DeliveryMethod:
 
         return abort(f"Unknown delivery method '{runez.red(name)}'")
 
-    def install(self, venv, entry_points):
+    def install(self, pspec, target_folder, entry_points):
         """
         Args:
-            venv (pickley.package.PythonVenv): Virtual env where executables reside (DOT_META/<package>/...)
+            pspec (pickley.package.PackageSpec): Package spec being installed
+            target_folder (Path): Virtual env where executables reside (DOT_META/<package>/...)
             entry_points (dict | list | tuple): Full path of executable to deliver (<base>/<entry_point>)
         """
-        if not venv.pspec.is_clear_for_installation():
-            abort(f"{runez.short(venv.pspec.exe_path(venv.pspec.dashed))} exists and was not installed by pickley")
-
         try:
-            prev_manifest = venv.pspec.manifest
+            prev_manifest = pspec.manifest
             for name in entry_points:
-                src = os.path.join(venv.folder, "bin", name)
-                dest = venv.pspec.exe_path(name)
+                src = os.path.join(target_folder, "bin", name)
+                dest = pspec.exe_path(name)
                 ssrc = runez.short(src)
                 sdest = runez.short(dest)
                 if runez.DRYRUN:
@@ -107,23 +105,23 @@ class DeliveryMethod:
                     abort(f"Can't {self.short_name} {sdest} -> {runez.red(ssrc)}: source does not exist")
 
                 LOG.debug("%s %s -> %s", self.action, sdest, ssrc)
-                self._install(venv.pspec, dest, src)
+                self._install(pspec, dest, src)
 
-            manifest = venv.pspec.save_manifest(entry_points)
+            manifest = pspec.save_manifest(entry_points)
             if not runez.DRYRUN and prev_manifest and prev_manifest.entrypoints:
                 for old_ep in prev_manifest.entrypoints:
                     if old_ep and old_ep not in entry_points:
-                        # Remove old entry points that are not in new manifest any more
-                        runez.delete(venv.pspec.exe_path(old_ep))
+                        # Remove old entry points that are not in new manifest anymore
+                        runez.delete(pspec.exe_path(old_ep))
 
             if self.ping:
                 # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-                runez.touch(venv.pspec.ping_path)
+                runez.touch(CFG.cache.full_path(f"{pspec.canonical_name}.ping"))
 
             return manifest
 
         except Exception as e:
-            abort(f"Failed to {self.short_name} {venv.pspec}: {runez.red(e)}")
+            abort(f"Failed to {self.short_name} {pspec}: {runez.red(e)}")
 
     def _install(self, pspec, target, source):
         raise NotImplementedError(f"{self.__class__.__name__} is not implemented")
@@ -161,12 +159,12 @@ class DeliveryMethodWrap(DeliveryMethod):
     bg = " &> /dev/null &"
 
     def _install(self, pspec, target, source):
-        pickley = pspec.cfg.base.full_path(PICKLEY)
-        wrapper = PICKLEY_WRAPPER if pspec.dashed == PICKLEY else GENERIC_WRAPPER
+        pickley = CFG.base.full_path(PICKLEY)
+        wrapper = PICKLEY_WRAPPER if pspec.canonical_name == PICKLEY else GENERIC_WRAPPER
         contents = wrapper.lstrip().format(
             hook=self.hook,
             bg=self.bg,
-            name=runez.quoted(pspec.dashed, adapter=None),
+            name=runez.quoted(pspec.canonical_name, adapter=None),
             pickley=runez.quoted(pickley, adapter=None),
             source=runez.quoted(source, adapter=None),
         )

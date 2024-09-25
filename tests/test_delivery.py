@@ -1,31 +1,24 @@
 import os
-from unittest.mock import MagicMock
 
 import pytest
 import runez
 
 from pickley import __version__, PackageSpec, PICKLEY
 from pickley.delivery import DeliveryMethod
-from pickley.package import PythonVenv
-
-BREW_INSTALL = "/brew/install/bin"
-BREW = os.path.join(BREW_INSTALL, "brew")
-BREW_CELLAR = "/brew/install/Cellar"
-BREW_INSTALLED = ["tox", "twine"]
 
 
 def test_edge_cases(temp_cfg, logged):
-    pspec = PackageSpec(temp_cfg, "mgit==1.0.0")
-    venv = MagicMock(folder=pspec.venv_path(pspec.given_version), pspec=pspec)
-    entry_points = {"some-source": ""}
+    pspec = PackageSpec("mgit==1.0.0")
+    folder = pspec.target_installation_folder
+    entry_points = ["some-source"]
     d = DeliveryMethod()
     with pytest.raises(SystemExit):
-        d.install(venv, entry_points)
+        d.install(pspec, folder, entry_points)
     assert "Can't deliver some-source -> .pk/mgit-1.0.0/bin/some-source: source does not exist" in logged.pop()
 
-    runez.touch(".pk/mgit-1.0.0/bin/some-source")
+    runez.touch(".pk/mgit-1.0.0/bin/some-source", logger=None)
     with pytest.raises(SystemExit):
-        d.install(venv, entry_points)
+        d.install(pspec, folder, entry_points)
     assert "Failed to deliver" in logged.pop()
 
 
@@ -34,21 +27,20 @@ class SimulatedInstallation:
         self.cfg = cfg
         self.name = name
         self.version = version
-        self.entry_points = {name: name}
-        self.pspec = PackageSpec(cfg, f"{name}=={version}")
+        self.entry_points = [name]
+        self.pspec = PackageSpec(f"{name}=={version}")
         self.pspec.save_manifest(self.entry_points)
-        folder = self.cfg.meta.full_path(f"{name}-{version}")
-        self.venv = PythonVenv(folder, self.pspec)
-        venv_exe = os.path.join(folder, "bin", name)
-        runez.write(venv_exe, f"#!/bin/bash\n\necho {version}\n")
-        runez.symlink(folder, self.pspec.venv_path(version))
-        runez.make_executable(venv_exe)
+        self.folder = self.cfg.meta.full_path(f"{name}-{version}")
+        venv_exe = os.path.join(self.folder, "bin", name)
+        runez.write(venv_exe, f"#!/bin/bash\n\necho {version}\n", logger=None)
+        runez.symlink(self.folder, self.pspec.target_installation_folder, logger=None)
+        runez.make_executable(venv_exe, logger=None)
 
     def check_wrap(self, wrap_method):
         impl = DeliveryMethod.delivery_method_by_name(wrap_method)
-        impl.install(self.venv, self.entry_points)
+        impl.install(self.pspec, self.folder, self.entry_points)
         exe = runez.resolved_path(self.name)
-        r = runez.run(exe, "--version", fatal=False)
+        r = runez.run(exe, "--version", fatal=False, logger=None)
         assert r.succeeded
         assert r.output == self.version
 

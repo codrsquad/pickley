@@ -22,7 +22,7 @@ def mocked_expanduser(path):
 
 def test_bootstrap(cli, monkeypatch):
     monkeypatch.setattr(bstrap, "DRYRUN", False)
-    runez.touch(".pickley/config.json")
+    runez.touch(".pickley/config.json", logger=None)
     cli.run("-n base bootstrap-own-wrapper")
     assert cli.succeeded
     assert f"Would move .pickley/config.json -> {dot_meta('config.json')}" in cli.logged
@@ -31,37 +31,42 @@ def test_bootstrap(cli, monkeypatch):
     pickley_path = dot_meta(f"pickley-{__version__}/bin/pickley")
     assert f"Would run: {pickley_path} auto-heal" in cli.logged
 
-    if sys.version_info[:2] >= (3, 8):
-        runez.touch(".pk/.uv/bin/uv")
-        runez.make_executable(".pk/.uv/bin/uv")
+    # Verify that we report base not writeable correctly
+    cli.run("-n --check-path", main=bstrap.main)
+    assert cli.failed
+    assert "Make sure '.local/bin' is writeable" in cli.logged
+
+    runez.ensure_folder(".local/bin", logger=None)
+    cli.run("-n --package-manager foo", main=bstrap.main)
+    assert cli.failed
+    assert "Unsupported package manager 'foo'" in cli.logged
+
+    if bstrap.USE_UV:
+        runez.touch(".pk/.uv/bin/uv", logger=None)
+        runez.make_executable(".pk/.uv/bin/uv", logger=None)
         cli.run("-n base bootstrap-own-wrapper")
         assert cli.succeeded
         assert "Would move .pk/.uv -> .pk/uv-" in cli.logged
         assert "Would wrap uv -> .pk/uv-" in cli.logged
+        assert "Would delete .pk/.uv" in cli.logged
+
+        cli.run("-n", main=bstrap.main)
+        assert cli.succeeded
+        assert "uv -q venv " in cli.logged
+
+    else:
+        cli.run("-n", main=bstrap.main)
+        assert cli.succeeded
+        assert "Replacing older pickley v0.1" in cli.logged
+        assert " -mvenv --clear " in cli.logged
 
     with patch("pickley.bstrap.os.path.expanduser", side_effect=mocked_expanduser):
-        runez.write(".local/bin/pickley", "#!/bin/sh\necho 0.1")  # Pretend we have an old pickley
-        runez.make_executable(".local/bin/pickley")
+        runez.write(".local/bin/pickley", "#!/bin/sh\necho 0.1", logger=None)  # Pretend we have an old pickley
+        runez.make_executable(".local/bin/pickley", logger=None)
 
-        if sys.version_info[:2] >= (3, 8):
-            runez.write(".local/bin/uv", "#!/bin/sh\necho uv 0.0.1")  # Pretend we have uv already
-            runez.make_executable(".local/bin/uv")
-            # Temporary: verify pip default for v4.1
-            cli.run("-n 4.1", main=bstrap.main)
-            assert cli.succeeded
-            assert "Would run: .local/bin/.pk/pickley-4.1/bin/pip -q install pickley==4.1" in cli.logged
-
-            # Temporary: verify uv default for v4.2+
-            cli.run("-n 4.3", main=bstrap.main)
-            assert cli.succeeded
-            assert "Would run: .local/bin/uv -q venv -p " in cli.logged
-
-            # Temporary: stop testing the 4.2 / 4.3 transition after transition is over
-            with patch("pickley.bstrap.http_get", return_value='{"info":{"version":"4.2.1"}}'):
-                cli.run("-n -mhttps://my-company.net/simple/", main=bstrap.main)
-                assert cli.succeeded
-                assert "Querying https://my-company.net/pypi/pickley/json" in cli.logged
-                assert "bin/pip -q install pickley==4.2.1" in cli.logged
+        if bstrap.USE_UV:
+            runez.write(".local/bin/uv", "#!/bin/sh\necho uv 0.0.1", logger=None)  # Pretend we have uv already
+            runez.make_executable(".local/bin/uv", logger=None)
 
             with patch("pickley.bstrap.http_get", return_value='{"info":{"version":"4.3.0"}}'):
                 cli.run("-n -mhttps://my-company.net/some-path/simple/", main=bstrap.main)
@@ -74,24 +79,6 @@ def test_bootstrap(cli, monkeypatch):
         assert cli.succeeded
         assert "__PYVENV_LAUNCHER__" not in os.environ
         assert "Replacing older pickley v0.1" in cli.logged
-
-        cli.run("-n --package-manager foo", main=bstrap.main)
-        assert cli.failed
-        assert "Unsupported package manager 'foo'" in cli.logged
-
-        cli.run("-n --package-manager uv", main=bstrap.main)
-        assert cli.succeeded
-        assert "uv -q venv " in cli.logged
-
-        cli.run("-n --package-manager pip", main=bstrap.main)
-        assert cli.succeeded
-        assert "Replacing older pickley v0.1" in cli.logged
-        assert " -mvenv --clear " in cli.logged
-
-        # Verify that we report base not writeable correctly
-        cli.run("-n -b /dev/null/foo --check-path", main=bstrap.main)
-        assert cli.failed
-        assert "Make sure '/dev/null/foo' is writeable" in cli.logged
 
         cli.run("-n -cfoo", main=bstrap.main)
         assert cli.failed
@@ -120,12 +107,12 @@ def test_bootstrap(cli, monkeypatch):
         # Now verify that uv works with the seeded file
         monkeypatch.setenv("UV_CONFIG_FILE", uv_config)
         uv_path = CFG.find_uv()
-        r = runez.run(uv_path, "venv", ".venv", fatal=False)
+        r = runez.run(uv_path, "venv", ".venv", fatal=False, logger=None)
         assert r.succeeded
 
         # Verify that a bogus uv config file fails the run...
-        runez.write(uv_config, "[pip]\nindex-url = http://foo")
-        r = runez.run(uv_path, "venv", ".venv", fatal=False)
+        runez.write(uv_config, "[pip]\nindex-url = http://foo", logger=None)
+        r = runez.run(uv_path, "venv", ".venv", fatal=False, logger=None)
         assert r.failed
         assert "Failed to parse" in r.error
 

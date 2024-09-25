@@ -1,5 +1,4 @@
 import os
-import sys
 import time
 from unittest.mock import patch
 
@@ -7,7 +6,7 @@ import pytest
 import runez
 from runez.pyenv import Version
 
-from pickley import __version__, PackageSpec, PickleyConfig, TrackedManifest, TrackedVersion
+from pickley import __version__, bstrap, PackageSpec, PickleyConfig, TrackedManifest
 from pickley.cli import clean_compiled_artifacts, find_base, PackageFinalizer, Requirements, SoftLock, SoftLockException
 from pickley.delivery import WRAPPER_MARK
 from pickley.package import Packager
@@ -32,7 +31,7 @@ def test_base(cli, monkeypatch):
     with pytest.raises(SystemExit):  # Env var points to a non-existing folder
         find_base()
 
-    runez.ensure_folder("temp-base")
+    runez.ensure_folder("temp-base", logger=None)
     assert find_base() == runez.resolved_path("temp-base")
 
     monkeypatch.delenv("PICKLEY_ROOT")
@@ -41,17 +40,16 @@ def test_base(cli, monkeypatch):
     assert find_base("foo/bar") == "foo"
 
 
-def dummy_finalizer(cfg, dist, symlink="root:root/usr/local/bin"):
-    p = PackageFinalizer("foo", dist, symlink, None, None, cfg=cfg)
+def dummy_finalizer(dist, symlink="root:root/usr/local/bin"):
+    p = PackageFinalizer("foo", dist, symlink, None, None)
     p.resolve()
-    assert p.pspec.dashed == "foo"
+    assert p.pspec.canonical_name == "foo"
     return p
 
 
-@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_debian_mode(temp_cfg, logged):
-    runez.write("foo/setup.py", "import setuptools\nsetuptools.setup(name='foo', version='1.0')")
-    p = dummy_finalizer(temp_cfg, "root/apps")
+    runez.write("foo/setup.py", "import setuptools\nsetuptools.setup(name='foo', version='1.0')", logger=None)
+    p = dummy_finalizer("root/apps")
     assert p.dist == "root/apps/foo"
     assert p.requirements == Requirements(requirement_files=[], additional_packages=None, project=runez.resolved_path("foo"))
     assert "Using python:" in logged.pop()
@@ -62,7 +60,7 @@ def test_debian_mode(temp_cfg, logged):
     assert not os.path.isdir("root/usr/local/bin")
 
     foo = runez.resolved_path("root/foo")
-    runez.touch(foo)
+    runez.touch(foo, logger=None)
     logged.pop()
 
     # Simulate symlink
@@ -72,7 +70,7 @@ def test_debian_mode(temp_cfg, logged):
     assert os.path.islink("root/usr/local/bin/foo")
 
     with patch("os.path.isdir", return_value=True):  # pretend /apps exists
-        p = dummy_finalizer(temp_cfg, "root/apps")
+        p = dummy_finalizer("root/apps")
         assert "debian mode" in logged.pop()
         assert p.dist == "/apps/foo"
 
@@ -103,11 +101,9 @@ def test_dryrun(cli):
 
     cli.expect_success("-n auto-heal", "Auto-healed 0 / 0 packages")
 
-    if sys.version_info[:2] < (3, 12):
-        # TODO: modernize installs from folder (and/or git) once `uv` has an `describe` command
-        cli.run("-n", "install", runez.DEV.project_folder)
-        assert cli.succeeded
-        assert "Would state: Installed pickley" in cli.logged
+    cli.run("-n", "install", runez.DEV.project_folder)
+    assert cli.succeeded
+    assert "Would state: Installed pickley" in cli.logged
 
     cli.run("-n install uv==0.3.1")
     assert cli.succeeded
@@ -116,28 +112,24 @@ def test_dryrun(cli):
 
     cli.run("-n install https://github.com/codrsquad/portable-python.git")
     assert cli.succeeded
-    assert "git clone https://github.com/codrsquad/portable-python.git" in cli.logged
+    assert "pip install git+https://github.com/codrsquad/portable-python.git" in cli.logged
 
     cli.run("-n -Pfoo diagnostics")
     assert "preferred python : foo [not available]" in cli.logged
+    assert "pip.conf : -missing-" in cli.logged
 
     cli.expect_success("-n list", "No packages installed")
 
     cli.expect_failure("-n package foo", "Folder ... does not exist")
     cli.expect_failure("-n package . -sfoo", "Invalid symlink specification")
-    cli.expect_failure("-n package . -sroot:root/usr/local/bin", "No setup.py in ")
 
-    if sys.version_info[:2] < (3, 12):
-        # TODO: Reconsider how to test `package` command without setuptools
-        runez.touch("setup.py")
-        cli.expect_failure("-n package .", "Could not determine package name")
-        runez.write("setup.py", "import sys\nfrom setuptools import setup\nif sys.argv[1]=='--version': sys.exit(1)\nsetup(name='foo')")
-        cli.expect_failure("-n package .", "Could not determine package version")
+    runez.touch("setup.py", logger=None)
+    cli.expect_failure("-n package .", "Could not determine package name")
 
-        cli.run("-n", "package", cli.project_folder, "mgit")
-        assert cli.succeeded
-        cli.match("Would run: ...pip...install -r requirements.txt")
-        cli.match("Would run: ...pip...install mgit")
+    cli.run("-n", "package", cli.project_folder, "mgit")
+    assert cli.succeeded
+    cli.match("Would run: ...pip...install -r requirements.txt")
+    cli.match("Would run: ...pip...install mgit")
 
     cli.expect_failure("-n uninstall", "Specify packages to uninstall, or --all")
     cli.expect_failure("-n uninstall pickley", "Run 'uninstall --all' if you wish to uninstall pickley itself")
@@ -148,39 +140,35 @@ def test_dryrun(cli):
     cli.expect_success("-n upgrade", "No packages installed, nothing to upgrade")
     cli.expect_failure("-n upgrade mgit", "'mgit' is not installed")
 
-    with patch("pickley.latest_pypi_version", side_effect=lambda *_: Version("1.0")):
-        # If latest is too low, we remain on current (we upgrade "up" only)
-        cli.run("-n --debug auto-upgrade pickley")
-        assert cli.succeeded
-        assert f"Would wrap pickley -> .pk/pickley-{__version__}/bin/pickley" in cli.logged
+    cli.run("-n -Pfoo install bundle:bar")
+    assert cli.failed
+    assert "Invalid python: foo" in cli.logged
+
+    cli.run("-n --package-manager=uv install uv")
+    assert cli.succeeded
+    assert "Would download https://github.com/astral-sh/uv/releases/download/" in cli.logged
+    assert "Would wrap uv -> .pk/uv-" in cli.logged
+
+    runez.touch(dot_meta("mgit.lock"), logger=None)
+    cli.run("-nv --debug auto-upgrade mgit")
+    assert cli.succeeded
+    assert "Lock file present, another installation is in progress" in cli.logged
+
+    cli.run("-n check")
+    assert cli.succeeded
+    assert "No packages installed" in cli.logged
+
+    cli.run("-n check mgit pickley2.a")
+    assert cli.succeeded
 
     with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
-        cli.expect_failure("-n -Pfoo install bundle:bar", "No suitable python")
-
-        cli.run("-n --package-manager=uv install uv")
-        assert cli.succeeded
-        assert "Would download https://github.com/astral-sh/uv/releases/download/100.0/uv-installer.sh" in cli.logged
-        assert "Would wrap uv -> .pk/uv-100.0/bin/uv" in cli.logged
-
-        cli.run("-n --debug auto-upgrade mgit")
-        assert cli.succeeded
-        assert "pip install mgit==100.0" in cli.logged
-        assert "Would wrap mgit" in cli.logged
-        runez.touch(dot_meta("mgit.lock"))
-        cli.run("-n --debug auto-upgrade mgit")
-        assert cli.succeeded
-        assert "Lock file present, another installation is in progress" in cli.logged
-
-        cli.expect_success("-n check", "No packages installed")
-        cli.expect_failure("-n check foo+bar", "'foo+bar' is not a valid pypi package name")
-
         cli.run("-n check mgit pickley2.a")
         assert "mgit: 100.0 not installed" in cli.logged
         assert "pickley2-a: does not exist" in cli.logged
         assert "'pickley2.a' is not pypi canonical" in cli.logged
 
         # Simulate mgit installed
-        runez.write(dot_meta("mgit.manifest.json"), '{"entrypoints": ["bogus-mgit"],"version":"1.0"}')
+        runez.write(dot_meta("mgit.manifest.json"), '{"entrypoints": ["bogus-mgit"],"version":"1.0"}', logger=None)
         cli.run("-n check mgit")
         assert "mgit: 100.0 (currently 1.0 unhealthy)" in cli.logged
 
@@ -195,7 +183,7 @@ def test_dryrun(cli):
         cli.expect_success("list -fjson", "mgit")
         cli.expect_success("list -ftsv", "mgit")
         cli.expect_success("list -fyaml", "mgit")
-        runez.delete(dot_meta("mgit"))
+        runez.delete(dot_meta("mgit"), logger=None)
 
         cli.run("-n -Pinvoker install --no-binary :all: mgit==1.3.0")
         assert cli.succeeded
@@ -208,24 +196,20 @@ def test_dryrun(cli):
 
 
 def test_dev_mode(cli):
-    with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
-        cli.run("-n install pickley")
-        assert cli.succeeded
-        assert "pip install -e " in cli.logged
-        assert "Would wrap pickley -> .pk/pickley-100.0/bin/pickley" in cli.logged
-        assert "Would state: Installed pickley v100.0 in "
+    cli.run("-n", "install", runez.DEV.project_folder, logger=None)
+    assert cli.succeeded
+    assert "pip install -e " in cli.logged
+    assert "Would wrap pickley -> .pk/pickley-dev/bin/pickley" in cli.logged
+    assert "Would state: Installed pickley v" in cli.logged
 
 
 def test_edge_cases(temp_cfg, logged):
-    tv = TrackedVersion(version="1.2")
-    assert str(tv) == "1.2"
-
     with pytest.raises(NotImplementedError):
         Packager.package(None, None, None, None, False)
 
-    runez.touch("share/python-wheels/some-wheel.whl")
-    runez.touch("__pycache__/some_module.py")
-    runez.touch("some_module.pyc")
+    runez.touch("share/python-wheels/some-wheel.whl", logger=None)
+    runez.touch("__pycache__/some_module.py", logger=None)
+    runez.touch("some_module.pyc", logger=None)
     logged.pop()
     clean_compiled_artifacts(".")
     assert "Deleted 3 compiled artifacts" in logged.pop()
@@ -234,36 +218,22 @@ def test_edge_cases(temp_cfg, logged):
 
 
 def test_facultative(cli):
-    runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"))
+    runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"), logger=None)
 
     # Empty file -> proceed with install as if it wasn't there
-    runez.touch("virtualenv")
+    runez.touch("virtualenv", logger=None)
     cli.expect_success("-n install virtualenv==1.0", "Would state: Installed virtualenv")
 
     # Simulate pickley wrapper
-    runez.write("virtualenv", "echo installed by pickley")
-    runez.make_executable("virtualenv")
+    runez.write("virtualenv", "echo installed by pickley", logger=None)
+    runez.make_executable("virtualenv", logger=None)
     cli.expect_success("-n install virtualenv==1.0", "Would state: Installed virtualenv")
 
     # Unknown executable -> skip pickley installation (since facultative)
-    runez.write("virtualenv", "echo foo")
-    runez.make_executable("virtualenv")
+    runez.write("virtualenv", "echo foo", logger=None)
+    runez.make_executable("virtualenv", logger=None)
     cli.expect_success("-n install virtualenv", "Skipping installation of virtualenv: not installed by pickley")
     cli.expect_success("-n check virtualenv", "skipped, not installed by pickley")
-
-    # --force ignores 'facultative' setting
-    with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
-        cli.run("-n install --force virtualenv")
-        assert cli.failed
-        assert "virtualenv exists and was not installed by pickley" in cli.logged
-
-        # Simulate pickley symlink delivery
-        dummy_target = dot_meta("foo")
-        runez.touch(dummy_target)
-        runez.symlink(dummy_target, "virtualenv")
-        cli.run("-n install virtualenv")
-        assert cli.succeeded
-        assert "Would state: Installed virtualenv" in cli.logged
 
 
 def check_is_wrapper(path, is_wrapper):
@@ -280,12 +250,7 @@ def check_install_from_pypi(cli, delivery, package, version=None, simulate_versi
     if version:
         runez.write(f".pk/.cache/{package}.latest", f'{{"version": "{version}"}}', logger=None)
 
-    cmd = "-v"
-    if sys.version_info[:2] >= (3, 7):
-        # `uv` fails with py3.6 on github actions (even though it usually works with py3.6), not worth investigating
-        cmd += " --package-manager=uv"
-
-    cli.run(f"{cmd} -d{delivery} install {package}")
+    cli.run(f"-v -d{delivery} install {package}")
     assert cli.succeeded
     expected = f"Installed {package} v"
     if version:
@@ -330,22 +295,22 @@ def check_install_from_pypi(cli, delivery, package, version=None, simulate_versi
     if simulate_version:
         installed_version = m.version
         m.version = simulate_version
-        runez.save_json(m.to_dict(), dot_meta(f"{package}.manifest.json"))
+        runez.save_json(m.to_dict(), dot_meta(f"{package}.manifest.json"), logger=None)
         cli.expect_success("check", f"{installed_version} (currently {simulate_version} unhealthy)")
 
 
-@pytest.mark.skipif(sys.version_info[:2] <= (3, 6), reason="uv does not recognize py3.6")
+@pytest.mark.skipif(not bstrap.USE_UV, reason="to keep test case simple (uv only)")
 def test_install_pypi(cli):
     check_install_from_pypi(cli, "symlink", "uv")
 
-    runez.touch(dot_meta("mgit-0.0.1/pyenv.cfg"))
+    runez.touch(dot_meta("mgit-0.0.1/pyenv.cfg"), logger=None)
     time.sleep(0.01)  # Ensure 0.0.1 is older than 0.0.2
-    runez.touch(dot_meta("mgit-0.0.2/pyenv.cfg"))
+    runez.touch(dot_meta("mgit-0.0.2/pyenv.cfg"), logger=None)
 
     # Simulate the presence of an old entry point
     manifest_path = dot_meta("mgit.manifest.json")
-    runez.save_json({"entrypoints": ["mgit", "old-mgit-entrypoint"]}, manifest_path)
-    runez.touch("old-mgit-entrypoint")
+    runez.save_json({"entrypoints": ["mgit", "old-mgit-entrypoint"]}, manifest_path, logger=None)
+    runez.touch("old-mgit-entrypoint", logger=None)
 
     check_install_from_pypi(cli, "symlink", "mgit", version="1.3.0")
     assert not os.path.exists("old-mgit-entrypoint")
@@ -362,7 +327,7 @@ def test_install_pypi(cli):
 
     cfg = PickleyConfig()
     cfg.set_base(".")
-    pspec = PackageSpec(cfg, "mgit==1.3.0")
+    pspec = PackageSpec("mgit==1.3.0")
     pspec.groom_installation(keep_for=0)
     assert not os.path.exists(dot_meta("mgit-0.0.2"))
     assert os.path.exists(dot_meta("mgit-1.3.0"))
@@ -376,13 +341,13 @@ def test_install_pypi(cli):
     check_install_from_pypi(cli, "wrap", "mgit", version="1.3.0", simulate_version="0.0.0")
     check_is_wrapper("./mgit", True)
 
-    runez.delete(dot_meta("mgit-1.3.0"))
+    runez.delete(dot_meta("mgit-1.3.0"), logger=None)
     cli.run("-n auto-heal")
     assert cli.succeeded
     assert "Auto-healed 1 / 2 packages" in cli.logged
 
 
-@pytest.mark.skipif(sys.version_info[:2] <= (3, 6), reason="uv does not recognize py3.6")
+@pytest.mark.skipif(not bstrap.USE_UV, reason="to keep test case simple (uv only)")
 def test_invalid(cli):
     cli.run("--color install six")
     assert cli.failed
@@ -391,11 +356,11 @@ def test_invalid(cli):
 
     cli.expect_failure("install mgit+foo")
     assert cli.failed
-    assert "not a valid pypi package name" in cli.logged
+    assert "'pip install mgit+foo' failed" in cli.logged
 
 
 def test_lock(temp_cfg):
-    pspec = PackageSpec(temp_cfg, "foo")
+    pspec = PackageSpec("foo==1.0")
     lock_path = dot_meta("foo.lock")
     with SoftLock(pspec, give_up=600) as lock:
         assert str(lock) == "lock foo"
@@ -410,7 +375,7 @@ def test_lock(temp_cfg):
     assert not os.path.exists(lock_path)  # Check that lock was released
 
     # Check that lock detects bogus (or dead) PID
-    runez.write(lock_path, "0\nbar\n")
+    runez.write(lock_path, "0\nbar\n", logger=None)
     with SoftLock(pspec, give_up=600):
         lines = list(runez.readlines(lock_path))
         assert lines[0] == str(os.getpid())  # Lock file replaced with correct stuff
@@ -422,11 +387,10 @@ def test_main(cli):
     cli.exercise_main("-mpickley", "src/pickley/bstrap.py")
 
 
-@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_package_venv(cli):
     # TODO: retire the `package` command, not worth the effort to support it
     # Verify that "debian mode" works as expected, with -droot/tmp <-> /tmp
-    runez.delete("/tmp/pickley")
+    runez.delete("/tmp/pickley", logger=None)
     cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--sanity-check=--version", "-sroot:root/usr/local/bin")
     assert cli.succeeded
     assert "--version" in cli.logged
@@ -434,13 +398,12 @@ def test_package_venv(cli):
     assert runez.is_executable("/tmp/pickley/bin/pickley")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
     assert r.succeeded
-    runez.delete("/tmp/pickley")
+    runez.delete("/tmp/pickley", logger=None)
 
 
-@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_package_venv_with_additional_packages(cli):
     # TODO: retire the `package` command, not worth the effort to support it
-    runez.delete("/tmp/pickley")
+    runez.delete("/tmp/pickley", logger=None)
     cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder)
     assert cli.succeeded
     assert "pip install -r requirements.txt" in cli.logged
@@ -448,7 +411,7 @@ def test_package_venv_with_additional_packages(cli):
     assert runez.is_executable("/tmp/pickley/bin/pickley")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
     assert r.succeeded
-    runez.delete("/tmp/pickley")
+    runez.delete("/tmp/pickley", logger=None)
 
 
 def test_version_check(cli):
