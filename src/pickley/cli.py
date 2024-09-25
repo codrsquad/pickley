@@ -725,6 +725,7 @@ def package(build, dist, symlink, no_compile, sanity_check, project, requirement
     build = os.path.abspath(build)
     dist = os.path.abspath(dist)
     project = os.path.abspath(project)
+    os.environ["PICKLEY_PACKAGE_MANAGER"] = "pip"  # TODO: Change this to uv in the future. Use pip for now
     with runez.CurrentFolder(project):
         runez.log.spec.default_logger = LOG.info
         CFG.set_base(runez.resolved_path(build))
