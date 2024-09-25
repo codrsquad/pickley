@@ -722,20 +722,21 @@ def parsed_version(text):
 def package(build, dist, symlink, no_compile, sanity_check, project, requirement, additional):
     """Package a project from source checkout"""
     started = time.time()
-    runez.log.spec.default_logger = LOG.info
-    CFG.set_base(runez.resolved_path(build))
-    finalizer = PackageFinalizer(project, dist, symlink, requirement, additional)
-    finalizer.sanity_check = sanity_check
-    finalizer.compile = not no_compile
-    finalizer.resolve()
-    report = finalizer.finalize()
-    if report:
-        inform("")
-        inform(report)
-        inform("")
+    with runez.CurrentFolder(project):
+        runez.log.spec.default_logger = LOG.info
+        CFG.set_base(runez.resolved_path(build))
+        finalizer = PackageFinalizer(project, dist, symlink, requirement, additional)
+        finalizer.sanity_check = sanity_check
+        finalizer.compile = not no_compile
+        finalizer.resolve()
+        report = finalizer.finalize()
+        if report:
+            inform("")
+            inform(report)
+            inform("")
 
-    elapsed = f"in {runez.represented_duration(time.time() - started)}"
-    inform(f"Packaged {runez.bold(runez.short(project))} successfully {runez.dim(elapsed)}")
+        elapsed = f"in {runez.represented_duration(time.time() - started)}"
+        inform(f"Packaged {runez.bold(runez.short(project))} successfully {runez.dim(elapsed)}")
 
 
 class PackageFinalizer:
