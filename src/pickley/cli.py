@@ -722,6 +722,9 @@ def parsed_version(text):
 def package(build, dist, symlink, no_compile, sanity_check, project, requirement, additional):
     """Package a project from source checkout"""
     started = time.time()
+    build = os.path.abspath(build)
+    dist = os.path.abspath(dist)
+    project = os.path.abspath(project)
     with runez.CurrentFolder(project):
         runez.log.spec.default_logger = LOG.info
         CFG.set_base(runez.resolved_path(build))
