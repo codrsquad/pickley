@@ -142,6 +142,7 @@ class ResolvedPackageInfo:
     _pip_spec: List[str] = None  # CLI args to pass to `pip install`
     _auto_upgrade_spec: Optional[str] = None  # Spec to use for `pickley auto-upgrade`
     _venv_basename: str = None  # The basename of the .pk/ venv pickley uses to install this
+    _bake_time: Optional[float] = None  # The amount of time to ignore new releases
     _is_resolved = False
 
     def __init__(self, given_package_spec, logger=None, package_manager=None):
@@ -172,12 +173,14 @@ class ResolvedPackageInfo:
             pinned = CFG.get_nested("pinned", given_package_spec)
             if isinstance(pinned, dict):
                 version = pinned.get("version")
+                self._bake_time = pinned.get("bake_time")
 
             elif isinstance(pinned, str):
                 version = pinned
 
             if version:
                 self.resolution_reason = "pinned by configuration"
+
 
         if name and version:
             # User or configuration wants to install a specifically pinned version (example: poetry==1.8.3)
@@ -244,7 +247,16 @@ class ResolvedPackageInfo:
             venv.groom_uv_venv = False
             venv.logger = self.logger
             venv.create_venv()
-            r = venv.pip_install(pip_spec, no_deps=True, quiet=True, fatal=False)
+            r = False
+            if self._bake_time:
+                ago = time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(time.time() - self._bake_time))
+                r = venv.pip_install(pip_spec, "--exclude-newer={ago}", no_deps=True, quiet=True, fatal=False)
+
+            if not r:
+                # This is the fallback even if we executed the bake_time block
+                # above, because the project might not have existed long ago.
+                r = venv.pip_install(pip_spec, no_deps=True, quiet=True, fatal=False)
+
             if not r:
                 pip_spec = runez.joined(pip_spec)
                 lines = r.full_output.strip().splitlines()
