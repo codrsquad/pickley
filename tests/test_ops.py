@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 import runez
-from runez.pyenv import Version
+from runez.pyenv import Version, PypiStd
 
 from pickley import __version__, bstrap, PackageSpec, PickleyConfig, TrackedManifest
 from pickley.cli import clean_compiled_artifacts, find_base, PackageFinalizer, Requirements, SoftLock, SoftLockException
@@ -84,12 +84,98 @@ def test_debian_mode(temp_cfg, logged):
         assert "'foo' failed --version sanity check" in logged.pop()
 
 
-def mock_latest_pypi_version(package_name, *_):
-    if package_name in ("mgit", "pickley", "virtualenv", "uv"):
-        return Version("100.0")
+class MockRunner:
+    """Intercept calls to `runez.run()` to simulate package resolution"""
+    last_project_ref = None
+    last_name = None
+    last_version = None
+
+    def reset(self):
+        self.last_project_ref = None
+        self.last_name = None
+        self.last_version = None
+
+    def run(self, program, *args, logger=runez.UNSET, dryrun=runez.UNSET, **popen_args):
+        args = runez.flattened(args, shellify=True)
+        audit = runez.program.RunAudit(program, args, popen_args)
+        r = runez.program.RunResult(code=0, audit=audit)
+        description = audit.run_description()
+        if runez.log.hdry("run: %s" % description, dryrun=dryrun, logger=logger):
+            audit.dryrun = True
+            r.output = "[dryrun] %s" % description  # Properly simulate a successful run
+            return r
+
+        print("Running: %s" % description)
+        if "venv" in args or "-mvenv" in args:
+            self.reset()
+            return r
+
+        if "install" in args:
+            what = args[-1]
+            if what == "pickley2.a":
+                r.exit_code = 1
+                r.error = "line 1\nline 2\nline 3\nline 4\nline 5"
+                return r
+
+            if "==" in what:
+                self.last_name, _, self.last_version = what.rpartition("==")
+                return r
+
+            if what.startswith("/"):
+                self.last_project_ref = what
+                self.last_name = os.path.basename(what)
+                if self.last_name == "pickley":
+                    self.last_version = __version__
+
+                return r
+
+            if PypiStd.std_package_name(what) == what:
+                self.last_name = what
+                self.last_version = "102.0"
+                return r
+
+            if what.startswith("git+"):
+                self.last_name = os.path.basename(what).replace(".git", "")
+                self.last_version = "103.0"
+                return r
+
+            self.last_name = what
+            self.last_version = "100.0"
+            return r
+
+        if "freeze" in args:
+            if not self.last_version:
+                r.output = "oops\npip freeze failed!\n"
+
+            else:
+                r.output = str(self)
+
+            return r
+
+        if "show" in args:
+            r.output = f"Name: {self.last_name}\nLocation: ...\n"
+            if self.last_version:
+                r.output += f"Version: {self.last_version}\n"
+
+            return r
+
+        return r
+
+    def __repr__(self):
+        if self.last_project_ref:
+            return f"{self.last_name} @ {self.last_project_ref}"
+
+        return f"{self.last_name}=={self.last_version}"
 
 
-def test_dryrun(cli):
+MOCK_RUNNER = MockRunner()
+
+
+def test_dryrun(cli, monkeypatch):
+    monkeypatch.setattr(runez, "run", MOCK_RUNNER.run)
+    # monkeypatch.setattr(runez.program, "run", MOCK_RUNNER.run)
+    # monkeypatch.setattr(runez.pyenv, "run", MOCK_RUNNER.run)
+
     cli.run("-n config")
     assert cli.succeeded
     assert not cli.logged.stderr
@@ -103,7 +189,9 @@ def test_dryrun(cli):
 
     cli.run("-n", "install", runez.DEV.project_folder)
     assert cli.succeeded
-    assert "Would state: Installed pickley" in cli.logged
+    assert "pip install -e " in cli.logged
+    assert "Would wrap pickley -> .pk/pickley-dev/bin/pickley" in cli.logged
+    assert f"Would state: Installed pickley v{__version__}" in cli.logged
 
     cli.run("-n install uv==0.3.1")
     assert cli.succeeded
@@ -113,6 +201,7 @@ def test_dryrun(cli):
     cli.run("-n install https://github.com/codrsquad/portable-python.git")
     assert cli.succeeded
     assert "pip install git+https://github.com/codrsquad/portable-python.git" in cli.logged
+    assert "Would wrap portable-python -> .pk/portable-python-103.0/bin/portable-python" in cli.logged
 
     cli.run("-n -Pfoo diagnostics")
     assert "preferred python : foo [not available]" in cli.logged
@@ -123,11 +212,14 @@ def test_dryrun(cli):
     cli.expect_failure("-n package foo", "Folder ... does not exist")
     cli.expect_failure("-n package . -sfoo", "Invalid symlink specification")
 
-    runez.touch("setup.py", logger=None)
-    cli.expect_failure("-n package .", "Could not determine package name")
+    runez.touch("tmp-project/setup.py", logger=None)
+    cli.run("-n package ./tmp-project")
+    assert cli.failed
+    assert "Could not determine package name" in cli.logged
 
     cli.run("-n", "package", cli.project_folder, "mgit")
     assert cli.succeeded
+    assert "pip install -U pip setuptools" in cli.logged
     cli.match("Would run: ...pip...install -r requirements.txt")
     cli.match("Would run: ...pip...install mgit")
 
@@ -159,40 +251,38 @@ def test_dryrun(cli):
     assert "No packages installed" in cli.logged
 
     cli.run("-n check mgit pickley2.a")
+    assert cli.failed
+    assert "mgit: 102.0 not installed" in cli.logged
+    assert "pickley2.a: line 1\nline 2\nline 3\n" in cli.logged
+    assert "line 4" not in cli.logged
+
+    # Simulate mgit installed
+    runez.write(dot_meta("mgit.manifest.json"), '{"entrypoints": ["bogus-mgit"],"version":"1.0"}', logger=None)
+    cli.run("-n check mgit")
     assert cli.succeeded
+    assert "mgit: 102.0 (currently 1.0 unhealthy)" in cli.logged
 
-    with patch("pickley.latest_pypi_version", side_effect=mock_latest_pypi_version):
-        cli.run("-n check mgit pickley2.a")
-        assert "mgit: 100.0 not installed" in cli.logged
-        assert "pickley2-a: does not exist" in cli.logged
-        assert "'pickley2.a' is not pypi canonical" in cli.logged
+    # Simulate an old entry point that was now removed
+    cli.run("-n install mgit")
+    assert cli.succeeded
+    assert "Would state: Installed mgit v102.0" in cli.logged
 
-        # Simulate mgit installed
-        runez.write(dot_meta("mgit.manifest.json"), '{"entrypoints": ["bogus-mgit"],"version":"1.0"}', logger=None)
-        cli.run("-n check mgit")
-        assert "mgit: 100.0 (currently 1.0 unhealthy)" in cli.logged
+    cli.run("list")
+    cli.expect_success("list", "mgit")
+    cli.expect_success("list -fcsv", "mgit")
+    cli.expect_success("list -fjson", "mgit")
+    cli.expect_success("list -ftsv", "mgit")
+    cli.expect_success("list -fyaml", "mgit")
+    runez.delete(dot_meta("mgit"), logger=None)
 
-        # Simulate an old entry point that was now removed
-        cli.run("-n install mgit pickley2.a")
-        assert cli.failed
-        assert "Would state: Installed mgit v100.0" in cli.logged
-        assert "Can't install pickley2-a: does not exist on" in cli.logged
+    cli.run("-n -Pinvoker install --no-binary :all: mgit==1.3.0")
+    assert cli.succeeded
+    assert " --no-binary :all: mgit==1.3.0" in cli.logged
+    assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
+    assert cli.match("Would save %s" % dot_meta("mgit.manifest.json"))
+    assert cli.match("Would state: Installed mgit v1.3.0")
 
-        cli.expect_success("list", "mgit")
-        cli.expect_success("list -fcsv", "mgit")
-        cli.expect_success("list -fjson", "mgit")
-        cli.expect_success("list -ftsv", "mgit")
-        cli.expect_success("list -fyaml", "mgit")
-        runez.delete(dot_meta("mgit"), logger=None)
-
-        cli.run("-n -Pinvoker install --no-binary :all: mgit==1.3.0")
-        assert cli.succeeded
-        assert " --no-binary :all: mgit==1.3.0" in cli.logged
-        assert cli.match("Would wrap mgit -> %s" % dot_meta("mgit"))
-        assert cli.match("Would save %s" % dot_meta("mgit.manifest.json"))
-        assert cli.match("Would state: Installed mgit v1.3.0")
-
-        cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
+    cli.expect_failure("-n -dfoo install mgit", "Unknown delivery method 'foo'")
 
 
 def test_dev_mode(cli):

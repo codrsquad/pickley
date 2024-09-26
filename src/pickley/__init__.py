@@ -491,6 +491,7 @@ class PackageSpec:
             self.resolved_info.auto_upgrade_spec,
             entry_points,
             TrackedInstallInfo.current(),
+            self.resolved_info.python_spec,
             self.target_version,
         )
         payload = manifest.to_dict()
@@ -771,34 +772,40 @@ class TrackedManifest:
 
     path: str = None  # Path to this manifest
     auto_upgrade_spec: Optional[str] = None  # Spec to use for `pickley auto-upgrade`
+    delivery: str = None
     entrypoints: Sequence[str] = None
     install_info: "TrackedInstallInfo" = None
+    python: str = None
     version: Version = None
 
-    def __init__(self, path, auto_upgrade_spec: Optional[str], entrypoints: dict, install_info: "TrackedInstallInfo", version: Version):
+    def __init__(self, path, auto_upgrade_spec: Optional[str], entrypoints: dict, install_info: "TrackedInstallInfo", python: str, version: Version):
         self.path = path
         self.auto_upgrade_spec = auto_upgrade_spec
         self.entrypoints = entrypoints
         self.install_info = install_info
+        self.python = python
         self.version = version
 
     @classmethod
     def from_file(cls, path):
         data = runez.read_json(path)
         if data:
-            return cls(
-                path,
-                data.get("auto_upgrade_spec"),
-                data.get("entrypoints"),
-                TrackedInstallInfo.from_manifest_data(data),
-                Version(data.get("version")),
-            )
+            manifest = cls(path)
+            manifest.auto_upgrade_spec = data.get("auto_upgrade_spec")
+            manifest.delivery = data.get("delivery")
+            manifest.entrypoints = data.get("entrypoints")
+            manifest.install_info = TrackedInstallInfo.from_dict(data.get("install_info"))
+            manifest.python = data.get("python")
+            manifest.version = Version(data.get("version"))
+            return manifest
 
     def to_dict(self):
         return {
             "auto_upgrade_spec": self.auto_upgrade_spec,
+            "delivery": self.delivery,
             "entrypoints": self.entrypoints,
             "install_info": self.install_info.to_dict(),
+            "python": self.python,
             "version": self.version.text,
         }
 
