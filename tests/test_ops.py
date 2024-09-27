@@ -427,24 +427,16 @@ def test_package_venv(cli):
     # TODO: retire the `package` command, not worth the effort to support it
     # Verify that "debian mode" works as expected, with -droot/tmp <-> /tmp
     runez.delete("/tmp/pickley")
-    cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--sanity-check=--version", "-sroot:root/usr/local/bin")
-    assert cli.succeeded
-    assert "--version" in cli.logged
-    assert runez.is_executable("/tmp/pickley/bin/pip3")
-    assert runez.is_executable("/tmp/pickley/bin/pickley")
-    r = runez.run("/tmp/pickley/bin/pickley", "--version")
-    assert r.succeeded
-    runez.delete("/tmp/pickley")
-
-
-@pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
-def test_package_venv_with_additional_packages(cli):
-    # TODO: retire the `package` command, not worth the effort to support it
-    runez.delete("/tmp/pickley")
-    cli.run("package", "-droot/tmp", "-sroot:root/usr/local/bin", cli.project_folder)
+    cli.run("package", cli.project_folder, "-droot/tmp", "--no-compile", "--sanity-check=--version", "-sroot:root/usr/local/bin", "runez")
     assert cli.succeeded
     assert "pip install -r requirements.txt" in cli.logged
-    assert runez.is_executable("/tmp/pickley/bin/pip3")
+    assert "pip install runez" in cli.logged
+    assert "pickley --version" in cli.logged
+    assert "Symlinked root/usr/local/bin/pickley -> /tmp/pickley/bin/pickley" in cli.logged
+    assert os.path.islink("build/root/usr/local/bin/pickley")
+    rp = os.path.realpath("build/root/usr/local/bin/pickley")
+    assert os.path.exists(rp)
+    assert runez.is_executable("/tmp/pickley/bin/python")
     assert runez.is_executable("/tmp/pickley/bin/pickley")
     r = runez.run("/tmp/pickley/bin/pickley", "--version")
     assert r.succeeded

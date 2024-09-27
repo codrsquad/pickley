@@ -844,8 +844,7 @@ class Symlinker:
         if not self.base or not self.target:
             abort(f"Invalid symlink specification '{spec}'")
 
-        self.base = runez.resolved_path(self.base)
-        self.target = runez.resolved_path(self.target)
+        self.target = runez.resolved_path(self.target, base=CFG.base.path)
 
     def apply(self, exe):
         dest = os.path.join(self.target, os.path.basename(exe))
