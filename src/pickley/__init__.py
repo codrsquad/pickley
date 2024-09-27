@@ -11,7 +11,7 @@ from runez.pyenv import ArtifactInfo, PypiStd, PythonDepot, Version
 
 from pickley.bstrap import DOT_META, http_get, PICKLEY
 
-__version__ = "4.3.2"
+__version__ = "4.3.3"
 LOG = logging.getLogger(__name__)
 DEFAULT_PACKAGE_MANAGER = "uv" if sys.version_info[:2] >= (3, 8) else "pip"
 K_CLI = {"delivery", "index", "python"}
