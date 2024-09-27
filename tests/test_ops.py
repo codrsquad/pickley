@@ -42,48 +42,48 @@ def test_base(cli, monkeypatch):
 
 
 def dummy_finalizer(cfg, dist, symlink="root:root/usr/local/bin"):
-    p = PackageFinalizer("foo", dist, symlink, None, None, cfg=cfg)
+    p = PackageFinalizer(runez.resolved_path("my-project"), dist, symlink, None, None, cfg=cfg)
     p.resolve()
-    assert p.pspec.dashed == "foo"
+    assert p.pspec.dashed == "my-project"
     return p
 
 
 @pytest.mark.skipif(sys.version_info[:2] >= (3, 12), reason="setuptools is not available in py3.12")
 def test_debian_mode(temp_cfg, logged):
-    runez.write("foo/setup.py", "import setuptools\nsetuptools.setup(name='foo', version='1.0')")
+    runez.write("my-project/setup.py", "import setuptools\nsetuptools.setup(name='my-project', version='1.0')")
     p = dummy_finalizer(temp_cfg, "root/apps")
-    assert p.dist == "root/apps/foo"
-    assert p.requirements == Requirements(requirement_files=[], additional_packages=None, project=runez.resolved_path("foo"))
+    assert p.dist == os.path.abspath("root/apps/my-project")
+    expected = Requirements(requirement_files=[], additional_packages=None, project=runez.resolved_path("my-project"))
+    assert p.requirements == expected
     assert "Using python:" in logged.pop()
 
     # Symlink not created unless source effectively exists
-    p.symlink.apply("root/foo")
+    p.symlink.apply("root/my-project")
     assert "skipping symlink" in logged.pop()
     assert not os.path.isdir("root/usr/local/bin")
 
-    foo = runez.resolved_path("root/foo")
-    runez.touch(foo)
-    logged.pop()
+    mp = runez.resolved_path("root/my-project")
+    runez.touch(mp, logger=None)
 
     # Simulate symlink
-    p.symlink.apply(foo)
-    assert "Symlinked root/usr/local/bin/foo -> root/foo" in logged.pop()
+    p.symlink.apply(mp)
+    assert "Symlinked root/usr/local/bin/my-project -> root/my-project" in logged.pop()
     assert os.path.isdir("root/usr/local/bin")
-    assert os.path.islink("root/usr/local/bin/foo")
+    assert os.path.islink("root/usr/local/bin/my-project")
 
     with patch("os.path.isdir", return_value=True):  # pretend /apps exists
         p = dummy_finalizer(temp_cfg, "root/apps")
         assert "debian mode" in logged.pop()
-        assert p.dist == "/apps/foo"
+        assert p.dist == "/apps/my-project"
 
     with patch("runez.run", return_value=runez.program.RunResult("usage: ...")):
-        assert p.validate_sanity_check("foo", "--version") == "does not respond to --version"
+        assert p.validate_sanity_check("my-project", "--version") == "does not respond to --version"
 
     with patch("runez.run", return_value=runez.program.RunResult("failed")):
         with pytest.raises(SystemExit):
-            p.validate_sanity_check("foo", "--version")
+            p.validate_sanity_check("my-project", "--version")
 
-        assert "'foo' failed --version sanity check" in logged.pop()
+        assert "'my-project' failed --version sanity check" in logged.pop()
 
 
 def mock_latest_pypi_version(package_name, *_):
@@ -433,8 +433,8 @@ def test_package_venv(cli):
     assert "pip install runez" in cli.logged
     assert "pickley --version" in cli.logged
     assert "Symlinked root/usr/local/bin/pickley -> /tmp/pickley/bin/pickley" in cli.logged
-    assert os.path.islink("build/root/usr/local/bin/pickley")
-    rp = os.path.realpath("build/root/usr/local/bin/pickley")
+    assert os.path.islink("root/usr/local/bin/pickley")
+    rp = os.path.realpath("root/usr/local/bin/pickley")
     assert os.path.exists(rp)
     assert runez.is_executable("/tmp/pickley/bin/python")
     assert runez.is_executable("/tmp/pickley/bin/pickley")
