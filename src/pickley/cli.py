@@ -711,7 +711,7 @@ def parsed_version(text):
 
 
 @main.command()
-@click.option("--build", "-b", default="./build", show_default=True, help="Folder to use as build cache")
+@click.option("--base", "-b", default=".", show_default=True, help="Folder to use as base folder")
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
 @click.option("--symlink", "-s", help="Create symlinks for debian-style packaging, example: root:root/usr/local/bin")
 @click.option("--no-compile", is_flag=True, help="Don't byte-compile packaged venv")
@@ -719,14 +719,13 @@ def parsed_version(text):
 @click.option("--requirement", "-r", multiple=True, help="Install from the given requirements file (can be used multiple times)")
 @click.argument("project", required=True)
 @click.argument("additional", nargs=-1)
-def package(build, dist, symlink, no_compile, sanity_check, project, requirement, additional):
+def package(base, dist, symlink, no_compile, sanity_check, project, requirement, additional):
     """Package a project from source checkout"""
     started = time.time()
-    build = os.path.abspath(build)
-    project = os.path.abspath(project)
+    CFG.set_base(runez.resolved_path(base))
+    project = runez.resolved_path(project)
     with runez.CurrentFolder(project):
         runez.log.spec.default_logger = LOG.info
-        CFG.set_base(runez.resolved_path(build))
         finalizer = PackageFinalizer(project, dist, symlink, requirement, additional)
         finalizer.sanity_check = sanity_check
         finalizer.compile = not no_compile
@@ -759,7 +758,7 @@ class PackageFinalizer:
             cfg (PickleyConfig): Config to use
         """
         self.cfg = cfg
-        self.folder = runez.resolved_path(project)
+        self.folder = project
         self.dist = dist
         self.symlink = Symlinker(symlink, cfg.base.path) if symlink else None
         self.sanity_check = None
@@ -804,6 +803,8 @@ class PackageFinalizer:
             if len(parts) <= 2:
                 # Auto-add package name to targets of the form root/subfolder (most typical case)
                 self.dist = os.path.join(self.dist, self.pspec.dashed)
+
+        self.dist = runez.resolved_path(self.dist, base=self.cfg.base.path)
 
     def finalize(self):
         """Run sanity check and/or symlinks, and return a report"""
