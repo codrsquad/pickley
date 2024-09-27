@@ -761,7 +761,7 @@ class PackageFinalizer:
         self.cfg = cfg
         self.folder = runez.resolved_path(project)
         self.dist = dist
-        self.symlink = Symlinker(symlink) if symlink else None
+        self.symlink = Symlinker(symlink, cfg.base.path) if symlink else None
         self.sanity_check = None
         self.compile = True
         self.border = "reddit"
@@ -839,12 +839,12 @@ def does_not_implement_cli_flag(*messages):
 
 
 class Symlinker:
-    def __init__(self, spec):
+    def __init__(self, spec, base):
         self.base, _, self.target = spec.partition(":")
         if not self.base or not self.target:
             abort(f"Invalid symlink specification '{spec}'")
 
-        self.target = runez.resolved_path(self.target, base=CFG.base.path)
+        self.target = runez.resolved_path(self.target, base=base)
 
     def apply(self, exe):
         dest = os.path.join(self.target, os.path.basename(exe))
