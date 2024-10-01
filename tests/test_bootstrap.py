@@ -57,8 +57,8 @@ def test_bootstrap(cli, monkeypatch):
     else:
         cli.run("-n", main=bstrap.main)
         assert cli.succeeded
-        assert "Replacing older pickley v0.1" in cli.logged
         assert " -mvenv --clear " in cli.logged
+        assert "pickley base bootstrap-own-wrapper" in cli.logged
 
     with patch("pickley.bstrap.os.path.expanduser", side_effect=mocked_expanduser):
         runez.write(".local/bin/pickley", "#!/bin/sh\necho 0.1", logger=None)  # Pretend we have an old pickley

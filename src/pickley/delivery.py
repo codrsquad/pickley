@@ -64,7 +64,6 @@ class DeliveryMethod:
 
     action = "Delivered"
     short_name = "deliver"
-    ping = True  # Touch .ping file when done?
 
     @classmethod
     def delivery_method_by_name(cls, name):
@@ -83,17 +82,16 @@ class DeliveryMethod:
 
         return abort(f"Unknown delivery method '{runez.red(name)}'")
 
-    def install(self, pspec, target_folder, entry_points):
+    def install(self, pspec):
         """
         Args:
-            pspec (pickley.package.PackageSpec): Package spec being installed
+            pspec (pickley.PackageSpec): Package spec being installed
             target_folder (Path): Virtual env where executables reside (DOT_META/<package>/...)
-            entry_points (dict | list | tuple): Full path of executable to deliver (<base>/<entry_point>)
         """
         try:
             prev_manifest = pspec.manifest
-            for name in entry_points:
-                src = os.path.join(target_folder, "bin", name)
+            for name in pspec.resolved_info.entry_points:
+                src = os.path.join(pspec.target_installation_folder, "bin", name)
                 dest = pspec.exe_path(name)
                 ssrc = runez.short(src)
                 sdest = runez.short(dest)
@@ -107,16 +105,12 @@ class DeliveryMethod:
                 LOG.debug("%s %s -> %s", self.action, sdest, ssrc)
                 self._install(pspec, dest, src)
 
-            manifest = pspec.save_manifest(entry_points)
+            manifest = pspec.save_manifest()
             if not runez.DRYRUN and prev_manifest and prev_manifest.entrypoints:
                 for old_ep in prev_manifest.entrypoints:
-                    if old_ep and old_ep not in entry_points:
+                    if old_ep and old_ep not in pspec.resolved_info.entry_points:
                         # Remove old entry points that are not in new manifest anymore
                         runez.delete(pspec.exe_path(old_ep))
-
-            if self.ping:
-                # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-                runez.touch(CFG.cache.full_path(f"{pspec.canonical_name}.ping"))
 
             return manifest
 

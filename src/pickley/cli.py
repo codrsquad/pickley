@@ -10,10 +10,10 @@ from typing import NamedTuple, Optional, Sequence
 
 import click
 import runez
-from runez.pyenv import Version
+from runez.pyenv import Version, PypiStd
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, CFG, despecced, inform, PackageSpec, program_version, ResolvedPackageInfo, specced
+from pickley import __version__, abort, CFG, despecced, inform, PackageSpec, program_version, ResolvedPackage, specced, TrackedManifest, TrackedSettings
 from pickley.bstrap import DOT_META, PICKLEY
 from pickley.package import VenvPackager
 
@@ -61,20 +61,20 @@ class SoftLock:
     A lock is a simple file containing 2 lines: process id holding it, and the CLI args it was invoked with.
     """
 
-    def __init__(self, pspec, give_up=None, invalid=None):
+    def __init__(self, canonical_name, give_up=None, invalid=None):
         """
         Args:
-            pspec (PackageSpec): Package to acquire lock for
+            canonical_name (str): Canonical name of package to acquire lock for
             give_up (int | None): Timeout in seconds after which to give up (raise SoftLockException) if lock could not be acquired
             invalid (int | None): Age in seconds after which to consider existing lock as invalid
         """
-        self.pspec = pspec
-        self.lock_path = pspec.get_lock_path()
-        self.give_up = give_up or CFG.install_timeout(pspec.canonical_name)
+        self.canonical_name = canonical_name
+        self.lock_path = CFG.soft_lock_path(canonical_name)
+        self.give_up = give_up or CFG.install_timeout(canonical_name)
         self.invalid = invalid or self.give_up * 2
 
     def __repr__(self):
-        return f"lock {self.pspec.canonical_name}"
+        return f"lock {self.canonical_name}"
 
     def _locked_by(self):
         """
@@ -146,7 +146,10 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
     if not verb:
         verb = "upgrade" if is_upgrade else "install"
 
-    with SoftLock(pspec):
+    if pspec.resolved_info.problem:
+        abort(f"Can't {verb} {pspec}: {runez.red(pspec.resolved_info.problem)}")
+
+    with SoftLock(pspec.canonical_name):
         started = time.time()
         skip_reason = pspec.skip_reason(force)
         if skip_reason:
@@ -155,12 +158,6 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
 
         if is_upgrade and not pspec.currently_installed_version and not quiet:
             abort(f"'{runez.red(pspec)}' is not installed")
-
-        if force:
-            pspec.resolved_info.version_check_delay = 0
-
-        if pspec.resolved_info.problem:
-            abort(f"Can't {verb} {pspec}: {runez.red(pspec.resolved_info.problem)}")
 
         if not force and pspec.is_up_to_date:
             if not quiet:
@@ -253,6 +250,7 @@ def main(ctx, debug, config, index, python, delivery, package_manager):
     if ctx.invoked_subcommand == "package":
         # Default to using invoker for 'package' subcommand
         level = logging.INFO
+        package_manager = package_manager or "pip"  # Default to pip for 'package' subcommand
         python = python or find_symbolic_invoker()
 
     runez.log.setup(
@@ -276,6 +274,11 @@ def main(ctx, debug, config, index, python, delivery, package_manager):
 
     if CFG.base:
         runez.Anchored.add(CFG.base.path)
+
+    index = CFG.index
+    if index:
+        os.environ["PIP_INDEX_URL"] = index
+        os.environ["UV_INDEX_URL"] = index
 
 
 @main.command()
@@ -306,18 +309,24 @@ def auto_heal():
 @click.argument("package", required=True)
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
-    pspec = PackageSpec(package)
-    ping = CFG.cache.full_path(f"{pspec.canonical_name}.ping")
-    if not force and runez.file.is_younger(ping, 5):  # 5 seconds cool down on version check to avoid bursts
+    if force:
+        CFG.version_check_delay = 0
+
+    canonical_name = PypiStd.std_package_name(package)
+    runez.abort_if(not canonical_name, f"Invalid package name '{package}'")
+    cache_path = CFG.resolution_cache_path(canonical_name)
+    if CFG.version_check_delay and runez.file.is_younger(cache_path, CFG.version_check_delay):
         LOG.debug("Skipping auto-upgrade, checked recently")
         sys.exit(0)
 
-    runez.touch(ping)
-    lock_path = pspec.get_lock_path()
-    if lock_path and runez.file.is_younger(lock_path, CFG.install_timeout(pspec.canonical_name)):
+    lock_path = CFG.soft_lock_path(canonical_name)
+    if lock_path and runez.file.is_younger(lock_path, CFG.install_timeout(canonical_name)):
         LOG.debug("Lock file present, another installation is in progress")
         sys.exit(0)
 
+    manifest = TrackedManifest.from_file(CFG.manifest_path(canonical_name))
+    runez.abort_if(not manifest, f"{canonical_name} not installed with pickley")
+    pspec = PackageSpec(manifest.settings.auto_upgrade_spec)
     perform_install(pspec, is_upgrade=True, force=False, quiet=True)
 
 
@@ -330,7 +339,7 @@ def base(what):
         # Internal: called by bootstrap script
         pspec = PackageSpec(f"{PICKLEY}=={__version__}")
         delivery = pspec.delivery_method
-        delivery.install(pspec, pspec.target_installation_folder, (PICKLEY,))
+        delivery.install(pspec)
 
         tmp_uv = runez.to_path(CFG.meta.full_path(".uv"))
         uv_spec = PackageSpec("uv")
@@ -338,7 +347,7 @@ def base(what):
             # Use the .uv/bin/uv obtained during bootstrap
             runez.move(tmp_uv, uv_spec.target_installation_folder, overwrite=True)
             delivery = pspec.delivery_method
-            delivery.install(uv_spec, uv_spec.target_installation_folder, ("uv", "uvx"))
+            delivery.install(uv_spec)
 
         elif not uv_spec.is_healthily_installed:
             perform_install(uv_spec, is_upgrade=False, quiet=False)
@@ -375,6 +384,9 @@ def base(what):
 @click.argument("packages", nargs=-1, required=False)
 def check(force, packages):
     """Check whether specified packages need an upgrade"""
+    if force:
+        CFG.version_check_delay = 0
+
     code = 0
     packages = CFG.package_specs(packages)
     if not packages:
@@ -422,8 +434,31 @@ def config():
 def describe(packages):
     """Show current configuration"""
     for package_spec in packages:
-        info = ResolvedPackageInfo(package_spec, logger=LOG.info)
-        print(f"{runez.bold(info.canonical_name)} version {runez.bold(info.version)} (pip spec: {runez.bold(info.pip_spec)})")
+        settings = TrackedSettings.from_config(package_spec)
+        info = ResolvedPackage()
+        info.logger = LOG.debug
+        info.resolve(settings)
+        text = f"{runez.bold(info)}"
+        if info.canonical_name and info.canonical_name != info.given_package_spec:
+            text += f": {runez.bold(info.canonical_name)}"
+
+        if info.version:
+            text += f" version {runez.bold(info.version)}"
+
+        print(text)
+        if info.pip_spec:
+            text = runez.bold(runez.joined(info.pip_spec))
+            if info.resolution_reason:
+                text += runez.dim(f" ({info.resolution_reason})")
+
+            print(f"  pip spec: {text}")
+
+        if info.problem:
+            print(f"  problem: {runez.red(info.problem)}")
+
+        else:
+            ep = runez.joined(info.entry_points, delimiter=", ") or runez.brown("-no entry points-")
+            print(f"  entry points: {runez.bold(ep)}")
 
 
 def _diagnostics():
@@ -445,8 +480,11 @@ def diagnostics():
 @click.argument("packages", nargs=-1, required=True)
 def install(force, no_binary, packages):
     """Install a package from pypi"""
+    if force:
+        CFG.version_check_delay = 0
+
     setup_audit_log()
-    specs = CFG.package_specs(packages, include_pickley=packages and packages[0].startswith("bundle:"))
+    specs = CFG.package_specs(packages, canonical_only=False, include_pickley=packages and packages[0].startswith("bundle:"))
     for pspec in specs:
         perform_install(pspec, is_upgrade=False, force=force, quiet=False, no_binary=no_binary)
 
@@ -516,13 +554,13 @@ def cmd_list(border, format, verbose):
     report = TabularReport("Package,Version,Python", additional="Delivery,PackageManager", border=border, verbose=verbose)
     for pspec in packages:
         manifest = pspec.manifest
-        python = manifest and manifest.python and CFG.available_pythons.find_python(manifest.python)
+        python = manifest and manifest.settings.python and CFG.available_pythons.find_python(manifest.settings.python)
         report.add_row(
             Package=pspec.canonical_name,
             Version=manifest and manifest.version,
             Python=python,
-            Delivery=manifest and manifest.delivery,
-            PackageManager=manifest and manifest.package_manager,
+            Delivery=manifest and manifest.settings.delivery,
+            PackageManager=manifest and manifest.settings.package_manager,
         )
 
     print(report.represented(format))
@@ -702,7 +740,7 @@ def version_check(system, programs):
 
 
 @main.command()
-@click.option("--build", "-b", default="./build", show_default=True, help="Folder to use as build cache")
+@click.option("--base", "-b", default=".", show_default=True, help="Folder to use as base folder")
 @click.option("--dist", "-d", default="./dist", show_default=True, help="Folder where to produce package")
 @click.option("--symlink", "-s", help="Create symlinks for debian-style packaging, example: root:root/usr/local/bin")
 @click.option("--no-compile", is_flag=True, help="Don't byte-compile packaged venv")
@@ -710,13 +748,12 @@ def version_check(system, programs):
 @click.option("--requirement", "-r", multiple=True, help="Install from the given requirements file (can be used multiple times)")
 @click.argument("project", required=True)
 @click.argument("additional", nargs=-1)
-def package(build, dist, symlink, no_compile, sanity_check, project, requirement, additional):
+def package(base, dist, symlink, no_compile, sanity_check, project, requirement, additional):
     """Package a project from source checkout"""
     started = time.time()
-    build = runez.resolved_path(build)
+    CFG.set_base(runez.resolved_path(base))
     project = runez.resolved_path(project)
     runez.log.spec.default_logger = LOG.info
-    CFG.set_base(build)
     with runez.CurrentFolder(project, anchor=True):
         finalizer = PackageFinalizer(project, dist, symlink, requirement, additional)
         finalizer.sanity_check = sanity_check
@@ -748,7 +785,7 @@ class PackageFinalizer:
             requirement_files (list | tuple): Requirement files to use
             additional (list | tuple): Additional requirements
         """
-        self.folder = runez.resolved_path(project)
+        self.folder = project
         self.dist = dist
         self.symlink = Symlinker(symlink) if symlink else None
         self.sanity_check = None
@@ -780,11 +817,11 @@ class PackageFinalizer:
         if not os.path.isdir(self.folder):
             abort(f"Folder {runez.red(runez.short(self.folder))} does not exist")
 
-        self.pspec = PackageSpec(self.folder, package_manager="pip")
+        self.pspec = PackageSpec(self.folder)
         if not self.pspec.canonical_name:
             runez.abort(f"Could not determine package name: {self.pspec.resolved_info.problem}")
 
-        LOG.info("Using python: %s", self.pspec.resolved_info.python_spec)
+        LOG.info("Using python: %s", self.pspec.settings.python)
         if self.dist.startswith("root/"):
             # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
             target = self.dist[4:]
@@ -796,6 +833,8 @@ class PackageFinalizer:
             if len(parts) <= 2:
                 # Auto-add package name to targets of the form root/subfolder (most typical case)
                 self.dist = os.path.join(self.dist, self.pspec.canonical_name)
+
+        self.dist = runez.resolved_path(self.dist, base=CFG.base.path)
 
     def finalize(self):
         """Run sanity check and/or symlinks, and return a report"""
@@ -836,8 +875,7 @@ class Symlinker:
         if not self.base or not self.target:
             abort(f"Invalid symlink specification '{spec}'")
 
-        self.base = runez.resolved_path(self.base)
-        self.target = runez.resolved_path(self.target)
+        self.target = runez.resolved_path(self.target, base=CFG.base.path)
 
     def apply(self, exe):
         dest = os.path.join(self.target, os.path.basename(exe))
