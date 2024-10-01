@@ -198,10 +198,10 @@ def test_pip_conf(temp_cfg, logged):
 
     # Verify that we try reading all stated pip.conf files in order, and user the value from the first valid one
     runez.write("a", "ouch, this is not a valid config file", logger=False)  # Invalid file
-    runez.write("b", "[foo]\nbar = baz", logger=False)  # Valid, but mirror not configured
-    runez.write("c", "[global]\nindex-url = https://example.com/pypi", logger=False)
+    runez.write("b", "[global]\nindex-url = /", logger=False)  # Valid, but mirror not actually configured
+    runez.write("c", "[global]\nindex-url = https://example.com/simple//", logger=False)
     runez.write("d", "[global]\nindex-url = https://example.com/pypi2", logger=False)  # Not needed, previous one wins
-    assert bstrap.globally_configured_pypi_mirror(["no-such-file.conf", "a", "b", "c", "d"]) == ("https://example.com/pypi", "c")
+    assert bstrap.globally_configured_pypi_mirror(["no-such-file.conf", "a", "b", "c", "d"]) == ("https://example.com/simple", "c")
 
     # Keep chatter to a minimum
     assert "no-such-file.conf" not in logged  # No chatter about non-existing files

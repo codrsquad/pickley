@@ -31,17 +31,21 @@ def abort(message):
 
 
 class Bootstrap:
-    def __init__(self, pickley_base):
+    def __init__(self, pickley_base, mirror):
         self.pickley_base = Path(pickley_base)
         self.pickley_exe = self.pickley_base / PICKLEY
         self.pk_path = self.pickley_base / DOT_META
-        self.mirror = None
-
-    def seed_mirror(self, mirror):
-        self.mirror = mirror
         if mirror:
             seed_mirror(mirror, "~/.config/pip/pip.conf", "global")
             seed_mirror(mirror, "~/.config/uv/uv.toml", "pip")
+
+        else:
+            mirror, _ = globally_configured_pypi_mirror()
+
+        self.mirror = mirror
+        if mirror and mirror != DEFAULT_MIRROR:
+            os.environ["PIP_INDEX_URL"] = mirror
+            os.environ["UV_INDEX_URL"] = mirror
 
     def seed_pickley_config(self, desired_cfg):
         pickley_config = self.pk_path / "config.json"
@@ -69,12 +73,8 @@ class Bootstrap:
         return uv_path
 
     def get_latest_pickley_version(self):
-        mirror = self.mirror
-        if not mirror:
-            mirror, _ = globally_configured_pypi_mirror()
-
         # This is a temporary measure, eventually we'll use `uv describe` for this
-        url = os.path.dirname(mirror.rstrip("/"))
+        url = os.path.dirname(self.mirror)
         url = f"{url}/pypi/{PICKLEY}/json"
         print(f"Querying {url}")
         data = http_get(url)
@@ -186,6 +186,11 @@ def find_base(base):
     abort(f"Make sure '{candidates[0]}' is writeable.")
 
 
+def _groomed_mirror_url(mirror):
+    if isinstance(mirror, str):
+        return mirror.rstrip("/")
+
+
 def globally_configured_pypi_mirror(paths=None):
     """Configured pypi index from pip.conf"""
     if paths is None:
@@ -197,7 +202,9 @@ def globally_configured_pypi_mirror(paths=None):
 
             config = configparser.ConfigParser()
             config.read(os.path.expanduser(pip_conf_path))
-            return config["global"]["index-url"], pip_conf_path
+            mirror = _groomed_mirror_url(config["global"]["index-url"])
+            if mirror:
+                return mirror, pip_conf_path
 
         except (KeyError, OSError):
             continue
@@ -318,9 +325,8 @@ def main(args=None):
     if "__PYVENV_LAUNCHER__" in os.environ:
         del os.environ["__PYVENV_LAUNCHER__"]
 
-    bstrap = Bootstrap(find_base(args.base))
+    bstrap = Bootstrap(find_base(args.base), _groomed_mirror_url(args.mirror))
     print(f"Using {sys.executable}, base: {short(bstrap.pickley_base)}")
-    bstrap.seed_mirror(args.mirror)
     pickley_version = args.version or bstrap.get_latest_pickley_version()
     if not pickley_version:
         abort(f"Failed to determine latest {PICKLEY} version")
