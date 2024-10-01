@@ -529,14 +529,13 @@ class PickleyConfig:
     cache: Optional["FolderBase"] = None  # DOT_META/.cache subfolder
     cli_config: Optional[dict] = None  # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
     configs: List["RawConfig"]
-    _pip_conf = None
-    _pip_conf_index = None
+    _pip_conf = runez.UNSET
+    _pip_conf_index = runez.UNSET
     _uv_path = None
 
     def __init__(self):
         self.configs = []
         self.config_path = None
-        self.default_index = self.pip_conf_index or bstrap.DEFAULT_MIRROR
 
     def reset(self):
         """Used for testing"""
@@ -546,27 +545,12 @@ class PickleyConfig:
         self.cli_config = None
         self.configs = []
         self.config_path = None
-        self._pip_conf = None
-        self._pip_conf_index = None
-        self.default_index = bstrap.DEFAULT_MIRROR
+        self._pip_conf = runez.UNSET
+        self._pip_conf_index = runez.UNSET
         self.version_check_delay = DEFAULT_VERSION_CHECK_DELAY
 
     def __repr__(self):
         return "<not-configured>" if self.base is None else runez.short(self.base)
-
-    @property
-    def pip_conf(self):
-        if self._pip_conf is None:
-            self._pip_conf_index, self._pip_conf = bstrap.globally_configured_pypi_mirror()
-
-        return self._pip_conf
-
-    @property
-    def pip_conf_index(self):
-        if self._pip_conf_index is None:
-            self._pip_conf_index, self._pip_conf = bstrap.globally_configured_pypi_mirror()
-
-        return self._pip_conf_index
 
     @runez.cached_property
     def available_pythons(self):
@@ -575,6 +559,27 @@ class PickleyConfig:
         preferred = runez.flattened(self.get_value("preferred_pythons"), split=",")
         depot.set_preferred_python(preferred)
         return depot
+
+    @property
+    def default_index(self):
+        """Default pypi mirror index, as configured by pip.conf (global or user)"""
+        return self.pip_conf_index or bstrap.DEFAULT_MIRROR
+
+    @property
+    def pip_conf(self):
+        """Path to pip.conf file where user/machine's default pypi mirror is defined"""
+        if self._pip_conf is runez.UNSET:
+            self._pip_conf_index, self._pip_conf = bstrap.globally_configured_pypi_mirror()
+
+        return self._pip_conf
+
+    @property
+    def pip_conf_index(self):
+        """Default mirror as configured by user/machine pip.conf"""
+        if self._pip_conf_index is runez.UNSET:
+            self._pip_conf_index, self._pip_conf = bstrap.globally_configured_pypi_mirror()
+
+        return self._pip_conf_index
 
     def find_uv(self):
         """Path to uv installation"""

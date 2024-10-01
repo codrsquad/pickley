@@ -279,25 +279,6 @@ def short(text):
     return str(text).replace(HOME, "~")
 
 
-def _add_uv_env(env, env_var, value):
-    if value:
-        env[env_var] = value
-        return f"{env_var}={short(value)}"
-
-
-def uv_env(mirror=None, venv=None, logger=None):
-    if mirror or venv:
-        env = dict(os.environ)
-        logged = (
-            _add_uv_env(env, "UV_INDEX_URL", mirror),
-            _add_uv_env(env, "VIRTUAL_ENV", venv),
-        )
-        if logger:
-            logger(", ".join(x for x in logged if x))
-
-        return env
-
-
 def which(program):
     prefix_bin = os.path.join(sys.prefix, "bin")
     for p in os.environ.get("PATH", "").split(os.pathsep):
@@ -389,8 +370,9 @@ def main(args=None):
 
     elif package_manager == "uv":
         uv_path = bstrap.find_uv()
-        env = uv_env(mirror=args.mirror, venv=pickley_venv)
-        run_program(uv_path, "-q", "venv", "-p", sys.executable, pickley_venv, env=uv_env(mirror=args.mirror))
+        run_program(uv_path, "-q", "venv", "-p", sys.executable, pickley_venv)
+        env = dict(os.environ)
+        env["VIRTUAL_ENV"] = pickley_venv
         run_program(uv_path, "-q", "pip", "install", f"{PICKLEY}=={pickley_version}", env=env)
 
     else:

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -103,7 +104,8 @@ class PythonVenv:
 
     def run_uv(self, *args, **kwargs):
         uv_path = CFG.find_uv()
-        env = bstrap.uv_env(venv=self.folder, logger=self.logger)
+        env = dict(os.environ)
+        env["VIRTUAL_ENV"] = self.folder
         kwargs.setdefault("logger", self.logger)
         return runez.run(uv_path, *args, env=env, **kwargs)
 
