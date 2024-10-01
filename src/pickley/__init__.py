@@ -14,7 +14,7 @@ from runez.pyenv import PypiStd, PythonDepot, Version
 
 from pickley.bstrap import default_package_manager, DOT_META, PICKLEY
 
-__version__ = "4.3.1"
+__version__ = "4.3.3"
 LOG = logging.getLogger(__name__)
 DEFAULT_PYPI = "https://pypi.org/simple"
 DEFAULT_VERSION_CHECK_DELAY = 300
