@@ -12,7 +12,7 @@ from typing import List, Optional, Sequence
 import runez
 from runez.pyenv import PypiStd, PythonDepot, Version
 
-from pickley.bstrap import default_package_manager, DOT_META, PICKLEY
+from pickley.bstrap import default_package_manager, DOT_META, PICKLEY, USE_UV
 
 __version__ = "4.3.3"
 LOG = logging.getLogger(__name__)
@@ -575,7 +575,7 @@ class PickleyConfig:
 
     def find_uv(self):
         """Path to uv installation"""
-        if self._uv_path is None:
+        if USE_UV and self._uv_path is None:
             for candidate in ("uv", f"{DOT_META}/.uv/bin/uv"):
                 uv_path = os.path.join(self.base.path, candidate)
                 if runez.is_executable(uv_path):
@@ -585,7 +585,8 @@ class PickleyConfig:
             if runez.DEV.project_folder:  # pragma: no cover, for dev mode
                 self._uv_path = runez.which("uv")
 
-        runez.abort_if(not self._uv_path, "`uv` is not installed, please reinstall with `pickley install uv`")
+            runez.abort_if(not self._uv_path, "`uv` is not installed, please reinstall with `pickley install uv`")
+
         return self._uv_path
 
     def uv_version(self, logger=None):
