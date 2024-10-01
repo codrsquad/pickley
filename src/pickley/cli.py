@@ -10,10 +10,22 @@ from typing import NamedTuple, Optional, Sequence
 
 import click
 import runez
-from runez.pyenv import Version, PypiStd
+from runez.pyenv import PypiStd, Version
 from runez.render import PrettyTable
 
-from pickley import __version__, abort, CFG, despecced, inform, PackageSpec, program_version, ResolvedPackage, specced, TrackedManifest, TrackedSettings
+from pickley import (
+    __version__,
+    abort,
+    CFG,
+    despecced,
+    inform,
+    PackageSpec,
+    program_version,
+    ResolvedPackage,
+    specced,
+    TrackedManifest,
+    TrackedSettings,
+)
 from pickley.bstrap import DOT_META, PICKLEY
 from pickley.package import VenvPackager
 

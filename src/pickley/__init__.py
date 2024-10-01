@@ -6,13 +6,13 @@ import re
 import sys
 import time
 from datetime import datetime
-from  pathlib import Path
+from pathlib import Path
 from typing import List, Optional, Sequence
 
 import runez
 from runez.pyenv import PypiStd, PythonDepot, Version
 
-from pickley.bstrap import default_package_manager, DOT_META, http_get, PICKLEY
+from pickley.bstrap import default_package_manager, DOT_META, PICKLEY
 
 __version__ = "4.3.3"
 LOG = logging.getLogger(__name__)
@@ -620,7 +620,7 @@ class PickleyConfig:
             "delivery": "wrap",
             "install_timeout": 1800,
             "version_check_delay": DEFAULT_VERSION_CHECK_DELAY,
-            "package_manager": package_manager
+            "package_manager": package_manager,
         }
         self.configs.append(RawConfig(self, "defaults", defaults))
         self.version_check_delay = self.get_value("version_check_delay", validator=runez.to_int)
@@ -699,7 +699,6 @@ class PickleyConfig:
 
                 names = [PypiStd.std_package_name(n) for n in names]
 
-            x = any(n for n in names if not PypiStd.std_package_name(n))
             if include_pickley and PICKLEY not in names:
                 names.append(PICKLEY)
 
@@ -906,6 +905,7 @@ class TrackedSettings:
     """
     Resolved config settings to use when installing a package.
     """
+
     auto_upgrade_spec: str = None  # Spec to use for `pickley auto-upgrade`
     bake_time: Optional[int] = None  # The amount of time to ignore new releases
     delivery: str = None  # Delivery method name

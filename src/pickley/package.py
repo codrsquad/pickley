@@ -1,17 +1,14 @@
-import os
 from pathlib import Path
-from typing import Sequence
+from typing import Optional
 
 import runez
-from runez.pyenv import PypiStd, Version
 
 from pickley import abort, CFG
-from pickley.bstrap import default_package_manager, PICKLEY, pip_auto_upgrade, uv_env
+from pickley.bstrap import default_package_manager, pip_auto_upgrade, uv_env
 
 
 class PythonVenv:
-
-    def __init__(self, folder: Path, package_manager: str = None, python_spec: str = None):
+    def __init__(self, folder: Path, package_manager: Optional[str] = None, python_spec: Optional[str] = None):
         """
         Parameters
         ----------
