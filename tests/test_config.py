@@ -1,7 +1,7 @@
 import pytest
 import runez
 
-from pickley import bstrap, CFG, despecced, get_default_index, PackageSpec, PickleyConfig, pypi_name_problem, specced
+from pickley import bstrap, CFG, despecced, get_default_index, PackageSpec, pypi_name_problem, specced
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -43,7 +43,6 @@ defaults:
 
 
 def grab_sample(name):
-    # cfg = PickleyConfig()
     path = runez.DEV.tests_path("samples", name)
     runez.copy(path, bstrap.DOT_META)
     CFG.set_cli("config.json", None, None, None, None)
