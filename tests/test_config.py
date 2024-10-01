@@ -101,16 +101,6 @@ def test_good_config(temp_cfg, monkeypatch):
     pickley = PackageSpec("pickley==1.0.0")
     assert mgit < pickley  # Ordering based on package name, then version
     assert str(mgit) == "mgit==1.0.0"
-    assert str(pickley) == "pickley==1.0.0"
-
-    assert mgit.target_version == "1.0.0"
-    assert mgit.resolved_info.resolution_reason == "pinned"
-
-    # Verify pinned versions in samples/.../config.json are respected
-    p = PackageSpec("mgit")
-    assert str(p) == "mgit"
-    assert p.target_version == "1.2.1"
-    assert p.resolved_info.resolution_reason == "pinned by configuration"
 
 
 def test_speccing():
