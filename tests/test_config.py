@@ -1,7 +1,7 @@
 import pytest
 import runez
 
-from pickley import bstrap, CFG, despecced, get_default_index, PackageSpec, pypi_name_problem, specced
+from pickley import bstrap, CFG, despecced, PackageSpec, pypi_name_problem, specced
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -63,17 +63,6 @@ def test_bogus_config(temp_cfg, logged):
         package_manager=bstrap.default_package_manager(),
     )
     assert actual == expected
-
-
-def test_default_index(temp_cfg, logged):
-    assert get_default_index() == (None, None)
-
-    # Verify that we try 'a' (no such file), then find a configured index in 'b'
-    runez.write("b", "[global]\nindex-url = https://example.com/pypi", logger=False)
-    assert get_default_index("a", "b") == ("b", "https://example.com/pypi")
-
-    # Not logging, since default is pypi, and which index is used can be configured and seen via diagnostics command
-    assert not logged
 
 
 def test_edge_cases():

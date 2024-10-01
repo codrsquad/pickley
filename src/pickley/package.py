@@ -3,8 +3,7 @@ from typing import Optional
 
 import runez
 
-from pickley import abort, CFG
-from pickley.bstrap import default_package_manager, pip_auto_upgrade, uv_env
+from pickley import abort, bstrap, CFG
 
 
 class PythonVenv:
@@ -22,7 +21,7 @@ class PythonVenv:
         self.folder = runez.to_path(folder)
         self.python = CFG.available_pythons.find_python(python_spec)
         if package_manager is None:
-            package_manager = default_package_manager(self.python.mm.major, self.python.mm.minor)
+            package_manager = bstrap.default_package_manager(self.python.mm.major, self.python.mm.minor)
 
         self.package_manager = package_manager
         self.use_pip = package_manager == "pip"
@@ -65,7 +64,7 @@ class PythonVenv:
     def create_venv_with_pip(self):
         runez.ensure_folder(self.folder, clean=True, logger=False)
         runez.run(self.python.executable, "-mvenv", self.folder, logger=self.logger)
-        self._run_pip("install", "-U", *pip_auto_upgrade())
+        self._run_pip("install", "-U", *bstrap.pip_auto_upgrade())
 
     def pip_install(self, *args, fatal=True, no_deps=False, quiet=None):
         """`pip install` into target venv`"""
@@ -104,7 +103,7 @@ class PythonVenv:
 
     def run_uv(self, *args, **kwargs):
         uv_path = CFG.find_uv()
-        env = uv_env(venv=self.folder, logger=self.logger)
+        env = bstrap.uv_env(venv=self.folder, logger=self.logger)
         kwargs.setdefault("logger", self.logger)
         return runez.run(uv_path, *args, env=env, **kwargs)
 
@@ -169,9 +168,7 @@ class VenvPackager(Packager):
         venv = PythonVenv(pspec.target_installation_folder, package_manager=package_manager, python_spec=python_spec)
         if pspec.canonical_name == "uv":
             # Special case for uv: it does not need a venv
-            from pickley.bstrap import download_uv
-
-            download_uv(CFG.cache.path, venv.folder, version=pspec.target_version, dryrun=runez.DRYRUN)
+            bstrap.download_uv(CFG.cache.path, venv.folder, version=pspec.target_version, dryrun=runez.DRYRUN)
 
         else:
             args = []

@@ -19,6 +19,7 @@ DOT_META = ".pk"
 DRYRUN = False
 HOME = os.path.expanduser("~")
 PICKLEY = "pickley"
+PIP_CONFS = ("~/.config/pip/pip.conf", "/etc/pip.conf")
 DEFAULT_MIRROR = "https://pypi.org/simple"
 CURRENT_PYTHON_MM = sys.version_info[:2]
 UV_CUTOFF = (3, 7)
@@ -66,6 +67,20 @@ class Bootstrap:
             download_uv(self.pk_path / ".cache", uv_base)
 
         return uv_path
+
+    def get_latest_pickley_version(self):
+        mirror = self.mirror
+        if not mirror:
+            mirror, _ = globally_configured_pypi_mirror()
+
+        # This is a temporary measure, eventually we'll use `uv describe` for this
+        url = os.path.dirname(mirror.rstrip("/"))
+        url = f"{url}/pypi/{PICKLEY}/json"
+        print(f"Querying {url}")
+        data = http_get(url)
+        if data:
+            data = json.loads(data)
+            return data["info"]["version"]
 
 
 def default_package_manager(*parts):
@@ -171,38 +186,28 @@ def find_base(base):
     abort(f"Make sure '{candidates[0]}' is writeable.")
 
 
-def globally_configured_pypi_mirror(pip_conf_path="/etc/pip.conf"):
-    """
-    Best-effort parsing of /etc/pip.conf to honor globally configured mirror.
-    """
-    try:
-        import configparser
+def globally_configured_pypi_mirror(paths=None):
+    """Configured pypi index from pip.conf"""
+    if paths is None:
+        paths = PIP_CONFS
 
-        config = configparser.ConfigParser()
-        config.read(pip_conf_path)
-        return config["global"]["index-url"]
+    for pip_conf_path in paths:
+        try:
+            import configparser
 
-    except (KeyError, OSError):
-        return DEFAULT_MIRROR
+            config = configparser.ConfigParser()
+            config.read(os.path.expanduser(pip_conf_path))
+            return config["global"]["index-url"], pip_conf_path
 
-    except Exception as e:
-        # Ignore any issue reading pip.conf, not necessary for bootstrap
-        print(f"Could not read {pip_conf_path}: {e}")
-        return DEFAULT_MIRROR
+        except (KeyError, OSError):
+            continue
 
+        except Exception as e:
+            # Ignore any issue reading pip.conf, not necessary for bootstrap
+            print(f"Could not read '{pip_conf_path}': {e}")
+            continue
 
-def get_latest_pickley_version(mirror):
-    if not mirror:
-        mirror = globally_configured_pypi_mirror()
-
-    # This is a temporary measure, eventually we'll use `uv describe` for this
-    url = os.path.dirname(mirror.rstrip("/"))
-    url = f"{url}/pypi/{PICKLEY}/json"
-    print(f"Querying {url}")
-    data = http_get(url)
-    if data:
-        data = json.loads(data)
-        return data["info"]["version"]
+    return DEFAULT_MIRROR, None
 
 
 def hdry(message, dryrun=None):
@@ -333,7 +338,9 @@ def main(args=None):
         del os.environ["__PYVENV_LAUNCHER__"]
 
     bstrap = Bootstrap(find_base(args.base))
-    pickley_version = args.version or get_latest_pickley_version(args.mirror)
+    print(f"Using {sys.executable}, base: {short(bstrap.pickley_base)}")
+    bstrap.seed_mirror(args.mirror)
+    pickley_version = args.version or bstrap.get_latest_pickley_version()
     if not pickley_version:
         abort(f"Failed to determine latest {PICKLEY} version")
 
@@ -342,8 +349,6 @@ def main(args=None):
         if bstrap.pickley_base not in path_dirs:
             abort(f"Make sure '{bstrap.pickley_base}' is in your PATH environment variable.")
 
-    print(f"Using {sys.executable}, base: {short(bstrap.pickley_base)}")
-    bstrap.seed_mirror(args.mirror)
     if args.cfg:
         if not args.cfg.startswith("{") or not args.cfg.endswith("}"):
             abort(f"--config must be a serialized json object, invalid json: {args.cfg}")

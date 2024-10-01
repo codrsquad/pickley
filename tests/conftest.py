@@ -11,6 +11,7 @@ from pickley.cli import CFG, main
 cli.default_main = main
 PythonDepot.use_path = False
 bstrap.DEFAULT_BASE = ".local/bin"  # Make sure tests stay away from ~/.local/bin
+bstrap.PIP_CONFS = tuple()  # Don't read any pip.conf files in tests
 assert logged  # Just making fixtures available, with no complaints about unused imports
 
 

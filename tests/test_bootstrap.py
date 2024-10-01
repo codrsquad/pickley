@@ -193,24 +193,16 @@ def test_failure(cli):
         assert "Failed to fetch https://pypi.org/pypi/pickley/json: <urlopen error foo>" in cli.logged
 
 
-def test_pip_conf(logged):
-    # Verify non-existing /etc/pip.conf is OK (we just default to pypi.org)
-    assert bstrap.globally_configured_pypi_mirror("/dev/null/pip.conf") == bstrap.DEFAULT_MIRROR
+def test_pip_conf(temp_cfg, logged):
+    assert bstrap.globally_configured_pypi_mirror([]) == (bstrap.DEFAULT_MIRROR, None)
 
-    with runez.TempFolder():
-        # Simulate an internal pypi mirror
-        mirror = "https://pypi.example.net/simple"
-        runez.write("pip.conf", f"[global]\nindex-url = {mirror}", logger=None)
-        assert bstrap.globally_configured_pypi_mirror("pip.conf") == mirror
+    # Verify that we try reading all stated pip.conf files in order, and user the value from the first valid one
+    runez.write("a", "ouch, this is not a valid config file", logger=False)  # Invalid file
+    runez.write("b", "[foo]\nbar = baz", logger=False)  # Valid, but mirror not configured
+    runez.write("c", "[global]\nindex-url = https://example.com/pypi", logger=False)
+    runez.write("d", "[global]\nindex-url = https://example.com/pypi2", logger=False)  # Not needed, previous one wins
+    assert bstrap.globally_configured_pypi_mirror(["no-such-file.conf", "a", "b", "c", "d"]) == ("https://example.com/pypi", "c")
 
-        # Mirror not configured
-        runez.write("pip.conf", "[foo]\nbar = baz", logger=None)
-        assert bstrap.globally_configured_pypi_mirror("pip.conf") == bstrap.DEFAULT_MIRROR
-
-        # Check that no chatter occurred so far (no stack trace etc.)
-        assert not logged
-
-        # Invalid file gets ignored (we do report error)
-        runez.write("pip.conf", "this is not an ini file", logger=None)
-        assert bstrap.globally_configured_pypi_mirror("pip.conf") == bstrap.DEFAULT_MIRROR
-        assert "Could not read pip.conf: "
+    # Keep chatter to a minimum
+    assert "no-such-file.conf" not in logged  # No chatter about non-existing files
+    assert "Could not read 'a'" in logged.pop()

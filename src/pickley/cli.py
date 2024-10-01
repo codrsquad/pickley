@@ -16,6 +16,7 @@ from runez.render import PrettyTable
 from pickley import (
     __version__,
     abort,
+    bstrap,
     CFG,
     despecced,
     inform,
@@ -26,7 +27,6 @@ from pickley import (
     TrackedManifest,
     TrackedSettings,
 )
-from pickley.bstrap import DOT_META, PICKLEY, USE_UV
 from pickley.package import VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -200,7 +200,7 @@ def _find_base_from_program_path(path):
     dirpath, basename = os.path.split(path)
     if basename:
         basename = basename.lower()
-        if basename in (DOT_META, ".pickley"):
+        if basename in (bstrap.DOT_META, ".pickley"):
             return dirpath  # We're running from an installed pickley
 
         if basename == ".venv":
@@ -349,11 +349,11 @@ def base(what):
     path = CFG.base.path
     if what == "bootstrap-own-wrapper":
         # Internal: called by bootstrap script
-        pspec = PackageSpec(f"{PICKLEY}=={__version__}")
+        pspec = PackageSpec(f"{bstrap.PICKLEY}=={__version__}")
         delivery = pspec.delivery_method
         delivery.install(pspec)
 
-        if USE_UV:
+        if bstrap.USE_UV:
             tmp_uv = runez.to_path(CFG.meta.full_path(".uv"))
             uv_spec = PackageSpec("uv")
             if runez.is_executable(tmp_uv / "bin/uv"):
@@ -371,7 +371,7 @@ def base(what):
         old_meta = CFG.base.full_path(".pickley")
         if os.path.isdir(old_meta):
             runez.delete(old_meta)
-            runez.run(pspec.target_installation_folder / f"bin/{PICKLEY}", "auto-heal")
+            runez.run(pspec.target_installation_folder / f"bin/{bstrap.PICKLEY}", "auto-heal")
 
         return
 
@@ -686,7 +686,7 @@ def uninstall(all, packages):
     if not packages and not all:
         abort("Specify packages to uninstall, or --all")
 
-    if packages and PICKLEY in packages:
+    if packages and bstrap.PICKLEY in packages:
         abort("Run 'uninstall --all' if you wish to uninstall pickley itself (and everything it installed)")
 
     setup_audit_log()
@@ -702,7 +702,7 @@ def uninstall(all, packages):
         inform(f"{action} {pspec}")
 
     if all:
-        runez.delete(CFG.base.full_path(PICKLEY))
+        runez.delete(CFG.base.full_path(bstrap.PICKLEY))
         runez.delete(CFG.meta.path)
         inform(f"pickley is now {runez.red('uninstalled')}")
 

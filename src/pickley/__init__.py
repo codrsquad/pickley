@@ -12,11 +12,10 @@ from typing import List, Optional, Sequence
 import runez
 from runez.pyenv import PypiStd, PythonDepot, Version
 
-from pickley.bstrap import default_package_manager, DOT_META, PICKLEY, USE_UV
+from pickley import bstrap
 
 __version__ = "4.3.3"
 LOG = logging.getLogger(__name__)
-DEFAULT_PYPI = "https://pypi.org/simple"
 DEFAULT_VERSION_CHECK_DELAY = 300
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
@@ -32,7 +31,7 @@ K_LEAVES = {
     "version_check_delay",
 }
 KNOWN_ENTRY_POINTS = {
-    PICKLEY: [PICKLEY],
+    bstrap.PICKLEY: [bstrap.PICKLEY],
     "uv": ["uv", "uvx"],
 }
 PLATFORM = platform.system().lower()
@@ -207,11 +206,11 @@ class ResolvedPackage:
         self.resolution_reason = None
         if settings.auto_upgrade_spec == runez.DEV.project_folder:
             # Dev mode: install pickley from source in editable mode
-            self.canonical_name = PICKLEY
-            self.entry_points = [PICKLEY]
+            self.canonical_name = bstrap.PICKLEY
+            self.entry_points = [bstrap.PICKLEY]
             self.pip_spec = ["-e", runez.DEV.project_folder]
             self.resolution_reason = "pickley dev mode"
-            self.venv_basename = f"{PICKLEY}-dev"
+            self.venv_basename = f"{bstrap.PICKLEY}-dev"
             self.version = Version(__version__)
             return
 
@@ -463,7 +462,7 @@ class PackageSpec:
             return True  # Empty file or not executable
 
         for line in runez.readlines(target, first=5):
-            if PICKLEY in line:
+            if bstrap.PICKLEY in line:
                 return True  # Pickley wrapper
 
     def exe_path(self, exe):
@@ -522,17 +521,6 @@ class PackageSpec:
         return manifest
 
 
-def get_default_index(*paths):
-    """Configured pypi index from pip.conf"""
-    for path in paths:
-        conf = runez.file.ini_to_dict(path)
-        index = conf.get("global", {}).get("index-url")
-        if index:
-            return path, index
-
-    return None, None
-
-
 class PickleyConfig:
     """Pickley configuration"""
 
@@ -541,13 +529,14 @@ class PickleyConfig:
     cache: Optional["FolderBase"] = None  # DOT_META/.cache subfolder
     cli_config: Optional[dict] = None  # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
     configs: List["RawConfig"]
+    _pip_conf = None
+    _pip_conf_index = None
     _uv_path = None
 
     def __init__(self):
         self.configs = []
         self.config_path = None
-        self.pip_conf, self.pip_conf_index = get_default_index("~/.config/pip/pip.conf", "/etc/pip.conf")
-        self.default_index = self.pip_conf_index or DEFAULT_PYPI
+        self.default_index = self.pip_conf_index or bstrap.DEFAULT_MIRROR
 
     def reset(self):
         """Used for testing"""
@@ -557,13 +546,27 @@ class PickleyConfig:
         self.cli_config = None
         self.configs = []
         self.config_path = None
-        self.pip_conf = None
-        self.pip_conf_index = None
-        self.default_index = DEFAULT_PYPI
+        self._pip_conf = None
+        self._pip_conf_index = None
+        self.default_index = bstrap.DEFAULT_MIRROR
         self.version_check_delay = DEFAULT_VERSION_CHECK_DELAY
 
     def __repr__(self):
         return "<not-configured>" if self.base is None else runez.short(self.base)
+
+    @property
+    def pip_conf(self):
+        if self._pip_conf is None:
+            self._pip_conf_index, self._pip_conf = bstrap.globally_configured_pypi_mirror()
+
+        return self._pip_conf
+
+    @property
+    def pip_conf_index(self):
+        if self._pip_conf_index is None:
+            self._pip_conf_index, self._pip_conf = bstrap.globally_configured_pypi_mirror()
+
+        return self._pip_conf_index
 
     @runez.cached_property
     def available_pythons(self):
@@ -575,8 +578,8 @@ class PickleyConfig:
 
     def find_uv(self):
         """Path to uv installation"""
-        if USE_UV and self._uv_path is None:
-            for candidate in ("uv", f"{DOT_META}/.uv/bin/uv"):
+        if bstrap.USE_UV and self._uv_path is None:
+            for candidate in ("uv", f"{bstrap.DOT_META}/.uv/bin/uv"):
                 uv_path = os.path.join(self.base.path, candidate)
                 if runez.is_executable(uv_path):
                     self._uv_path = uv_path
@@ -601,7 +604,7 @@ class PickleyConfig:
         """
         self.configs = []
         self.base = FolderBase("base", runez.resolved_path(base_path))
-        self.meta = FolderBase("meta", os.path.join(self.base.path, DOT_META))
+        self.meta = FolderBase("meta", os.path.join(self.base.path, bstrap.DOT_META))
         self.cache = FolderBase("cache", os.path.join(self.meta.path, ".cache"))
         self.manifests = FolderBase("manifests", os.path.join(self.meta.path, ".manifest"))
         if self.cli_config is not None:
@@ -616,7 +619,7 @@ class PickleyConfig:
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
-        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER") or default_package_manager()
+        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER") or bstrap.default_package_manager()
         defaults = {
             "delivery": "wrap",
             "install_timeout": 1800,
@@ -700,8 +703,8 @@ class PickleyConfig:
 
                 names = [PypiStd.std_package_name(n) for n in names]
 
-            if include_pickley and PICKLEY not in names:
-                names.append(PICKLEY)
+            if include_pickley and bstrap.PICKLEY not in names:
+                names.append(bstrap.PICKLEY)
 
             result = [self.resolved_bundle(name) for name in names]
             result = runez.flattened(result, unique=True)

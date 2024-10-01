@@ -3,7 +3,7 @@ import os
 
 import runez
 
-from pickley import abort, CFG, PICKLEY
+from pickley import abort, bstrap, CFG
 
 LOG = logging.getLogger(__name__)
 
@@ -86,23 +86,22 @@ class DeliveryMethod:
         """
         Args:
             pspec (pickley.PackageSpec): Package spec being installed
-            target_folder (Path): Virtual env where executables reside (DOT_META/<package>/...)
         """
         try:
             prev_manifest = pspec.manifest
             for name in pspec.resolved_info.entry_points:
                 src = os.path.join(pspec.target_installation_folder, "bin", name)
                 dest = pspec.exe_path(name)
-                ssrc = runez.short(src)
-                sdest = runez.short(dest)
+                short_src = runez.short(src)
+                short_dest = runez.short(dest)
                 if runez.DRYRUN:
-                    print(f"Would {self.short_name} {sdest} -> {ssrc}")
+                    print(f"Would {self.short_name} {short_dest} -> {short_src}")
                     continue
 
                 if not os.path.exists(src):
-                    abort(f"Can't {self.short_name} {sdest} -> {runez.red(ssrc)}: source does not exist")
+                    abort(f"Can't {self.short_name} {short_dest} -> {runez.red(short_src)}: source does not exist")
 
-                LOG.debug("%s %s -> %s", self.action, sdest, ssrc)
+                LOG.debug("%s %s -> %s", self.action, short_dest, short_src)
                 self._install(pspec, dest, src)
 
             manifest = pspec.save_manifest()
@@ -153,8 +152,8 @@ class DeliveryMethodWrap(DeliveryMethod):
     bg = " &> /dev/null &"
 
     def _install(self, pspec, target, source):
-        pickley = CFG.base.full_path(PICKLEY)
-        wrapper = PICKLEY_WRAPPER if pspec.canonical_name == PICKLEY else GENERIC_WRAPPER
+        pickley = CFG.base.full_path(bstrap.PICKLEY)
+        wrapper = PICKLEY_WRAPPER if pspec.canonical_name == bstrap.PICKLEY else GENERIC_WRAPPER
         contents = wrapper.lstrip().format(
             hook=self.hook,
             bg=self.bg,
