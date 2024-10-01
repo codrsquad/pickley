@@ -59,20 +59,20 @@ def test_bootstrap(cli, monkeypatch):
         assert cli.succeeded
         assert " -mvenv --clear " in cli.logged
         assert "pickley base bootstrap-own-wrapper" in cli.logged
+        return  # The rest of the test is UV specific
 
     with patch("pickley.bstrap.os.path.expanduser", side_effect=mocked_expanduser):
         runez.write(".local/bin/pickley", "#!/bin/sh\necho 0.1", logger=None)  # Pretend we have an old pickley
         runez.make_executable(".local/bin/pickley", logger=None)
 
-        if bstrap.USE_UV:
-            runez.write(".local/bin/uv", "#!/bin/sh\necho uv 0.0.1", logger=None)  # Pretend we have uv already
-            runez.make_executable(".local/bin/uv", logger=None)
+        runez.write(".local/bin/uv", "#!/bin/sh\necho uv 0.0.1", logger=None)  # Pretend we have uv already
+        runez.make_executable(".local/bin/uv", logger=None)
 
-            with patch("pickley.bstrap.http_get", return_value='{"info":{"version":"4.3.0"}}'):
-                cli.run("-n -mhttps://my-company.net/some-path/simple/", main=bstrap.main)
-                assert cli.succeeded
-                assert "Querying https://my-company.net/some-path/pypi/pickley/json" in cli.logged
-                assert "uv -q pip install pickley==4.3.0" in cli.logged
+        with patch("pickley.bstrap.http_get", return_value='{"info":{"version":"4.3.0"}}'):
+            cli.run("-n -mhttps://my-company.net/some-path/simple/", main=bstrap.main)
+            assert cli.succeeded
+            assert "Querying https://my-company.net/some-path/pypi/pickley/json" in cli.logged
+            assert "uv -q pip install pickley==4.3.0" in cli.logged
 
         monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")  # macOS's oddity
         cli.run("-n", main=bstrap.main)

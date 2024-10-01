@@ -26,7 +26,7 @@ from pickley import (
     TrackedManifest,
     TrackedSettings,
 )
-from pickley.bstrap import DOT_META, PICKLEY
+from pickley.bstrap import DOT_META, PICKLEY, USE_UV
 from pickley.package import VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -353,18 +353,19 @@ def base(what):
         delivery = pspec.delivery_method
         delivery.install(pspec)
 
-        tmp_uv = runez.to_path(CFG.meta.full_path(".uv"))
-        uv_spec = PackageSpec("uv")
-        if runez.is_executable(tmp_uv / "bin/uv"):
-            # Use the .uv/bin/uv obtained during bootstrap
-            runez.move(tmp_uv, uv_spec.target_installation_folder, overwrite=True)
-            delivery = pspec.delivery_method
-            delivery.install(uv_spec)
+        if USE_UV:
+            tmp_uv = runez.to_path(CFG.meta.full_path(".uv"))
+            uv_spec = PackageSpec("uv")
+            if runez.is_executable(tmp_uv / "bin/uv"):
+                # Use the .uv/bin/uv obtained during bootstrap
+                runez.move(tmp_uv, uv_spec.target_installation_folder, overwrite=True)
+                delivery = pspec.delivery_method
+                delivery.install(uv_spec)
 
-        elif not uv_spec.is_healthily_installed:
-            perform_install(uv_spec, is_upgrade=False, quiet=False)
+            elif not uv_spec.is_healthily_installed:
+                perform_install(uv_spec, is_upgrade=False, quiet=False)
 
-        runez.delete(tmp_uv)
+            runez.delete(tmp_uv)
 
         # TODO: Remove once pickley 3.4 is phased out
         old_meta = CFG.base.full_path(".pickley")
