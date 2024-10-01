@@ -1,6 +1,11 @@
+import sys
+
+import pytest
+
 from pickley import CFG, program_version
 
 
+@pytest.mark.skipif(sys.version_info[:2] < (3, 10), reason="pkg_resource issue with mgit")
 def test_alternate_wrapper(cli):
     """Check that flip-flopping between symlink/wrapper works"""
     cli.run("-d foo install mgit")
