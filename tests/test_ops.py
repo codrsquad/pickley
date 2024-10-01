@@ -1,4 +1,5 @@
 import os
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -87,7 +88,7 @@ def test_facultative(cli):
     assert "skipped, not installed by pickley" in cli.logged
 
 
-@pytest.mark.skipif(not bstrap.USE_UV, reason="to keep test case simple (uv only)")
+@pytest.mark.skipif(not bstrap.USE_UV or sys.version_info[:2] < (3, 10), reason="to keep test case simple (uv only)")
 def test_install_pypi(cli):
     cli.run("check")
     assert cli.succeeded
