@@ -1,3 +1,5 @@
+import sys
+
 import runez
 
 from pickley import __version__, bstrap
@@ -14,7 +16,7 @@ def test_describe(cli):
     assert "mgit==1.3.0: mgit version " in cli.logged
     assert "Applying bake_time of 5 minutes" in cli.logged
 
-    if bstrap.USE_UV:
+    if bstrap.USE_UV and sys.version_info[:2] >= (3, 10):
         runez.write(".pk/config.json", '{"pinned": {"ansible": "10.4.0"}}', logger=None)
         cli.run("describe ansible")
         assert cli.succeeded
