@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 import runez
 
-from pickley import bstrap, program_version
+from pickley import bstrap, PackageSpec, program_version
 from pickley.cli import clean_compiled_artifacts, find_base, SoftLock, SoftLockException
 from pickley.package import Packager
 
@@ -16,6 +16,7 @@ def test_base(cli, monkeypatch):
     monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")
     folder = os.getcwd()
     cli.expect_success("-n base", folder)
+    assert "__PYVENV_LAUNCHER__" not in os.environ
     cli.expect_success("-n base audit", dot_meta("audit.log", parent=folder))
     cli.expect_success("-n base cache", dot_meta(".cache", parent=folder))
     cli.expect_success("-n base meta", dot_meta(parent=folder))
@@ -63,7 +64,40 @@ def test_edge_cases(temp_cfg, logged):
 def test_facultative(cli):
     runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"), logger=None)
 
+    cli.run("-n check virtualenv>10000")
+    assert cli.failed
+    assert "virtualenv>10000: " in cli.logged
+
+    cli.run("-n check virtualenv")
+    assert cli.failed
+    assert "not installed" in cli.logged
+
+    cli.run("install virtualenv")
+    assert cli.succeeded
+    assert "Installed virtualenv" in cli.logged
+
+    cli.run("-n install virtualenv")
+    assert cli.succeeded
+    assert "is already installed" in cli.logged
+
+    cli.run("uninstall virtualenv")
+    assert cli.succeeded
+    assert "Deleted .pk/.manifest/virtualenv.manifest.json" in cli.logged
+    assert "Uninstalled virtualenv" in cli.logged
+
+    cli.run("-n install virtualenv")
+    assert cli.succeeded
+    assert "Would state: Installed virtualenv" in cli.logged
+
+    # Simulate a symlink to an older version
+    runez.touch(".pk/virtualenv-1.0/bin/virtualenv", logger=None)
+    runez.symlink(".pk/virtualenv-1.0/bin/virtualenv", "virtualenv", logger=None)
+    cli.run("-n install virtualenv")
+    assert cli.succeeded
+    assert "Would state: Installed virtualenv" in cli.logged
+
     # Empty file -> proceed with install as if it wasn't there
+    runez.delete("virtualenv", logger=None)
     runez.touch("virtualenv", logger=None)
     cli.run("-n install virtualenv")
     assert cli.succeeded
@@ -98,34 +132,101 @@ def test_install_pypi(cli):
     assert cli.succeeded
     assert "No packages installed" in cli.logged
 
+    cli.run("upgrade")
+    assert cli.succeeded
+    assert "No packages installed" in cli.logged
+
+    cli.run("upgrade mgit")
+    assert cli.failed
+    assert "'mgit' is not installed" in cli.logged
+
+    cli.run("uninstall mgit --all")
+    assert cli.failed
+    assert "Either specify packages to uninstall, or --all" in cli.logged
+
+    cli.run("uninstall")
+    assert cli.failed
+    assert "Specify packages to uninstall" in cli.logged
+
+    cli.run("uninstall pickley")
+    assert cli.failed
+    assert "Run 'uninstall --all' if you wish to uninstall pickley itself" in cli.logged
+
+    cli.run("uninstall mgit")
+    assert cli.failed
+    assert "mgit was not installed with pickley" in cli.logged
+
+    # Simulate a few older versions to exercise grooming
+    runez.touch(".pk/mgit-1.0/bin/mgit", logger=None)
+    runez.touch(".pk/mgit-1.1/bin/mgit", logger=None)
     cli.run("install mgit<1.3.0")
     assert cli.succeeded
     assert "Installed mgit v1.2.1" in cli.logged
+    assert not os.path.exists(".pk/mgit-1.0")  # Groomed away
+    assert os.path.exists(".pk/mgit-1.1")  # Still there (version N-1 kept for 7 days)
+
+    mgit = PackageSpec("mgit")
+    manifest = mgit.manifest
+    assert str(manifest) == "mgit<1.3.0"
+    assert manifest.entrypoints == ["mgit"]
+    assert manifest.install_info.args == "install mgit<1.3.0"
+    assert manifest.settings.auto_upgrade_spec == "mgit<1.3.0"
+    assert manifest.venv_basename == "mgit-1.2.1"
+    assert manifest.version == "1.2.1"
 
     cli.run("-v auto-upgrade mgit")
     assert cli.succeeded
-    assert not cli.logged
+    assert "Skipping auto-upgrade, checked recently" in cli.logged
+
+    cli.run("-v auto-upgrade --force mgit")
+    assert cli.succeeded
+
+    cli.run("-v auto-heal")
+    assert cli.succeeded
+    assert "mgit is healthy" in cli.logged
+    assert "Auto-healed 0 / 1 packages" in cli.logged
 
     cli.run("check")
     assert cli.succeeded
     assert " (currently 1.2.1)" in cli.logged
 
+    runez.delete("mgit", logger=None)
+    cli.run("check")
+    assert cli.succeeded
+    assert " (currently 1.2.1 unhealthy)" in cli.logged
+
     cli.run("upgrade mgit")
     assert cli.succeeded
     assert "Upgraded mgit v" in cli.logged
 
-    cli.run("check")
+    cli.run("check -f")
     assert cli.succeeded
     mgit_version = program_version("mgit")
     assert f"mgit: {mgit_version} up-to-date" in cli.logged
 
-    cli.run("list")
+    cli.run("list --format=json")
     assert cli.succeeded
     assert "mgit" in cli.logged
 
-    cli.run("uninstall mgit")
+    cli.run("list --format=csv")
+    assert cli.succeeded
+    assert "mgit" in cli.logged
+
+    cli.run("list --format=yaml")
+    assert cli.succeeded
+    assert "mgit" in cli.logged
+
+    runez.delete("mgit", logger=None)
+    cli.run("auto-heal")
+    assert cli.succeeded
+    assert "Auto-healed mgit v1.3.0" in cli.logged
+    assert "Auto-healed 1 / 1 packages" in cli.logged
+
+    cli.run("uninstall --all")
     assert cli.succeeded
     assert "Uninstalled mgit" in cli.logged
+    assert "Deleted .pk" in cli.logged
+    assert "pickley is now uninstalled" in cli.logged
 
     cli.run("list")
     assert cli.succeeded

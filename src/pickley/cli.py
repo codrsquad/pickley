@@ -221,14 +221,6 @@ def find_base(path=None):
     return _find_base_from_program_path(path) or os.path.dirname(path)
 
 
-def clean_env_vars(*keys):
-    """Ensure given env vars are removed if present"""
-    for key in keys:
-        if key in os.environ:
-            runez.log.trace(f"Unsetting env var {key}")
-            del os.environ[key]
-
-
 def find_symbolic_invoker() -> str:
     """Symbolic major/minor symlink to invoker, when applicable"""
     invoker = runez.SYS_INFO.invoker_python
@@ -273,7 +265,7 @@ def main(ctx, debug, config, index, python, delivery, package_manager):
         locations=None,
         trace="PICKLEY_TRACE",
     )
-    clean_env_vars("__PYVENV_LAUNCHER__", "PYTHONPATH")  # See https://github.com/python/cpython/pull/9516
+    bstrap.clean_env_vars(logger=runez.log.trace)
     if runez.SYS_INFO.platform_id.is_macos and "ARCHFLAGS" not in os.environ and runez.SYS_INFO.platform_id.arch:
         # Ensure the proper platform is used on macos
         archflags = f"-arch {runez.SYS_INFO.platform_id.arch}"
@@ -288,7 +280,7 @@ def main(ctx, debug, config, index, python, delivery, package_manager):
         runez.Anchored.add(CFG.base.path)
 
     index = CFG.index
-    if index:
+    if index and index != bstrap.DEFAULT_MIRROR:
         os.environ["PIP_INDEX_URL"] = index
         os.environ["UV_INDEX_URL"] = index
 
@@ -401,7 +393,7 @@ def check(force, packages):
         CFG.version_check_delay = 0
 
     code = 0
-    packages = CFG.package_specs(packages)
+    packages = CFG.package_specs(packages, canonical_only=False)
     if not packages:
         print("No packages installed")
         sys.exit(0)
@@ -446,6 +438,7 @@ def config():
 @click.argument("packages", nargs=-1, required=True)
 def describe(packages):
     """Show current configuration"""
+    problems = 0
     for package_spec in packages:
         settings = TrackedSettings.from_config(package_spec)
         info = ResolvedPackage()
@@ -467,11 +460,14 @@ def describe(packages):
             print(f"  pip spec: {text}")
 
         if info.problem:
+            problems += 1
             print(f"  problem: {runez.red(info.problem)}")
 
         else:
             ep = runez.joined(info.entry_points, delimiter=", ") or runez.brown("-no entry points-")
             print(f"  entry points: {runez.bold(ep)}")
+
+    sys.exit(problems)
 
 
 def _diagnostics():

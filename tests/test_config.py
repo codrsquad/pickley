@@ -55,6 +55,8 @@ def test_bogus_config(temp_cfg, logged):
     assert CFG.resolved_bundle("foo") == ["foo"]
     assert CFG.resolved_bundle("bundle:dev") == ["tox", "mgit"]
     assert CFG.resolved_bundle("bundle:dev2") == ["tox", "mgit", "pipenv"]
+    assert CFG.pip_conf is None
+    assert CFG.pip_conf_index == bstrap.DEFAULT_MIRROR
     actual = CFG.represented().strip()
     expected = SAMPLE_CONFIG.strip().format(
         base=runez.short(CFG.base),
@@ -69,10 +71,26 @@ def test_edge_cases():
     assert pypi_name_problem("mgit") is None
 
 
-def test_good_config(temp_cfg, monkeypatch):
+def test_good_config(cli, monkeypatch):
     grab_sample("good-config")
 
-    assert CFG.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
+    assert CFG.resolved_bundle("bundle:dev") == ["tox", "poetry", "mgit", "pipenv"]
+    assert CFG.resolved_bundle("bundle:dev3") == ["mgit"]
+
+    cli.run("diagnostics")
+    assert cli.succeeded
+    assert "pip.conf : -missing-" in cli.logged
+
+    cli.run("config")
+    assert cli.succeeded
+    assert "dev2: bundle:dev3 pipenv" in cli.logged
+    assert "mgit: 1.2.1" in cli.logged
+
+    cli.run("-n install bundle:dev3")
+    assert cli.succeeded
+    assert "Would wrap mgit -> .pk/mgit-1.2.1/bin/mgit" in cli.logged
+    # Pickley detected not present in the current temp base, and gets automatically installed
+    assert "Would state: Installed pickley v" in cli.logged
 
     mgit = PackageSpec("mgit==1.0.0")
     pickley = PackageSpec("pickley==1.0.0")

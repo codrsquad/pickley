@@ -6,7 +6,6 @@ import re
 import sys
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import List, Optional, Sequence
 
 import runez
@@ -102,18 +101,15 @@ def pypi_name_problem(name):
         return problem
 
 
-def _absolute_package_spec(given_package_spec):
-    if isinstance(given_package_spec, Path):
-        given_package_spec = str(given_package_spec.absolute())
-
+def _absolute_package_spec(given_package_spec: str):
     if given_package_spec.startswith("http"):
         given_package_spec = f"git+{given_package_spec}"
 
-    if given_package_spec.startswith("git+"):
+    if re.match(r"^(file:|https?:|git[@+])", given_package_spec):
         return given_package_spec
 
     if given_package_spec.startswith(".") or "/" in given_package_spec:
-        given_package_spec = str(runez.to_path(given_package_spec).absolute())
+        return str(runez.to_path(given_package_spec).absolute())
 
     return given_package_spec
 
@@ -249,7 +245,8 @@ class ResolvedPackage:
                 lines = r.full_output.strip().splitlines()
                 if lines:
                     lines[0] = runez.red(lines[0])
-                    if len(lines) > 4:
+                    if len(lines) > 4:  # pragma: no cover, hard to trigger, happens when a wheel can't be built for example
+                        # Truncate pip's output to the first 4 lines (in `uv`, they're the most relevant)
                         runez.log.trace("Full output of 'pip install %s':\n%s", pip_spec, r.full_output)
                         lines = lines[:4]
 
@@ -258,7 +255,7 @@ class ResolvedPackage:
 
             r = venv.pip_freeze()
             lines = r.output.strip().splitlines()
-            if len(lines) != 1:
+            if len(lines) != 1:  # pragma: no cover, hard to trigger (not sure how to make `pip freeze` fail)
                 self.problem = f"'pip freeze' for '{runez.joined(pip_spec)}' failed: {r.full_output}"
                 return
 
@@ -504,7 +501,8 @@ class PackageSpec:
             for candidate in candidates[1:]:
                 runez.delete(candidate[1], fatal=False)
 
-            if current_age and current_age > (keep_for * runez.date.SECONDS_IN_ONE_DAY):
+            if current_age and current_age > (keep_for * runez.date.SECONDS_IN_ONE_DAY):  # pragma: no cover
+                # Delete version N-1 if it's older than `keep_for` days
                 runez.delete(candidates[0][1], fatal=False)
 
     def save_manifest(self):
@@ -717,7 +715,7 @@ class PickleyConfig:
                     return line[15:].strip()
 
                 m = self._wrapped_canonical_regex.search(line)
-                if m:
+                if m:  # pragma: no cover (for old pickley v3.4)
                     return m.group(1)
 
     def scan_installed(self):
@@ -840,7 +838,7 @@ class TrackedManifest:
         if data:
             manifest = cls()
             manifest.entrypoints = data.get("entrypoints")
-            manifest.install_info = TrackedInstallInfo.from_dict(data.get("install_info"))
+            manifest.install_info = TrackedInstallInfo.from_manifest_data(data)
             manifest.settings = TrackedSettings.from_manifest_data(data)
             manifest.venv_basename = data.get("venv_basename")
             manifest.version = Version(data.get("version"))

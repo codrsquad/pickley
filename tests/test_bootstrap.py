@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import sys
@@ -74,10 +75,8 @@ def test_bootstrap(cli, monkeypatch):
             assert "Querying https://my-company.net/some-path/pypi/pickley/json" in cli.logged
             assert "uv -q pip install pickley==4.3.0" in cli.logged
 
-        monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")  # macOS's oddity
         cli.run("-n", main=bstrap.main)
         assert cli.succeeded
-        assert "__PYVENV_LAUNCHER__" not in os.environ
         assert "Replacing older pickley v0.1" in cli.logged
 
         cli.run("-n -cfoo", main=bstrap.main)
@@ -146,10 +145,30 @@ def test_bootstrap(cli, monkeypatch):
             assert "pickley base bootstrap-own-wrapper" in cli.logged
 
 
-def test_edge_cases(temp_cfg, logged):
-    bstrap.DRYRUN = False
+def test_download_uv(temp_cfg, monkeypatch):
+    assert bstrap.uv_url(None)
 
+    monkeypatch.setattr(bstrap, "DRYRUN", True)
+    monkeypatch.setattr(bstrap, "_UV_PATH", None)
+    tmp_base = runez.to_path(temp_cfg.base.path)
+    assert bstrap.find_uv(tmp_base) == tmp_base / ".pk/.uv/bin/uv"
+
+    monkeypatch.setattr(bstrap, "_UV_PATH", None)
+    runez.write("sample-uv", "#!/bin/sh\necho uv 0.0.1", logger=None)
+    runez.make_executable("sample-uv", logger=None)
+    runez.symlink("sample-uv", "uv", logger=None)
+    assert bstrap.find_uv(tmp_base) == tmp_base / "uv"
+
+    # Simulate bad uv download
+    monkeypatch.setattr(bstrap, "_UV_PATH", None)
+    runez.write("sample-uv", "#!/bin/sh\nexit 1", logger=None)
+    assert bstrap.find_uv(tmp_base) == tmp_base / ".pk/.uv/bin/uv"
+
+
+def test_edge_cases(temp_cfg, logged):
     # For coverage
+    assert bstrap.which("python3")
+    assert bstrap.run_program(sys.executable, "--version") == 0
     with pytest.raises(SystemExit) as exc:
         bstrap.run_program(sys.executable, "--no-such-option")
     assert " exited with code" in str(exc)
@@ -176,7 +195,8 @@ def test_edge_cases(temp_cfg, logged):
                 assert "No `curl` nor `wget`" in str(exc)
 
 
-def test_failure(cli):
+def test_failure(cli, monkeypatch):
+    monkeypatch.setattr(bstrap, "DRYRUN", False)
     with patch("pickley.bstrap.Request", side_effect=HTTPError("url", 404, "msg", None, None)):
         cli.run("--base .", main=bstrap.main)
         assert cli.failed
@@ -191,6 +211,22 @@ def test_failure(cli):
         cli.run("--base .", main=bstrap.main)
         assert cli.failed
         assert "Failed to fetch https://pypi.org/pypi/pickley/json: <urlopen error foo>" in cli.logged
+
+    def mocked_run(program, *args, **__):
+        if program != "wget":
+            print(f"Running {program} {runez.joined(args)}")
+            return
+
+        with open(args[2], "w") as fh:
+            json.dump({"info": {"version": "1.0"}}, fh)
+
+    # Simulate a py3.6 ssl issue, fallback to using curl or wget to figure out latest pickley version
+    with patch("pickley.bstrap.Request", side_effect=URLError("ssl issue")):
+        with patch("pickley.bstrap.which", side_effect=lambda x: x if x == "wget" else None):
+            with patch("pickley.bstrap.run_program", side_effect=mocked_run):
+                cli.run("-n --base .", main=bstrap.main)
+                assert cli.succeeded
+                assert "pip install pickley==1.0"
 
 
 def test_pip_conf(temp_cfg, logged):

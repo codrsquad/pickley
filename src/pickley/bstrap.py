@@ -91,7 +91,8 @@ def find_uv(pickley_base):
         # It will later get properly wrapped (<pickley-base>/uv -> .pk/uv-<version>/bin/uv) by `pickley base bootstrap-own-wrapper`
         uv_tmp_target = pickley_base / DOT_META / ".uv"
         _UV_PATH = uv_tmp_target / "bin/uv"
-        download_uv(uv_tmp_target)
+        if not is_executable(_UV_PATH):
+            download_uv(uv_tmp_target)
 
     return _UV_PATH
 
@@ -154,6 +155,16 @@ def built_in_download(target, url):
     response = urlopen(request, timeout=10)
     with open(target, "wb") as fh:
         fh.write(response.read())
+
+
+def clean_env_vars(keys=("__PYVENV_LAUNCHER__", "PYTHONPATH"), logger=None):
+    """See https://github.com/python/cpython/pull/9516"""
+    for key in keys:
+        if key in os.environ:
+            if logger:
+                logger(f"Unsetting env var {key}")
+
+            del os.environ[key]
 
 
 def curl_download(target, url, dryrun=None):
@@ -330,9 +341,7 @@ def main(args=None):
     args = parser.parse_args(args=args)
 
     DRYRUN = args.dryrun
-    if "__PYVENV_LAUNCHER__" in os.environ:
-        del os.environ["__PYVENV_LAUNCHER__"]
-
+    clean_env_vars()
     bstrap = Bootstrap(find_base(args.base), _groomed_mirror_url(args.mirror))
     print(f"Using {sys.executable}, base: {short(bstrap.pickley_base)}")
     pickley_version = args.version or bstrap.get_latest_pickley_version()

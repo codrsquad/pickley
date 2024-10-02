@@ -45,7 +45,7 @@ class TemporaryBase(runez.TempFolder):
 
     def __exit__(self, *_):
         super(TemporaryBase, self).__exit__(*_)
-        del os.environ["PICKLEY_ROOT"]
+        bstrap.clean_env_vars(keys=("PICKLEY_ROOT", "PIP_INDEX_URL", "UV_INDEX_URL"))
 
 
 cli.context = TemporaryBase
