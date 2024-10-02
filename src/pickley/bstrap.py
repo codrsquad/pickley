@@ -84,13 +84,14 @@ def find_uv(pickley_base):
         if is_executable(_UV_PATH):
             v = run_program(_UV_PATH, "--version", dryrun=False, fatal=False)
             if v and len(v) < 64 and v.startswith("uv "):
+                # `<pickley-base>/uv` is available
                 return _UV_PATH
 
-        dot_pk = pickley_base / DOT_META
-        uv_base = dot_pk / ".uv"
-        _UV_PATH = uv_base / "bin/uv"
-        if not is_executable(_UV_PATH):
-            download_uv(dot_pk / ".cache", uv_base)
+        # For bootstrap, download uv in <pickley-base>/.pk/.uv/bin/uv
+        # It will later get properly wrapped (<pickley-base>/uv -> .pk/uv-<version>/bin/uv) by `pickley base bootstrap-own-wrapper`
+        uv_tmp_target = pickley_base / DOT_META / ".uv"
+        _UV_PATH = uv_tmp_target / "bin/uv"
+        download_uv(uv_tmp_target)
 
     return _UV_PATH
 
@@ -102,9 +103,9 @@ def uv_url(version):
     return "https://github.com/astral-sh/uv/releases/latest/download/uv-installer.sh"
 
 
-def download_uv(pk_cache, target, version=None, dryrun=None):
-    ensure_folder(pk_cache, dryrun=dryrun)
-    script = os.path.join(pk_cache, "uv-installer.sh")
+def download_uv(target, version=None, dryrun=None):
+    ensure_folder(target, dryrun=dryrun)
+    script = os.path.join(target, ".uv-installer.sh")
     url = uv_url(version)
     download(script, url, dryrun=dryrun)
     env = dict(os.environ)

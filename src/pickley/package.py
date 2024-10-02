@@ -170,7 +170,7 @@ class VenvPackager(Packager):
         venv = PythonVenv(pspec.target_installation_folder, package_manager=package_manager, python_spec=python_spec)
         if pspec.canonical_name == "uv":
             # Special case for uv: it does not need a venv
-            bstrap.download_uv(CFG.cache.path, venv.folder, version=pspec.target_version, dryrun=runez.DRYRUN)
+            bstrap.download_uv(venv.folder, version=pspec.target_version, dryrun=runez.DRYRUN)
 
         else:
             args = []

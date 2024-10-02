@@ -1,4 +1,3 @@
-import pytest
 import runez
 
 from pickley import bstrap, CFG, despecced, PackageSpec, pypi_name_problem, specced
