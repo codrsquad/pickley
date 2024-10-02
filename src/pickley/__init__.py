@@ -531,7 +531,6 @@ class PickleyConfig:
     configs: List["RawConfig"]
     _pip_conf = runez.UNSET
     _pip_conf_index = runez.UNSET
-    _uv_path = None
 
     def __init__(self):
         self.configs = []
@@ -583,19 +582,7 @@ class PickleyConfig:
 
     def find_uv(self):
         """Path to uv installation"""
-        if bstrap.USE_UV and self._uv_path is None:
-            for candidate in ("uv", f"{bstrap.DOT_META}/.uv/bin/uv"):
-                uv_path = os.path.join(self.base.path, candidate)
-                if runez.is_executable(uv_path):
-                    self._uv_path = uv_path
-                    break
-
-            if runez.DEV.project_folder:  # pragma: no cover, for dev mode
-                self._uv_path = runez.which("uv")
-
-            runez.abort_if(not self._uv_path, "`uv` is not installed, please reinstall with `pickley install uv`")
-
-        return self._uv_path
+        return bstrap.find_uv(runez.to_path(self.base.path))
 
     def uv_version(self, logger=None):
         uv_path = self.find_uv()

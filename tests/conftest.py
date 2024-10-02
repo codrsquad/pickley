@@ -31,14 +31,12 @@ def dot_meta(relative=None, parent=None):
 
 class TemporaryBase(runez.TempFolder):
     def __enter__(self):
-        if bstrap.USE_UV and not CFG._uv_path:
+        if bstrap.USE_UV and not bstrap._UV_PATH:
             # Ensure `uv` is downloaded once for all tests
             target = runez.to_path(runez.DEV.project_path("build/uv"))
-            uv_path = target / "bin/uv"
-            if not runez.is_executable(uv_path):  # pragma: no cover
+            bstrap._UV_PATH = target / "bin/uv"
+            if not runez.is_executable(bstrap._UV_PATH):  # pragma: no cover
                 bstrap.download_uv(target, target)
-
-            CFG._uv_path = uv_path
 
         super(TemporaryBase, self).__enter__()
         os.environ["PICKLEY_ROOT"] = self.tmp_folder

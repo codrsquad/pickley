@@ -71,17 +71,6 @@ def test_edge_cases():
 
 
 def test_good_config(temp_cfg, monkeypatch):
-    if bstrap.USE_UV:
-        monkeypatch.setattr(CFG, "_uv_path", None)
-        monkeypatch.setattr(runez.DEV, "project_folder", None)
-        with pytest.raises(runez.system.AbortException, match="`uv` is not installed"):
-            CFG.find_uv()
-
-        tmp_uv = CFG.base.full_path("uv")
-        runez.touch(tmp_uv)
-        runez.make_executable(tmp_uv)
-        assert CFG.find_uv() == tmp_uv
-
     grab_sample("good-config")
 
     assert CFG.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]

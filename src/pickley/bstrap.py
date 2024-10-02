@@ -24,6 +24,7 @@ DEFAULT_MIRROR = "https://pypi.org/simple"
 CURRENT_PYTHON_MM = sys.version_info[:2]
 UV_CUTOFF = (3, 7)
 USE_UV = CURRENT_PYTHON_MM >= UV_CUTOFF  # Default to `uv` for python versions >= this
+_UV_PATH = None
 
 
 def abort(message):
@@ -33,8 +34,6 @@ def abort(message):
 class Bootstrap:
     def __init__(self, pickley_base, mirror):
         self.pickley_base = Path(pickley_base)
-        self.pickley_exe = self.pickley_base / PICKLEY
-        self.pk_path = self.pickley_base / DOT_META
         if mirror:
             seed_mirror(mirror, "~/.config/pip/pip.conf", "global")
             seed_mirror(mirror, "~/.config/uv/uv.toml", "pip")
@@ -48,7 +47,7 @@ class Bootstrap:
             os.environ["UV_INDEX_URL"] = mirror
 
     def seed_pickley_config(self, desired_cfg):
-        pickley_config = self.pk_path / "config.json"
+        pickley_config = self.pickley_base / DOT_META / "config.json"
         if not pickley_config.exists():
             msg = f"{short(pickley_config)} with {desired_cfg}"
             if not hdry(f"Would seed {msg}"):
@@ -57,20 +56,6 @@ class Bootstrap:
                 with open(pickley_config, "wt") as fh:
                     json.dump(desired_cfg, fh, sort_keys=True, indent=2)
                     fh.write("\n")
-
-    def find_uv(self):
-        uv_path = self.pickley_base / "uv"
-        if is_executable(uv_path):
-            v = run_program(uv_path, "--version", dryrun=False, fatal=False)
-            if v and len(v) < 64 and v.startswith("uv "):
-                return uv_path
-
-        uv_base = self.pk_path / ".uv"
-        uv_path = uv_base / "bin/uv"
-        if not is_executable(uv_path):
-            download_uv(self.pk_path / ".cache", uv_base)
-
-        return uv_path
 
     def get_latest_pickley_version(self):
         # This is a temporary measure, eventually we'll use `uv describe` for this
@@ -90,6 +75,26 @@ def default_package_manager(*parts):
     return "uv" if parts >= UV_CUTOFF else "pip"
 
 
+def find_uv(pickley_base):
+    """Find path to `uv` to use during this run."""
+    global _UV_PATH
+
+    if _UV_PATH is None:
+        _UV_PATH = pickley_base / "uv"
+        if is_executable(_UV_PATH):
+            v = run_program(_UV_PATH, "--version", dryrun=False, fatal=False)
+            if v and len(v) < 64 and v.startswith("uv "):
+                return _UV_PATH
+
+        dot_pk = pickley_base / DOT_META
+        uv_base = dot_pk / ".uv"
+        _UV_PATH = uv_base / "bin/uv"
+        if not is_executable(_UV_PATH):
+            download_uv(dot_pk / ".cache", uv_base)
+
+    return _UV_PATH
+
+
 def uv_url(version):
     if version:
         return f"https://github.com/astral-sh/uv/releases/download/{version}/uv-installer.sh"
@@ -104,8 +109,10 @@ def download_uv(pk_cache, target, version=None, dryrun=None):
     download(script, url, dryrun=dryrun)
     env = dict(os.environ)
     env["CARGO_DIST_FORCE_INSTALL_DIR"] = str(target)
+    env["INSTALLER_NO_MODIFY_PATH"] = "1"
+    env["INSTALLER_PRINT_QUIET"] = "1"
     env.setdefault("HOME", str(target))  # uv's installer unfortunately assumes HOME is always defined (it is not in tox tests)
-    run_program("/bin/sh", script, "--no-modify-path", env=env, dryrun=dryrun)
+    run_program("/bin/sh", script, env=env, dryrun=dryrun)
 
 
 def http_get(url, timeout=10):
@@ -344,17 +351,18 @@ def main(args=None):
         if cfg and isinstance(cfg, dict):
             bstrap.seed_pickley_config(cfg)
 
-    if not args.force and is_executable(bstrap.pickley_exe):
-        v = run_program(bstrap.pickley_exe, "--version", dryrun=False, fatal=False)
+    pickley_exe = bstrap.pickley_base / PICKLEY
+    if not args.force and is_executable(pickley_exe):
+        v = run_program(pickley_exe, "--version", dryrun=False, fatal=False)
         if v == pickley_version:
-            print(f"{short(bstrap.pickley_exe)} version {v} is already installed")
+            print(f"{short(pickley_exe)} version {v} is already installed")
             sys.exit(0)
 
         if v and len(v) < 24:  # If long output -> old pickley is busted (stacktrace)
             print(f"Replacing older {PICKLEY} v{v}")
 
     package_manager = args.package_manager or os.getenv("PICKLEY_PACKAGE_MANAGER") or default_package_manager()
-    pickley_venv = bstrap.pk_path / f"{PICKLEY}-{pickley_version}"
+    pickley_venv = bstrap.pickley_base / DOT_META / f"{PICKLEY}-{pickley_version}"
     if package_manager == "pip":
         needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", pickley_venv, fatal=False)
         if not needs_virtualenv and not DRYRUN:  # pragma: no cover, tricky to test, virtualenv fallback is on its way out
@@ -363,7 +371,7 @@ def main(args=None):
         if needs_virtualenv:
             print("-mvenv failed, falling back to virtualenv")
             pv = ".".join(str(x) for x in CURRENT_PYTHON_MM)
-            zipapp = bstrap.pk_path / f".cache/virtualenv-{pv}.pyz"
+            zipapp = bstrap.pickley_base / DOT_META / f".cache/virtualenv-{pv}.pyz"
             ensure_folder(zipapp.parent)
             if not os.path.exists(zipapp):
                 url = f"https://bootstrap.pypa.io/virtualenv/{pv}/virtualenv.pyz"
@@ -375,7 +383,7 @@ def main(args=None):
         run_program(pickley_venv / "bin/pip", "-q", "install", f"{PICKLEY}=={pickley_version}")
 
     elif package_manager == "uv":
-        uv_path = bstrap.find_uv()
+        uv_path = find_uv(bstrap.pickley_base)
         run_program(uv_path, "-q", "venv", "-p", sys.executable, pickley_venv)
         env = dict(os.environ)
         env["VIRTUAL_ENV"] = pickley_venv
