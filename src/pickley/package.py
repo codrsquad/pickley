@@ -136,7 +136,7 @@ class Packager:
     """Ancestor to package/install implementations"""
 
     @staticmethod
-    def install(pspec, no_binary=None):
+    def install(pspec):
         """
         Args:
             pspec (pickley.PackageSpec): Targeted package spec
@@ -163,7 +163,7 @@ class VenvPackager(Packager):
     """Install in a virtualenv"""
 
     @staticmethod
-    def install(pspec, no_binary=None):
+    def install(pspec):
         delivery = pspec.delivery_method
         package_manager = pspec.settings.package_manager
         python_spec = pspec.settings.python
@@ -173,14 +173,8 @@ class VenvPackager(Packager):
             bstrap.download_uv(venv.folder, version=pspec.target_version, dryrun=runez.DRYRUN)
 
         else:
-            args = []
-            if no_binary:
-                args.append("--no-binary")
-                args.append(no_binary)
-
             venv.create_venv()
-            args.extend(pspec.resolved_info.pip_spec)
-            venv.pip_install(*args)
+            venv.pip_install(pspec.resolved_info.pip_spec)
 
         return delivery.install(pspec)
 
@@ -199,10 +193,10 @@ class VenvPackager(Packager):
         if run_compile_all:
             venv.run_python("-mcompileall", dist_folder)
 
-        entry_points = pspec.resolved_info.entry_points
-        if entry_points:
+        entrypoints = pspec.resolved_info.entrypoints
+        if entrypoints:
             result = []
-            for name in entry_points:
+            for name in entrypoints:
                 result.append(str(venv.folder / f"bin/{name}"))
 
             return result

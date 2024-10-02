@@ -143,12 +143,11 @@ class SoftLock:
             runez.delete(self.lock_path, logger=False)
 
 
-def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary=None, verb=None):
+def perform_install(pspec, is_upgrade=False, quiet=False, verb=None):
     """
     Args:
         pspec (PackageSpec): Package spec to install
         is_upgrade (bool): If True, intent is an upgrade (not a new install)
-        force (bool): If True, check latest version even if recently checked
         quiet (bool): If True, don't chatter
         verb (str): Verb to use to convey what kind of installation is being done (ex: auto-heal)
 
@@ -163,7 +162,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
 
     with SoftLock(pspec.canonical_name):
         started = time.time()
-        skip_reason = pspec.skip_reason(force)
+        skip_reason = pspec.skip_reason()
         if skip_reason:
             inform(f"Skipping installation of {pspec}: {runez.bold(skip_reason)}")
             return
@@ -171,7 +170,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
         if is_upgrade and not pspec.currently_installed_version and not quiet:
             abort(f"'{runez.red(pspec)}' is not installed")
 
-        if not force and pspec.is_up_to_date:
+        if CFG.version_check_delay and pspec.is_up_to_date:
             if not quiet:
                 status = "up-to-date" if is_upgrade else "installed"
                 inform(f"{pspec.canonical_name} v{runez.bold(pspec.currently_installed_version)} is already {status}")
@@ -180,7 +179,7 @@ def perform_install(pspec, is_upgrade=False, force=False, quiet=False, no_binary
             return
 
         setup_audit_log()
-        manifest = VenvPackager.install(pspec, no_binary=no_binary)
+        manifest = VenvPackager.install(pspec)
         if manifest and not quiet:
             note = f" in {runez.represented_duration(time.time() - started)}"
             verb += "d" if verb.endswith("e") else "ed"
@@ -215,7 +214,7 @@ def find_base(path=None):
         if not os.path.isdir(base_path):
             abort(f"PICKLEY_ROOT points to non-existing directory {runez.red(base_path)}")
 
-        return runez.resolved_path(base_path)
+        return base_path
 
     path = path or runez.resolved_path(sys.argv[0])
     return _find_base_from_program_path(path) or os.path.dirname(path)
@@ -331,7 +330,7 @@ def auto_upgrade(force, package):
     manifest = TrackedManifest.from_file(CFG.manifest_path(canonical_name))
     runez.abort_if(not manifest, f"{canonical_name} not installed with pickley")
     pspec = PackageSpec(manifest.settings.auto_upgrade_spec)
-    perform_install(pspec, is_upgrade=True, force=False, quiet=True)
+    perform_install(pspec, is_upgrade=True, quiet=True)
 
 
 @main.command()
@@ -355,15 +354,9 @@ def base(what):
                 delivery.install(uv_spec)
 
             elif not uv_spec.is_healthily_installed:
-                perform_install(uv_spec, is_upgrade=False, quiet=False)
+                perform_install(uv_spec)
 
             runez.delete(tmp_uv)
-
-        # TODO: Remove once pickley 3.4 is phased out
-        old_meta = CFG.base.full_path(".pickley")
-        if os.path.isdir(old_meta):
-            runez.delete(old_meta)
-            runez.run(pspec.target_installation_folder / f"bin/{bstrap.PICKLEY}", "auto-heal")
 
         return
 
@@ -399,7 +392,7 @@ def check(force, packages):
         sys.exit(0)
 
     for pspec in packages:
-        skip_reason = pspec.skip_reason(force)
+        skip_reason = pspec.skip_reason()
         if skip_reason:
             print(f"{pspec}: {runez.bold('skipped')}, {runez.dim(skip_reason)}]")
             continue
@@ -464,7 +457,7 @@ def describe(packages):
             print(f"  problem: {runez.red(info.problem)}")
 
         else:
-            ep = runez.joined(info.entry_points, delimiter=", ") or runez.brown("-no entry points-")
+            ep = runez.joined(info.entrypoints, delimiter=", ") or runez.brown("-no entry points-")
             print(f"  entry points: {runez.bold(ep)}")
 
     sys.exit(problems)
@@ -485,9 +478,8 @@ def diagnostics():
 
 @main.command()
 @click.option("--force", "-f", is_flag=True, help="Force installation, even if already installed")
-@click.option("--no-binary", help="Passed-through to pip install")
 @click.argument("packages", nargs=-1, required=True)
-def install(force, no_binary, packages):
+def install(force, packages):
     """Install a package from pypi"""
     if force:
         CFG.version_check_delay = 0
@@ -495,7 +487,7 @@ def install(force, no_binary, packages):
     setup_audit_log()
     specs = CFG.package_specs(packages, canonical_only=False, include_pickley=packages and packages[0].startswith("bundle:"))
     for pspec in specs:
-        perform_install(pspec, is_upgrade=False, force=force, quiet=False, no_binary=no_binary)
+        perform_install(pspec)
 
 
 class TabularReport:
@@ -668,7 +660,7 @@ def upgrade(packages):
 
     setup_audit_log()
     for pspec in packages:
-        perform_install(pspec, is_upgrade=True, force=False, quiet=False)
+        perform_install(pspec, is_upgrade=True)
 
 
 @main.command()

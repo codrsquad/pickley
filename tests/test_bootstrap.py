@@ -8,7 +8,7 @@ from urllib.error import HTTPError, URLError
 import pytest
 import runez
 
-from pickley import __version__, bstrap
+from pickley import bstrap
 from pickley.cli import CFG
 
 from .conftest import dot_meta
@@ -23,14 +23,9 @@ def mocked_expanduser(path):
 
 def test_bootstrap(cli, monkeypatch):
     monkeypatch.setattr(bstrap, "DRYRUN", False)
-    runez.touch(".pickley/config.json", logger=None)
     cli.run("-n base bootstrap-own-wrapper")
     assert cli.succeeded
-    assert f"Would move .pickley/config.json -> {dot_meta('config.json')}" in cli.logged
     assert f"Would save {dot_meta('pickley.manifest.json')}" in cli.logged
-    assert "Would delete .pickley" in cli.logged
-    pickley_path = dot_meta(f"pickley-{__version__}/bin/pickley")
-    assert f"Would run: {pickley_path} auto-heal" in cli.logged
 
     # Verify that we report base not writeable correctly
     cli.run("-n --check-path", main=bstrap.main)

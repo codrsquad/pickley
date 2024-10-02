@@ -29,10 +29,6 @@ K_LEAVES = {
     "version",
     "version_check_delay",
 }
-KNOWN_ENTRY_POINTS = {
-    bstrap.PICKLEY: [bstrap.PICKLEY],
-    "uv": ["uv", "uvx"],
-}
 PLATFORM = platform.system().lower()
 
 
@@ -144,7 +140,7 @@ class ResolvedPackage:
 
     given_package_spec: str
     canonical_name: str = None  # Canonical pypi package name
-    entry_points: Optional[Sequence[str]] = None  # Entry points, if any
+    entrypoints: Optional[Sequence[str]] = None  # Entry points, if any
     pip_spec: List[str] = None  # CLI args to pass to `pip install`
     problem: Optional[str] = None  # Problem with package spec, if any
     resolution_reason: Optional[str] = None  # How version to use was resolved
@@ -160,7 +156,7 @@ class ResolvedPackage:
         return {
             "given_package_spec": self.given_package_spec,
             "canonical_name": self.canonical_name,
-            "entry_points": self.entry_points,
+            "entrypoints": self.entrypoints,
             "pip_spec": self.pip_spec,
             "problem": self.problem,
             "resolution_reason": self.resolution_reason,
@@ -184,7 +180,7 @@ class ResolvedPackage:
                 info = cls()
                 info.given_package_spec = data.get("given_package_spec")
                 info.canonical_name = data.get("canonical_name")
-                info.entry_points = data.get("entry_points")
+                info.entrypoints = data.get("entrypoints")
                 info.pip_spec = data.get("pip_spec")
                 info.problem = data.get("problem")
                 info.resolution_reason = data.get("resolution_reason")
@@ -196,14 +192,13 @@ class ResolvedPackage:
         from pickley.package import PythonVenv
 
         self.given_package_spec = settings.auto_upgrade_spec
-        self.entry_points = KNOWN_ENTRY_POINTS.get(self.given_package_spec)
         self.pip_spec = [self.given_package_spec]
         self.problem = None
         self.resolution_reason = None
         if settings.auto_upgrade_spec == runez.DEV.project_folder:
             # Dev mode: install pickley from source in editable mode
             self.canonical_name = bstrap.PICKLEY
-            self.entry_points = [bstrap.PICKLEY]
+            self.entrypoints = (bstrap.PICKLEY,)
             self.pip_spec = ["-e", runez.DEV.project_folder]
             self.resolution_reason = "pickley dev mode"
             self.venv_basename = f"{bstrap.PICKLEY}-dev"
@@ -212,6 +207,7 @@ class ResolvedPackage:
 
         if self.given_package_spec == "uv":
             # `uv` is a special case, it's used for bootstrap and does not need a venv
+            self.entrypoints = ("uv", "uvx")
             uv_version = CFG.uv_version(logger=self.logger)
             if uv_version:
                 self._set_canonical(self.given_package_spec, uv_version)
@@ -276,14 +272,17 @@ class ResolvedPackage:
                 version, location = self._get_version_location(venv, canonical_name)
 
             self._set_canonical(canonical_name, version)
-            if not self.entry_points:
-                ep = (n for n in self._get_entry_points(venv, canonical_name, version, location) if "_completer" not in n)
-                self.entry_points = sorted(n for n in ep if "_completer" not in n)
-                if not self.entry_points:
-                    self.problem = runez.red("not a CLI")
+            ep = self._get_entry_points(venv, canonical_name, version, location)
+            self.entrypoints = sorted(n for n in ep if "_completer" not in n)
+            if not self.entrypoints:
+                self.problem = runez.red("not a CLI")
 
     def _get_entry_points(self, venv, canonical_name, version, location):
         # Use `uv pip show` to get location on disk and version of package
+        if canonical_name in (bstrap.PICKLEY, "tox"):
+            # Don't bother peeking at metadata for some ultra common cases
+            return (canonical_name,)
+
         ep_name = self._ep_name(canonical_name)
         if ep_name != canonical_name:
             location = None
@@ -437,11 +436,13 @@ class PackageSpec:
             v = program_version(exe_path, dryrun=False, fatal=False, logger=False)
             return v and v.is_valid
 
-    def skip_reason(self, force=False) -> Optional[str]:
+    def skip_reason(self) -> Optional[str]:
         """Reason for skipping installation, when applicable"""
-        is_facultative = CFG.get_value("facultative", package_name=self.canonical_name)
-        if not force and is_facultative and not self.is_clear_for_installation():
-            return "not installed by pickley"
+        if CFG.version_check_delay:
+            # When --force is used `version_check_delay` is zero (and there is no skip reason possible)
+            is_facultative = CFG.get_value("facultative", package_name=self.canonical_name)
+            if is_facultative and not self.is_clear_for_installation():
+                return "not installed by pickley"
 
     def is_clear_for_installation(self) -> bool:
         """True if we can proceed with installation without needing to uninstall anything"""
@@ -508,7 +509,7 @@ class PackageSpec:
     def save_manifest(self):
         manifest = TrackedManifest()
         self._manifest = manifest
-        manifest.entrypoints = self.resolved_info.entry_points
+        manifest.entrypoints = self.resolved_info.entrypoints
         manifest.install_info = TrackedInstallInfo.current()
         manifest.settings = self.settings
         manifest.venv_basename = self.resolved_info.venv_basename
@@ -599,13 +600,6 @@ class PickleyConfig:
         self.manifests = FolderBase("manifests", os.path.join(self.meta.path, ".manifest"))
         if self.cli_config is not None:
             self.configs.append(RawConfig(self, "cli", self.cli_config))
-
-        # TODO: Remove once pickley 3.4 is phased out
-        old_meta = self.base.full_path(".pickley")
-        old_cfg = os.path.join(old_meta, "config.json")
-        new_cfg = self.meta.full_path("config.json")
-        if not os.path.exists(new_cfg) and os.path.exists(old_cfg):
-            runez.move(old_cfg, new_cfg)
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta.full_path("config.json"))
@@ -702,21 +696,12 @@ class PickleyConfig:
 
         return self.installed_specs()
 
-    @runez.cached_property
-    def _wrapped_canonical_regex(self):
-        # TODO: Remove once pickley 3.4 is phased out
-        return re.compile(r"\.pickley/([^/]+)/.+/bin/")
-
     def wrapped_canonical_name(self, path):
         """(str | None): Canonical name of installed python package, if installed via pickley wrapper"""
         if runez.is_executable(path):
             for line in runez.readlines(path, first=12):
                 if line.startswith("# pypi-package:"):
                     return line[15:].strip()
-
-                m = self._wrapped_canonical_regex.search(line)
-                if m:  # pragma: no cover (for old pickley v3.4)
-                    return m.group(1)
 
     def scan_installed(self):
         """Scan installed"""

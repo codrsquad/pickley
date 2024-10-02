@@ -89,7 +89,7 @@ class DeliveryMethod:
         """
         try:
             prev_manifest = pspec.manifest
-            for name in pspec.resolved_info.entry_points:
+            for name in pspec.resolved_info.entrypoints:
                 src = os.path.join(pspec.target_installation_folder, "bin", name)
                 dest = pspec.exe_path(name)
                 short_src = runez.short(src)
@@ -107,7 +107,7 @@ class DeliveryMethod:
             manifest = pspec.save_manifest()
             if not runez.DRYRUN and prev_manifest and prev_manifest.entrypoints:
                 for old_ep in prev_manifest.entrypoints:
-                    if old_ep and old_ep not in pspec.resolved_info.entry_points:
+                    if old_ep and old_ep not in manifest.entrypoints:
                         # Remove old entry points that are not in new manifest anymore
                         runez.delete(pspec.exe_path(old_ep))
 
