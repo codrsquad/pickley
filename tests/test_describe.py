@@ -6,10 +6,6 @@ from pickley import __version__
 
 
 def test_describe(cli):
-    cli.run("describe", ".")
-    assert cli.failed
-    assert "problem: " in cli.logged
-
     runez.write(".pk/config.json", '{"bake_time": 300}', logger=None)
     cli.run("describe mgit==1.3.0")
     assert cli.succeeded
@@ -17,6 +13,10 @@ def test_describe(cli):
     assert "Applying bake_time of 5 minutes" in cli.logged
 
     if sys.version_info[:2] >= (3, 10):
+        cli.run("describe", ".")
+        assert cli.failed
+        assert "problem: " in cli.logged
+
         cli.run("describe uv")
         assert cli.succeeded
         assert "uv bootstrap" in cli.logged

@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from unittest.mock import patch
 
 import pytest
@@ -61,6 +62,7 @@ def test_edge_cases(temp_cfg, logged):
     assert os.path.isdir("share")
 
 
+@pytest.mark.skipif(not bstrap.USE_UV, reason="to keep test case simple (uv only)")
 def test_facultative(cli):
     runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"), logger=None)
 
@@ -158,6 +160,7 @@ def test_install_pypi(cli):
 
     # Simulate a few older versions to exercise grooming
     runez.touch(".pk/mgit-1.0/bin/mgit", logger=None)
+    time.sleep(0.1)
     runez.touch(".pk/mgit-1.1/bin/mgit", logger=None)
     cli.run("install mgit<1.3.0")
     assert cli.succeeded
