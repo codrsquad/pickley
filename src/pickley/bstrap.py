@@ -223,7 +223,7 @@ def globally_configured_pypi_mirror(paths=None):
             config.read(os.path.expanduser(pip_conf_path))
             mirror = _groomed_mirror_url(config["global"]["index-url"])
             if mirror:
-                return mirror, pip_conf_path
+                return mirror, Path(pip_conf_path)
 
         except (KeyError, OSError):
             continue
@@ -383,7 +383,7 @@ def main(args=None):
             pv = ".".join(str(x) for x in CURRENT_PYTHON_MM)
             zipapp = bstrap.pickley_base / DOT_META / f".cache/virtualenv-{pv}.pyz"
             ensure_folder(zipapp.parent)
-            if not os.path.exists(zipapp):
+            if not zipapp.exists():
                 url = f"https://bootstrap.pypa.io/virtualenv/{pv}/virtualenv.pyz"
                 download(zipapp, url)
 

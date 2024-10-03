@@ -1,9 +1,9 @@
 import logging
-import os
+from pathlib import Path
 
 import runez
 
-from pickley import abort, bstrap, CFG
+from pickley import abort, bstrap, CFG, PackageSpec, TrackedManifest
 
 LOG = logging.getLogger(__name__)
 
@@ -66,14 +66,7 @@ class DeliveryMethod:
     short_name = "deliver"
 
     @classmethod
-    def delivery_method_by_name(cls, name):
-        """
-        Args:
-            name (str): Name of delivery method
-
-        Returns:
-            (DeliveryMethod): Associated delivery method
-        """
+    def delivery_method_by_name(cls, name) -> "DeliveryMethod":
         if name == "wrap":
             return DeliveryMethodWrap()
 
@@ -82,15 +75,11 @@ class DeliveryMethod:
 
         return abort(f"Unknown delivery method '{runez.red(name)}'")
 
-    def install(self, pspec):
-        """
-        Args:
-            pspec (pickley.PackageSpec): Package spec being installed
-        """
+    def install(self, pspec: PackageSpec) -> TrackedManifest:
         try:
             prev_manifest = pspec.manifest
             for name in pspec.resolved_info.entrypoints:
-                src = os.path.join(pspec.target_installation_folder, "bin", name)
+                src = pspec.target_installation_folder / "bin" / name
                 dest = CFG.base / name
                 short_src = runez.short(src)
                 short_dest = runez.short(dest)
@@ -98,7 +87,7 @@ class DeliveryMethod:
                     print(f"Would {self.short_name} {short_dest} -> {short_src}")
                     continue
 
-                if not os.path.exists(src):
+                if not src.exists():
                     abort(f"Can't {self.short_name} {short_dest} -> {runez.red(short_src)}: source does not exist")
 
                 LOG.debug("%s %s -> %s", self.action, short_dest, short_src)
@@ -116,7 +105,7 @@ class DeliveryMethod:
         except Exception as e:
             abort(f"Failed to {self.short_name} {pspec}: {runez.red(e)}")
 
-    def _install(self, pspec, target, source):
+    def _install(self, pspec, target: Path, source: Path):
         raise NotImplementedError(f"{self.__class__.__name__} is not implemented")
 
 
@@ -128,15 +117,8 @@ class DeliveryMethodSymlink(DeliveryMethod):
     action = "Symlinked"
     short_name = "symlink"
 
-    def _install(self, pspec, target, source):
-        runez.delete(target, logger=False)
-        if os.path.isabs(source) and os.path.isabs(target):
-            parent = runez.parent_folder(target)
-            if runez.parent_folder(source).startswith(parent):
-                # Use relative path if source is under target
-                source = os.path.relpath(source, parent)
-
-        os.symlink(source, target)
+    def _install(self, pspec, target: Path, source: Path):
+        runez.symlink(source, target, overwrite=True)
 
 
 class DeliveryMethodWrap(DeliveryMethod):
@@ -151,7 +133,7 @@ class DeliveryMethodWrap(DeliveryMethod):
     hook = ""
     bg = " &> /dev/null &"
 
-    def _install(self, pspec, target, source):
+    def _install(self, pspec, target: Path, source: Path):
         pickley = CFG.base / bstrap.PICKLEY
         wrapper = PICKLEY_WRAPPER if pspec.canonical_name == bstrap.PICKLEY else GENERIC_WRAPPER
         contents = wrapper.lstrip().format(
@@ -159,7 +141,7 @@ class DeliveryMethodWrap(DeliveryMethod):
             bg=self.bg,
             name=runez.quoted(pspec.canonical_name, adapter=None),
             pickley=runez.quoted(pickley, adapter=None),
-            source=runez.quoted(source, adapter=None),
+            source=runez.quoted(str(source), adapter=None),
         )
         runez.delete(target, logger=False)
         runez.write(target, contents, logger=False)

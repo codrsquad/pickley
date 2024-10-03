@@ -98,10 +98,7 @@ def pypi_name_problem(name):
         return problem
 
 
-def _absolute_package_spec(given_package_spec):
-    if isinstance(given_package_spec, Path):
-        return str(given_package_spec)
-
+def _absolute_package_spec(given_package_spec: str):
     if given_package_spec.startswith("http"):
         given_package_spec = f"git+{given_package_spec}"
 
@@ -354,7 +351,7 @@ class PackageSpec:
 
     _manifest: "TrackedManifest" = runez.UNSET
 
-    def __init__(self, given_package_spec):
+    def __init__(self, given_package_spec: str):
         """
         Parameters
         ----------
@@ -588,7 +585,7 @@ class PickleyConfig:
 
     def find_uv(self):
         """Path to uv installation"""
-        return bstrap.find_uv(runez.to_path(self.base))
+        return bstrap.find_uv(self.base)
 
     def set_base(self, base_path):
         """
@@ -902,7 +899,7 @@ class TrackedSettings:
         return self.auto_upgrade_spec
 
     @classmethod
-    def from_config(cls, auto_upgrade_spec):
+    def from_config(cls, auto_upgrade_spec: str):
         settings = cls()
         canonical_name = PypiStd.std_package_name(auto_upgrade_spec)
         settings.auto_upgrade_spec = canonical_name or _absolute_package_spec(auto_upgrade_spec)

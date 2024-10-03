@@ -1,10 +1,13 @@
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence, TYPE_CHECKING
 
 import runez
 
-from pickley import abort, bstrap, CFG
+from pickley import abort, bstrap, CFG, PackageSpec, TrackedManifest
+
+if TYPE_CHECKING:
+    from pickley.cli import Requirements
 
 
 class PythonVenv:
@@ -19,7 +22,7 @@ class PythonVenv:
         python_spec : str
             Override python to use
         """
-        self.folder = runez.to_path(folder)
+        self.folder = folder
         self.python = CFG.available_pythons.find_python(python_spec)
         if package_manager is None:
             package_manager = bstrap.default_package_manager(self.python.mm.major, self.python.mm.minor)
@@ -132,38 +135,22 @@ def simplified_pip_error(error, output):
             yield line
 
 
-class Packager:
-    """Ancestor to package/install implementations"""
-
-    @staticmethod
-    def install(pspec):
-        """
-        Args:
-            pspec (pickley.PackageSpec): Targeted package spec
-        """
-
-    @staticmethod
-    def package(pspec, build_folder, dist_folder, requirements, run_compile_all):
-        """Package current folder
-
-        Args:
-            pspec (pickley.PackageSpec): Targeted package spec
-            build_folder (str): Folder to use as build cache
-            dist_folder (str): Folder where to produce package
-            requirements (pickley.cli.Requirements): Additional requirements (same convention as pip, can be package names or package specs)
-            run_compile_all (bool): Call 'compileall' on generated package?
-
-        Returns:
-            (list | None): List of packaged executables
-        """
-        raise NotImplementedError("Packaging with packager '{packager}' is not supported")
-
-
-class VenvPackager(Packager):
+class VenvPackager:
     """Install in a virtualenv"""
 
     @staticmethod
-    def install(pspec):
+    def install(pspec: PackageSpec) -> TrackedManifest:
+        """
+        Parameters
+        ----------
+        pspec : PackageSpec
+            Targeted package spec
+
+        Returns
+        -------
+        TrackedManifest
+            Installed package manifest
+        """
         delivery = pspec.delivery_method
         package_manager = pspec.settings.package_manager
         python_spec = pspec.settings.python
@@ -179,7 +166,26 @@ class VenvPackager(Packager):
         return delivery.install(pspec)
 
     @staticmethod
-    def package(pspec, build_folder, dist_folder, requirements, run_compile_all):
+    def package(pspec: PackageSpec, dist_folder: Path, requirements: "Requirements", run_compile_all: bool) -> Optional[Sequence[Path]]:
+        """
+        Package `pspec` and `requirements` into a virtual env in `dist_folder`.
+
+        Parameters
+        ----------
+        pspec : PackageSpec
+            Targeted package spec
+        dist_folder : Path
+            Folder where to produce package
+        requirements : Requirements
+            Additional requirements (same convention as pip, can be package names or package specs)
+        run_compile_all : bool
+            Run `-mcompileall` on generated package?
+
+        Returns
+        -------
+        Optional[Sequence[Path]]
+            List of packaged executables
+        """
         runez.ensure_folder(dist_folder, clean=True, logger=False)
         venv = PythonVenv(dist_folder, package_manager="pip", python_spec=pspec.settings.python)
         venv.create_venv()
@@ -197,6 +203,6 @@ class VenvPackager(Packager):
         if entrypoints:
             result = []
             for name in entrypoints:
-                result.append(str(venv.folder / f"bin/{name}"))
+                result.append(venv.folder / "bin/" / name)
 
             return result

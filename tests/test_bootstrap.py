@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
@@ -231,7 +232,7 @@ def test_pip_conf(temp_cfg, logged):
     runez.write("b", "[global]\nindex-url = /", logger=False)  # Valid, but mirror not actually configured
     runez.write("c", "[global]\nindex-url = https://example.com/simple//", logger=False)
     runez.write("d", "[global]\nindex-url = https://example.com/pypi2", logger=False)  # Not needed, previous one wins
-    assert bstrap.globally_configured_pypi_mirror(["no-such-file.conf", "a", "b", "c", "d"]) == ("https://example.com/simple", "c")
+    assert bstrap.globally_configured_pypi_mirror(["no-such-file.conf", "a", "b", "c", "d"]) == ("https://example.com/simple", Path("c"))
 
     # Keep chatter to a minimum
     assert "no-such-file.conf" not in logged  # No chatter about non-existing files

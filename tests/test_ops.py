@@ -1,13 +1,13 @@
 import os
 import sys
 import time
+from pathlib import Path
 
 import pytest
 import runez
 
 from pickley import bstrap, CFG, PackageSpec, program_version
 from pickley.cli import clean_compiled_artifacts, find_base, SoftLock, SoftLockException
-from pickley.package import Packager
 
 from .conftest import dot_meta
 
@@ -48,14 +48,11 @@ def test_dev_mode(cli):
 
 
 def test_edge_cases(temp_cfg, logged):
-    with pytest.raises(NotImplementedError):
-        Packager.package(None, None, None, None, False)
-
     runez.touch("share/python-wheels/some-wheel.whl", logger=None)
     runez.touch("__pycache__/some_module.py", logger=None)
     runez.touch("some_module.pyc", logger=None)
     logged.pop()
-    clean_compiled_artifacts(".")
+    clean_compiled_artifacts(Path("."))
     assert "Deleted 3 compiled artifacts" in logged.pop()
     assert not os.path.exists("share/python-wheels")
     assert os.path.isdir("share")

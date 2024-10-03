@@ -34,9 +34,9 @@ LOG = logging.getLogger(__name__)
 
 
 class Requirements(NamedTuple):
-    requirement_files: Sequence[str]
+    requirement_files: Sequence[Path]
     additional_packages: Optional[Sequence[str]]
-    project: str
+    project: Path
 
 
 def setup_audit_log():
@@ -340,7 +340,7 @@ def base(what):
         delivery.install(pspec)
 
         if bstrap.USE_UV:
-            tmp_uv = runez.to_path(CFG.meta / ".uv")
+            tmp_uv = CFG.meta / ".uv"
             uv_spec = PackageSpec("uv")
             if runez.is_executable(tmp_uv / "bin/uv"):
                 # Use the .uv/bin/uv obtained during bootstrap
@@ -765,14 +765,20 @@ class PackageFinalizer:
 
     pspec = None  # type: PackageSpec
 
-    def __init__(self, project, dist, symlink, requirement_files, additional):
+    def __init__(self, project: Path, dist: str, symlink: Optional[str], requirement_files: Sequence[str], additional: Sequence[str]):
         """
-        Args:
-            project (str): Folder where project to be packaged resides (must have a setup.py)
-            dist (str): Relative path to folder to use as 'dist' (where to deliver package)
-            symlink (str | None): Symlink specification, of the form 'root:root/...'
-            requirement_files (list | tuple): Requirement files to use
-            additional (list | tuple): Additional requirements
+        Parameters
+        ----------
+        project : Path
+            Folder where project to be packaged resides (must have a setup.py)
+        dist : str
+            Relative path to folder to use as 'dist' (where to deliver package)
+        symlink : str | None
+            Symlink specification, of the form 'root:root/...'
+        requirement_files : Sequence[str]
+            Requirement files to use
+        additional : Sequence[str]
+            Additional requirements
         """
         self.folder = project
         self.dist = dist
@@ -782,7 +788,7 @@ class PackageFinalizer:
         self.border = "reddit"
         if not requirement_files:
             default_req = CFG.resolved_path("requirements.txt", base=self.folder)
-            if os.path.exists(default_req):
+            if default_req.exists():
                 requirement_files = default_req
 
         requirement_files = [CFG.resolved_path(r, base=self.folder) for r in runez.flattened(requirement_files)]
@@ -803,10 +809,10 @@ class PackageFinalizer:
         return runez.first_line(r.output or r.error)
 
     def resolve(self):
-        if not os.path.isdir(self.folder):
+        if not self.folder.is_dir():
             abort(f"Folder {runez.red(runez.short(self.folder))} does not exist")
 
-        self.pspec = PackageSpec(self.folder)
+        self.pspec = PackageSpec(str(self.folder))
         if not self.pspec.canonical_name:
             runez.abort(f"Could not determine package name: {self.pspec.resolved_info.problem}")
 
@@ -830,7 +836,7 @@ class PackageFinalizer:
         with runez.Anchored(self.folder):
             runez.ensure_folder(CFG.base, clean=True, logger=False)
             dist_folder = CFG.resolved_path(self.dist)
-            exes = VenvPackager.package(self.pspec, CFG.base, dist_folder, self.requirements, self.compile)
+            exes = VenvPackager.package(self.pspec, dist_folder, self.requirements, self.compile)
             if exes:
                 report = PrettyTable(["Packaged executable", self.sanity_check], border=self.border)
                 report.header.style = "bold"
@@ -839,7 +845,7 @@ class PackageFinalizer:
 
                 for exe in exes:
                     exe_info = self.validate_sanity_check(exe, self.sanity_check)
-                    report.add_row(runez.quoted(exe), exe_info)
+                    report.add_row(runez.quoted(str(exe)), exe_info)
                     if self.symlink and exe:
                         self.symlink.apply(exe)
 
@@ -866,9 +872,9 @@ class Symlinker:
 
         self.target = CFG.resolved_path(self.target, base=CFG.base)
 
-    def apply(self, exe):
-        dest = self.target / os.path.basename(exe)
-        if os.path.exists(exe):
+    def apply(self, exe: Path):
+        dest = self.target / exe.name
+        if exe.exists():
             r = runez.symlink(exe, dest, must_exist=False)
             if r > 0:
                 inform(f"Symlinked {runez.short(dest)} -> {runez.short(exe)}")
@@ -891,7 +897,7 @@ def should_clean(basename):
 def clean_compiled_artifacts(folder):
     """Remove usual byte-code compiled artifacts from `folder`"""
     # See https://www.debian.org/doc/packaging-manuals/python-policy/ch-module_packages.html
-    deleted = delete_file(os.path.join(folder, "share", "python-wheels"))
+    deleted = delete_file(folder / "share" / "python-wheels")
     dirs_to_be_deleted = []
     for root, dirs, files in os.walk(folder):
         for basename in dirs[:]:
