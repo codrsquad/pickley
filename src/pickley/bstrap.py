@@ -16,6 +16,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_BASE = "~/.local/bin"
 DOT_META = ".pk"
+DEBUG = False
 DRYRUN = False
 HOME = os.path.expanduser("~")
 PICKLEY = "pickley"
@@ -29,6 +30,23 @@ _UV_PATH = None
 
 def abort(message):
     sys.exit(f"--------\n\n{message}\n\n--------")
+
+
+def inform(message):
+    print(message)
+
+
+def trace(message):
+    """Verbose trace, this is enabled"""
+    if DEBUG:
+        print(message)
+
+
+def set_mirror_env_vars(mirror):
+    if mirror and mirror != DEFAULT_MIRROR:
+        trace(f"Setting PIP_INDEX_URL and UV_INDEX_URL to {mirror}")
+        os.environ["PIP_INDEX_URL"] = mirror
+        os.environ["UV_INDEX_URL"] = mirror
 
 
 class Bootstrap:
@@ -51,7 +69,7 @@ class Bootstrap:
         if not pickley_config.exists():
             msg = f"{short(pickley_config)} with {desired_cfg}"
             if not hdry(f"Would seed {msg}"):
-                print(f"Seeding {msg}")
+                inform(f"Seeding {msg}")
                 ensure_folder(os.path.dirname(pickley_config))
                 with open(pickley_config, "wt") as fh:
                     json.dump(desired_cfg, fh, sort_keys=True, indent=2)
@@ -61,11 +79,12 @@ class Bootstrap:
         # This is a temporary measure, eventually we'll use `uv describe` for this
         url = os.path.dirname(self.mirror)
         url = f"{url}/pypi/{PICKLEY}/json"
-        print(f"Querying {url}")
         data = http_get(url)
         if data:
             data = json.loads(data)
-            return data["info"]["version"]
+            version = data["info"]["version"]
+            trace(f"Latest {PICKLEY} version: {version}")
+            return version
 
 
 def default_package_manager(*parts):
@@ -85,12 +104,14 @@ def find_uv(pickley_base):
             v = run_program(_UV_PATH, "--version", dryrun=False, fatal=False)
             if v and len(v) < 64 and v.startswith("uv "):
                 # `<pickley-base>/uv` is available
+                trace(f"Using {short(_UV_PATH)}")
                 return _UV_PATH
 
         # For bootstrap, download uv in <pickley-base>/.pk/.uv/bin/uv
         # It will later get properly wrapped (<pickley-base>/uv -> .pk/uv-<version>/bin/uv) by `pickley base bootstrap-own-wrapper`
         uv_tmp_target = pickley_base / DOT_META / ".uv"
         _UV_PATH = uv_tmp_target / "bin/uv"
+        trace(f"Using {short(_UV_PATH)}")
         if not is_executable(_UV_PATH):
             download_uv(uv_tmp_target)
 
@@ -118,6 +139,7 @@ def download_uv(target, version=None, dryrun=None):
 
 
 def http_get(url, timeout=10):
+    trace(f"Querying {url}")
     try:
         request = Request(url)
         with urlopen(request, timeout=timeout) as response:
@@ -157,13 +179,11 @@ def built_in_download(target, url):
         fh.write(response.read())
 
 
-def clean_env_vars(keys=("__PYVENV_LAUNCHER__", "PYTHONPATH"), logger=None):
+def clean_env_vars(keys=("__PYVENV_LAUNCHER__", "PYTHONPATH")):
     """See https://github.com/python/cpython/pull/9516"""
     for key in keys:
         if key in os.environ:
-            if logger:
-                logger(f"Unsetting env var {key}")
-
+            trace(f"Unsetting env var {key}")
             del os.environ[key]
 
 
@@ -186,12 +206,13 @@ def download(target, url, dryrun=None):
             return built_in_download(target, url)
 
         except Exception:
-            print(f"Built-in download of {url} failed, trying curl or wget")
+            inform(f"Built-in download of {url} failed, trying curl or wget")
             return curl_download(target, url)
 
 
 def ensure_folder(path, dryrun=None):
     if path and not os.path.isdir(path) and not hdry(f"Would create {short(path)}", dryrun=dryrun):
+        trace(f"Creating folder {short(path)}")
         os.makedirs(path)
 
 
@@ -230,7 +251,7 @@ def globally_configured_pypi_mirror(paths=None):
 
         except Exception as e:
             # Ignore any issue reading pip.conf, not necessary for bootstrap
-            print(f"Could not read '{pip_conf_path}': {e}")
+            inform(f"Could not read '{pip_conf_path}': {e}")
             continue
 
     return DEFAULT_MIRROR, None
@@ -261,7 +282,7 @@ def run_program(program, *args, **kwargs):
     if not hdry(f"Would run: {description}", dryrun=kwargs.pop("dryrun", None)):
         if fatal:
             stdout = stderr = None
-            print(f"Running: {description}")
+            inform(f"Running: {description}")
 
         else:
             stdout = stderr = subprocess.PIPE
@@ -288,7 +309,7 @@ def seed_mirror(mirror, path, section):
             ensure_folder(os.path.dirname(config_path))
             msg = f"{short(config_path)} with {mirror}"
             if not hdry(f"Would seed {msg}"):
-                print(f"Seeding {msg}")
+                inform(f"Seeding {msg}")
                 with open(config_path, "wt") as fh:
                     if section == "pip" and not mirror.startswith('"'):
                         # This assumes user passed a reasonable URL as --mirror, no further validation is done
@@ -298,7 +319,7 @@ def seed_mirror(mirror, path, section):
                     fh.write(f"[{section}]\nindex-url = {mirror}\n")
 
     except Exception as e:
-        print(f"Seeding {path} failed: {e}")
+        inform(f"Seeding {path} failed: {e}")
 
 
 def short(text):
@@ -327,9 +348,11 @@ def pip_auto_upgrade():
 
 def main(args=None):
     """Bootstrap pickley"""
+    global DEBUG
     global DRYRUN
 
     parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument("--debug", "-v", action="store_true", help="Show debug output")
     parser.add_argument("--dryrun", "-n", action="store_true", help="Perform a dryrun")
     parser.add_argument("--base", "-b", default=DEFAULT_BASE, help="Base folder to use (default: ~/.local/bin)")
     parser.add_argument("--check-path", action="store_true", help="Verify that stated --base is on PATH env var")
@@ -340,10 +363,15 @@ def main(args=None):
     parser.add_argument("version", nargs="?", help="Version to bootstrap (default: latest)")
     args = parser.parse_args(args=args)
 
+    DEBUG = args.debug
     DRYRUN = args.dryrun
     clean_env_vars()
     bstrap = Bootstrap(find_base(args.base), _groomed_mirror_url(args.mirror))
-    print(f"Using {sys.executable}, base: {short(bstrap.pickley_base)}")
+    message = f"Using {short(sys.executable)}, base: {short(bstrap.pickley_base)}"
+    if bstrap.mirror:
+        message += f", mirror: {bstrap.mirror}"
+
+    inform(message)
     pickley_version = args.version or bstrap.get_latest_pickley_version()
     if not pickley_version:
         abort(f"Failed to determine latest {PICKLEY} version")
@@ -365,11 +393,11 @@ def main(args=None):
     if not args.force and is_executable(pickley_exe):
         v = run_program(pickley_exe, "--version", dryrun=False, fatal=False)
         if v == pickley_version:
-            print(f"{short(pickley_exe)} version {v} is already installed")
+            inform(f"{short(pickley_exe)} version {v} is already installed")
             sys.exit(0)
 
-        if v and len(v) < 24:  # If long output -> old pickley is busted (stacktrace)
-            print(f"Replacing older {PICKLEY} v{v}")
+        if v and len(v) < 16:  # If long output -> old pickley is busted (stacktrace)
+            inform(f"Replacing older {PICKLEY} v{v}")
 
     package_manager = args.package_manager or os.getenv("PICKLEY_PACKAGE_MANAGER") or default_package_manager()
     pickley_venv = bstrap.pickley_base / DOT_META / f"{PICKLEY}-{pickley_version}"
@@ -379,7 +407,7 @@ def main(args=None):
             needs_virtualenv = not is_executable(pickley_venv / "bin/pip")
 
         if needs_virtualenv:
-            print("-mvenv failed, falling back to virtualenv")
+            inform("-mvenv failed, falling back to virtualenv")
             pv = ".".join(str(x) for x in CURRENT_PYTHON_MM)
             zipapp = bstrap.pickley_base / DOT_META / f".cache/virtualenv-{pv}.pyz"
             ensure_folder(zipapp.parent)

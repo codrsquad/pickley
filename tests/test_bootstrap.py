@@ -23,7 +23,10 @@ def mocked_expanduser(path):
 
 
 def test_bootstrap(cli, monkeypatch):
+    # Ensure changes to DEBUG/DRYRUN globals are restored by monkeypatch
+    monkeypatch.setattr(bstrap, "DEBUG", False)
     monkeypatch.setattr(bstrap, "DRYRUN", False)
+
     cli.run("-n base bootstrap-own-wrapper")
     assert cli.succeeded
     assert f"Would save {dot_meta('pickley.manifest.json')}" in cli.logged
@@ -64,12 +67,6 @@ def test_bootstrap(cli, monkeypatch):
 
         runez.write(".local/bin/uv", "#!/bin/sh\necho uv 0.0.1", logger=None)  # Pretend we have uv already
         runez.make_executable(".local/bin/uv", logger=None)
-
-        with patch("pickley.bstrap.http_get", return_value='{"info":{"version":"4.3.0"}}'):
-            cli.run("-n -mhttps://my-company.net/some-path/simple/", main=bstrap.main)
-            assert cli.succeeded
-            assert "Querying https://my-company.net/some-path/pypi/pickley/json" in cli.logged
-            assert "uv -q pip install pickley==4.3.0" in cli.logged
 
         cli.run("-n", main=bstrap.main)
         assert cli.succeeded

@@ -55,6 +55,7 @@ def setup_audit_log():
         runez.log.trace("Logging to %s", log_path)
         runez.ensure_folder(CFG.meta)
         runez.log.setup(
+            default_logger=LOG.debug,
             file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",
             file_level=logging.DEBUG,
             file_location=str(log_path),
@@ -236,7 +237,7 @@ def find_symbolic_invoker() -> str:
 @runez.click.group()
 @click.pass_context
 @runez.click.version(message="%(version)s", version=__version__)
-@runez.click.debug("-v")
+@click.option("--verbose", "-v", "--debug", count=True, default=0, help="Show verbose output")
 @runez.click.dryrun("-n")
 @runez.click.color()
 @click.option("--config", "-c", metavar="PATH", help="Optional additional configuration to use")
@@ -244,7 +245,7 @@ def find_symbolic_invoker() -> str:
 @click.option("--python", "-P", metavar="PATH", help="Python interpreter to use")
 @click.option("--delivery", "-d", help="Delivery method to use")
 @click.option("--package-manager", type=click.Choice(("uv", "pip")), help="What to use to create venvs? (default: uv)")
-def main(ctx, debug, config, index, python, delivery, package_manager):
+def main(ctx, verbose, config, index, python, delivery, package_manager):
     """Install python CLIs that keeps themselves up-to-date"""
     runez.system.AbortException = SystemExit
     level = logging.WARNING
@@ -254,15 +255,19 @@ def main(ctx, debug, config, index, python, delivery, package_manager):
         package_manager = package_manager or "pip"  # Default to pip for 'package' subcommand
         python = python or find_symbolic_invoker()
 
+    if verbose > 1:
+        os.environ["TRACE_DEBUG"] = "1"
+
     runez.log.setup(
-        debug=debug or os.environ.get("PICKLEY_TRACE"),
-        console_format="%(levelname)s %(message)s" if debug else "%(message)s",
+        debug=verbose or os.environ.get("PICKLEY_TRACE"),
+        default_logger=LOG.debug,
+        console_format="%(levelname)s %(message)s" if verbose else "%(message)s",
         console_level=level,
         console_stream=sys.stderr,
         locations=None,
-        trace="PICKLEY_TRACE",
+        trace="TRACE_DEBUG+:: ",
     )
-    bstrap.clean_env_vars(logger=runez.log.trace)
+    bstrap.clean_env_vars()
     if runez.SYS_INFO.platform_id.is_macos and "ARCHFLAGS" not in os.environ and runez.SYS_INFO.platform_id.arch:
         # Ensure the proper platform is used on macos
         archflags = f"-arch {runez.SYS_INFO.platform_id.arch}"
@@ -274,10 +279,7 @@ def main(ctx, debug, config, index, python, delivery, package_manager):
         CFG.set_base(find_base())
 
     runez.Anchored.add(CFG.base)
-    index = CFG.index
-    if index and index != bstrap.DEFAULT_MIRROR:
-        os.environ["PIP_INDEX_URL"] = index
-        os.environ["UV_INDEX_URL"] = index
+    bstrap.set_mirror_env_vars(CFG.index)
 
 
 @main.command()

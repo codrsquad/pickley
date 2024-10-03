@@ -87,6 +87,11 @@ def test_facultative(cli):
     assert cli.succeeded
     assert "Would state: Installed virtualenv" in cli.logged
 
+    # Simulate a bogus symlink
+    runez.touch("virtualenv-foo", logger=None)
+    runez.symlink("virtualenv-foo", "virtualenv", logger=None)
+    cli.run("-n check virtualenv")
+
     # Simulate a symlink to an older version
     runez.touch(".pk/virtualenv-1.0/bin/virtualenv", logger=None)
     runez.symlink(".pk/virtualenv-1.0/bin/virtualenv", "virtualenv", logger=None)

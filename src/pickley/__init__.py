@@ -33,21 +33,21 @@ K_LEAVES = {
 PLATFORM = platform.system().lower()
 
 
-def abort(message):
-    message = runez.stringified(message)
-    print(message)
+def abort(message: str):
+    """Show `message` on stderr as well as `audit.log` and exit with status 1."""
     _log_to_file(message, error=True)
-    sys.exit(1)
+    sys.exit(message)
 
 
-def inform(message):
-    """
-    Args:
-        message: Message to print and log at level INFO
-    """
-    message = runez.stringified(message)
-    print(message)
+def inform(message: str):
+    """Show `message` on stdout as well as `audit.log`."""
     _log_to_file(message)
+    print(message)
+
+
+bstrap.abort = abort
+bstrap.inform = inform
+bstrap.trace = runez.log.trace
 
 
 def despecced(text):
@@ -655,13 +655,14 @@ class PickleyConfig:
     def symlinked_canonical(self, path: Path) -> Optional[str]:
         """Canonical name of pickley-installed package, if installed via symlink"""
         if path and self.meta and os.path.islink(path):
-            path = path.resolve()
+            actual_path = path.resolve()
             try:
-                relative = path.relative_to(self.meta)
+                relative = actual_path.relative_to(self.meta)
                 pv = relative.parts[0]
                 return pv.rpartition("-")[0]
 
             except ValueError:
+                runez.log.trace(f"Symlink {runez.short(path)} -> {runez.short(actual_path)} does not belong to {bstrap.PICKLEY}")
                 return None
 
     def soft_lock_path(self, canonical_name):
