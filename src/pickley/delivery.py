@@ -91,7 +91,7 @@ class DeliveryMethod:
             prev_manifest = pspec.manifest
             for name in pspec.resolved_info.entrypoints:
                 src = os.path.join(pspec.target_installation_folder, "bin", name)
-                dest = pspec.exe_path(name)
+                dest = CFG.base / name
                 short_src = runez.short(src)
                 short_dest = runez.short(dest)
                 if runez.DRYRUN:
@@ -109,7 +109,7 @@ class DeliveryMethod:
                 for old_ep in prev_manifest.entrypoints:
                     if old_ep and old_ep not in manifest.entrypoints:
                         # Remove old entry points that are not in new manifest anymore
-                        runez.delete(pspec.exe_path(old_ep))
+                        runez.delete(CFG.base / old_ep)
 
             return manifest
 
@@ -152,7 +152,7 @@ class DeliveryMethodWrap(DeliveryMethod):
     bg = " &> /dev/null &"
 
     def _install(self, pspec, target, source):
-        pickley = CFG.base.full_path(bstrap.PICKLEY)
+        pickley = CFG.base / bstrap.PICKLEY
         wrapper = PICKLEY_WRAPPER if pspec.canonical_name == bstrap.PICKLEY else GENERIC_WRAPPER
         contents = wrapper.lstrip().format(
             hook=self.hook,

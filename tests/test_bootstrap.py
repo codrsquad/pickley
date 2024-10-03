@@ -145,19 +145,18 @@ def test_download_uv(temp_cfg, monkeypatch):
 
     monkeypatch.setattr(bstrap, "DRYRUN", True)
     monkeypatch.setattr(bstrap, "_UV_PATH", None)
-    tmp_base = runez.to_path(temp_cfg.base.path)
-    assert bstrap.find_uv(tmp_base) == tmp_base / ".pk/.uv/bin/uv"
+    assert bstrap.find_uv(temp_cfg.base) == temp_cfg.base / ".pk/.uv/bin/uv"
 
     monkeypatch.setattr(bstrap, "_UV_PATH", None)
     runez.write("sample-uv", "#!/bin/sh\necho uv 0.0.1", logger=None)
     runez.make_executable("sample-uv", logger=None)
     runez.symlink("sample-uv", "uv", logger=None)
-    assert bstrap.find_uv(tmp_base) == tmp_base / "uv"
+    assert bstrap.find_uv(temp_cfg.base) == temp_cfg.base / "uv"
 
     # Simulate bad uv download
     monkeypatch.setattr(bstrap, "_UV_PATH", None)
     runez.write("sample-uv", "#!/bin/sh\nexit 1", logger=None)
-    assert bstrap.find_uv(tmp_base) == tmp_base / ".pk/.uv/bin/uv"
+    assert bstrap.find_uv(temp_cfg.base) == temp_cfg.base / ".pk/.uv/bin/uv"
 
 
 def test_edge_cases(temp_cfg, logged):

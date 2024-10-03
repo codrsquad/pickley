@@ -49,7 +49,7 @@ def grab_sample(name):
     assert str(CFG.configs[0]) == "cli (0 values)"
 
 
-def test_bogus_config(temp_cfg, logged):
+def test_bogus_config(temp_cfg):
     grab_sample("bogus-config")
     assert CFG.resolved_bundle("") == []
     assert CFG.resolved_bundle("foo") == ["foo"]
@@ -71,7 +71,7 @@ def test_edge_cases():
     assert pypi_name_problem("mgit") is None
 
 
-def test_good_config(cli, monkeypatch):
+def test_good_config(cli):
     grab_sample("good-config")
 
     assert CFG.resolved_bundle("bundle:dev") == ["tox", "poetry", "mgit", "pipenv"]

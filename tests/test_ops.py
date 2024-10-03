@@ -1,12 +1,11 @@
 import os
 import sys
 import time
-from unittest.mock import patch
 
 import pytest
 import runez
 
-from pickley import bstrap, PackageSpec, program_version
+from pickley import bstrap, CFG, PackageSpec, program_version
 from pickley.cli import clean_compiled_artifacts, find_base, SoftLock, SoftLockException
 from pickley.package import Packager
 
@@ -32,12 +31,12 @@ def test_base(cli, monkeypatch):
         find_base()
 
     runez.ensure_folder("temp-base", logger=None)
-    assert find_base() == runez.resolved_path("temp-base")
+    assert find_base() == CFG.resolved_path("temp-base")
 
     monkeypatch.delenv("PICKLEY_ROOT")
-    assert find_base("/foo/.venv/bin/pickley") == "/foo/.venv/root"
-    assert find_base(dot_meta("pickley-0.0.0/bin/pickley", parent="foo")) == "foo"
-    assert find_base("foo/bar") == "foo"
+    assert find_base("/foo/.venv/bin/pickley") == CFG.resolved_path("/foo/.venv/root")
+    assert find_base(dot_meta("pickley-0.0.0/bin/pickley", parent="foo")) == CFG.resolved_path("foo")
+    assert find_base("foo/bar/baz") == CFG.resolved_path("foo/bar")
 
 
 def test_dev_mode(cli):
@@ -308,21 +307,12 @@ def test_version_check(cli):
 
     cli.run("--dryrun", "version-check", "python:1.0")
     assert cli.succeeded
-    assert cli.match("Would run: .../python --version")
+    assert cli.match("Would run: python --version")
 
     cli.run("version-check", "--system", "python:1.0")
     assert cli.succeeded
+    assert "python --version" in cli.logged
 
     cli.run("version-check", "--system", "python:100.0")
     assert cli.failed
     assert "python version too low" in cli.logged
-
-    with patch("runez.run", return_value=runez.program.RunResult(output="failed", code=1)):
-        cli.run("version-check", "python:1.0")
-        assert cli.failed
-        assert "--version failed" in cli.logged
-
-    with patch("runez.which", return_value=None):
-        cli.run("version-check", "--system", "python:1.0")
-        assert cli.failed
-        assert "not installed" in cli.logged

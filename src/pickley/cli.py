@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 import time
+from pathlib import Path
 from typing import NamedTuple, Optional, Sequence
 
 import click
@@ -21,7 +22,7 @@ from pickley import (
     despecced,
     inform,
     PackageSpec,
-    program_version,
+    parsed_version,
     ResolvedPackage,
     specced,
     TrackedManifest,
@@ -50,13 +51,13 @@ def setup_audit_log():
         if runez.color.is_coloring():
             runez.log.progress.start(message_color=runez.dim, spinner_color=runez.bold)
 
-        log_path = CFG.meta.full_path("audit.log")
+        log_path = CFG.meta / "audit.log"
         runez.log.trace("Logging to %s", log_path)
-        runez.ensure_folder(CFG.meta.path)
+        runez.ensure_folder(CFG.meta)
         runez.log.setup(
             file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",
             file_level=logging.DEBUG,
-            file_location=log_path,
+            file_location=str(log_path),
             greetings=":: {argv}",
             rotate="size:500k",
             rotate_count=1,
@@ -192,32 +193,29 @@ def perform_install(pspec, is_upgrade=False, quiet=False, verb=None):
         pspec.groom_installation()
 
 
-def _find_base_from_program_path(path):
-    if not path or len(path) <= 1:
+def _find_base_from_program_path(path: Path):
+    if not path or len(path.parts) <= 1:
         return None
 
-    dirpath, basename = os.path.split(path)
-    if basename:
-        basename = basename.lower()
-        if basename in (bstrap.DOT_META, ".pickley"):
-            return dirpath  # We're running from an installed pickley
+    if path.name in (bstrap.DOT_META, ".pickley"):
+        return path.parent  # We're running from an installed pickley
 
-        if basename == ".venv":
-            return os.path.join(path, "root")  # Convenience for development
+    if path.name == ".venv":
+        return path / "root"  # Convenience for development
 
-    return _find_base_from_program_path(dirpath)
+    return _find_base_from_program_path(path.parent)
 
 
 def find_base(path=None):
-    base_path = runez.resolved_path(os.environ.get("PICKLEY_ROOT"))
+    base_path = CFG.resolved_path(os.environ.get("PICKLEY_ROOT"))
     if base_path:
-        if not os.path.isdir(base_path):
+        if not base_path.is_dir():
             abort(f"PICKLEY_ROOT points to non-existing directory {runez.red(base_path)}")
 
         return base_path
 
-    path = path or runez.resolved_path(sys.argv[0])
-    return _find_base_from_program_path(path) or os.path.dirname(path)
+    path = CFG.resolved_path(path or sys.argv[0])
+    return _find_base_from_program_path(path) or path.parent
 
 
 def find_symbolic_invoker() -> str:
@@ -275,9 +273,7 @@ def main(ctx, debug, config, index, python, delivery, package_manager):
     if ctx.invoked_subcommand != "package":
         CFG.set_base(find_base())
 
-    if CFG.base:
-        runez.Anchored.add(CFG.base.path)
-
+    runez.Anchored.add(CFG.base)
     index = CFG.index
     if index and index != bstrap.DEFAULT_MIRROR:
         os.environ["PIP_INDEX_URL"] = index
@@ -337,7 +333,6 @@ def auto_upgrade(force, package):
 @click.argument("what", required=False)
 def base(what):
     """Show pickley base folder"""
-    path = CFG.base.path
     if what == "bootstrap-own-wrapper":
         # Internal: called by bootstrap script
         pspec = PackageSpec(f"{bstrap.PICKLEY}=={__version__}")
@@ -345,7 +340,7 @@ def base(what):
         delivery.install(pspec)
 
         if bstrap.USE_UV:
-            tmp_uv = runez.to_path(CFG.meta.full_path(".uv"))
+            tmp_uv = runez.to_path(CFG.meta / ".uv")
             uv_spec = PackageSpec("uv")
             if runez.is_executable(tmp_uv / "bin/uv"):
                 # Use the .uv/bin/uv obtained during bootstrap
@@ -360,12 +355,13 @@ def base(what):
 
         return
 
+    path = CFG.base
     if what:
         paths = {
-            "audit": CFG.meta.full_path("audit.log"),
-            "cache": CFG.cache.path,
-            "config": CFG.meta.full_path("config.json"),
-            "meta": CFG.meta.path,
+            "audit": CFG.meta / "audit.log",
+            "cache": CFG.cache,
+            "config": CFG.meta / "config.json",
+            "meta": CFG.meta,
         }
         paths["audit.log"] = paths["audit"]
         paths["config.json"] = paths["config"]
@@ -616,8 +612,7 @@ class RunSetup:
             perform_install(pspec, quiet=True)
 
         runez.log.progress.stop()
-        path = pspec.exe_path(rs.command)
-        r = runez.run(path, args, stdout=None, stderr=None, fatal=False)
+        r = runez.run(CFG.base / rs.command, args, stdout=None, stderr=None, fatal=False)
         sys.exit(r.exit_code)
 
     @classmethod
@@ -683,15 +678,15 @@ def uninstall(all, packages):
             abort(f"{runez.bold(pspec.canonical_name)} was not installed with pickley")
 
         for ep in pspec.manifest.entrypoints:
-            runez.delete(pspec.exe_path(ep))
+            runez.delete(CFG.base / ep)
 
         pspec.delete_all_files()
         action = "Would uninstall" if runez.DRYRUN else "Uninstalled"
         inform(f"{action} {pspec}")
 
     if all:
-        runez.delete(CFG.base.full_path(bstrap.PICKLEY))
-        runez.delete(CFG.meta.path)
+        runez.delete(CFG.base / bstrap.PICKLEY)
+        runez.delete(CFG.meta)
         inform(f"pickley is now {runez.red('uninstalled')}")
 
 
@@ -714,30 +709,23 @@ def version_check(system, programs):
 
     overview = []
     for program, min_version in specs:
-        if runez.DRYRUN:
-            runez.run(program, "--version")
-            continue
-
         if system:
             full_path = runez.which(program)
-            if not full_path:
-                runez.abort(f"{program} is not installed")
+            runez.abort_if(not full_path, f"{program} is not installed")
 
         else:
-            pspec = PackageSpec(program)
-            full_path = pspec.exe_path(program)
+            full_path = CFG.base / program
 
-        r = runez.run(full_path, "--version", fatal=False, logger=None)
-        if not r.succeeded:
-            runez.abort(f"{runez.short(full_path)} --version failed: {runez.short(r.full_output)}")
+        r = runez.run(full_path, "--version", logger=print if runez.DRYRUN else LOG.debug)
+        if not runez.DRYRUN:
+            version = parsed_version(r.output or r.error)
+            if not version or version < min_version:
+                runez.abort(f"{runez.short(full_path)} version too low: {version} (need {min_version}+)")
 
-        version = program_version(full_path, fatal=False)
-        if not version or version < min_version:
-            runez.abort(f"{runez.short(full_path)} version too low: {version} (need {min_version}+)")
+            overview.append(f"{program} {version}")
 
-        overview.append(f"{program} {version}")
-
-    print(runez.short(runez.joined(overview, delimiter=" ; ")))
+    if overview:
+        print(runez.short(runez.joined(overview, delimiter=" ; ")))
 
 
 @main.command()
@@ -752,8 +740,8 @@ def version_check(system, programs):
 def package(base, dist, symlink, no_compile, sanity_check, project, requirement, additional):
     """Package a project from source checkout"""
     started = time.time()
-    CFG.set_base(runez.resolved_path(base))
-    project = runez.resolved_path(project)
+    CFG.set_base(base)
+    project = CFG.resolved_path(project)
     runez.log.spec.default_logger = LOG.info
     with runez.CurrentFolder(project, anchor=True):
         finalizer = PackageFinalizer(project, dist, symlink, requirement, additional)
@@ -793,11 +781,11 @@ class PackageFinalizer:
         self.compile = True
         self.border = "reddit"
         if not requirement_files:
-            default_req = runez.resolved_path("requirements.txt", base=self.folder)
+            default_req = CFG.resolved_path("requirements.txt", base=self.folder)
             if os.path.exists(default_req):
                 requirement_files = default_req
 
-        requirement_files = [runez.resolved_path(r, base=self.folder) for r in runez.flattened(requirement_files)]
+        requirement_files = [CFG.resolved_path(r, base=self.folder) for r in runez.flattened(requirement_files)]
         self.requirements = Requirements(requirement_files, additional, self.folder)
 
     @staticmethod
@@ -835,14 +823,14 @@ class PackageFinalizer:
                 # Auto-add package name to targets of the form root/subfolder (most typical case)
                 self.dist = os.path.join(self.dist, self.pspec.canonical_name)
 
-        self.dist = runez.resolved_path(self.dist, base=CFG.base.path)
+        self.dist = CFG.resolved_path(self.dist, base=CFG.base)
 
     def finalize(self):
         """Run sanity check and/or symlinks, and return a report"""
         with runez.Anchored(self.folder):
-            runez.ensure_folder(CFG.base.path, clean=True, logger=False)
-            dist_folder = runez.resolved_path(self.dist)
-            exes = VenvPackager.package(self.pspec, CFG.base.path, dist_folder, self.requirements, self.compile)
+            runez.ensure_folder(CFG.base, clean=True, logger=False)
+            dist_folder = CFG.resolved_path(self.dist)
+            exes = VenvPackager.package(self.pspec, CFG.base, dist_folder, self.requirements, self.compile)
             if exes:
                 report = PrettyTable(["Packaged executable", self.sanity_check], border=self.border)
                 report.header.style = "bold"
@@ -876,10 +864,10 @@ class Symlinker:
         if not self.base or not self.target:
             abort(f"Invalid symlink specification '{spec}'")
 
-        self.target = runez.resolved_path(self.target, base=CFG.base.path)
+        self.target = CFG.resolved_path(self.target, base=CFG.base)
 
     def apply(self, exe):
-        dest = os.path.join(self.target, os.path.basename(exe))
+        dest = self.target / os.path.basename(exe)
         if os.path.exists(exe):
             r = runez.symlink(exe, dest, must_exist=False)
             if r > 0:

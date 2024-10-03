@@ -6,6 +6,7 @@ import re
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional, Sequence
 
 import runez
@@ -97,7 +98,10 @@ def pypi_name_problem(name):
         return problem
 
 
-def _absolute_package_spec(given_package_spec: str):
+def _absolute_package_spec(given_package_spec):
+    if isinstance(given_package_spec, Path):
+        return str(given_package_spec)
+
     if given_package_spec.startswith("http"):
         given_package_spec = f"git+{given_package_spec}"
 
@@ -105,7 +109,7 @@ def _absolute_package_spec(given_package_spec: str):
         return given_package_spec
 
     if given_package_spec.startswith(".") or "/" in given_package_spec:
-        return str(runez.to_path(given_package_spec).absolute())
+        return str(CFG.resolved_path(given_package_spec))
 
     return given_package_spec
 
@@ -115,13 +119,13 @@ def parsed_version(text):
     if text:
         for line in reversed(text.splitlines()):
             version = Version.extracted_from_text(line)
-            if version:
+            if version and version.is_valid:
                 return version
 
 
-def program_version(path, dryrun: bool = runez.UNSET, fatal=True, logger: callable = runez.UNSET):
+def program_version(path):
     if runez.is_executable(path):
-        r = runez.run(path, "--version", dryrun=dryrun, fatal=fatal, logger=logger)
+        r = runez.run(path, "--version", dryrun=False, fatal=False, logger=None)
         if r.succeeded:
             return parsed_version(r.output or r.error)
 
@@ -207,10 +211,10 @@ class ResolvedPackage:
 
         if self.given_package_spec == "uv":
             # `uv` is a special case, it's used for bootstrap and does not need a venv
-            self.entrypoints = ("uv", "uvx")
-            uv_version = CFG.uv_version(logger=self.logger)
+            uv_version = program_version(CFG.find_uv())
             if uv_version:
                 self._set_canonical(self.given_package_spec, uv_version)
+                self.entrypoints = ("uv", "uvx")
                 self.resolution_reason = "uv bootstrap"
                 return
 
@@ -391,8 +395,7 @@ class PackageSpec:
     @property
     def target_installation_folder(self):
         """Folder that will hold current installation of this package"""
-        # TODO: Turn all paths to Path objects
-        return runez.to_path(CFG.meta.full_path(self.resolved_info.venv_basename))
+        return CFG.meta / self.resolved_info.venv_basename
 
     @property
     def delivery_method(self):
@@ -426,15 +429,13 @@ class PackageSpec:
         if manifest and manifest.version:
             if manifest.entrypoints:
                 for name in manifest.entrypoints:
-                    exe_path = self.exe_path(name)
-                    if not runez.is_executable(exe_path):
+                    if not runez.is_executable(CFG.base / name):
                         return False
 
             # uv does not need a typical venv with bin/python
             exe_path = "uv" if self.canonical_name == "uv" else "python"
-            exe_path = runez.to_path(CFG.meta.full_path(manifest.venv_basename)) / f"bin/{exe_path}"
-            v = program_version(exe_path, dryrun=False, fatal=False, logger=False)
-            return v and v.is_valid
+            exe_path = CFG.meta / manifest.venv_basename / "bin" / exe_path
+            return bool(program_version(exe_path))
 
     def skip_reason(self) -> Optional[str]:
         """Reason for skipping installation, when applicable"""
@@ -449,7 +450,7 @@ class PackageSpec:
         if self.currently_installed_version:
             return True
 
-        target = self.exe_path(self.canonical_name)
+        target = CFG.base / self.canonical_name
         if not target or not os.path.exists(target):
             return True
 
@@ -463,9 +464,6 @@ class PackageSpec:
             if bstrap.PICKLEY in line:
                 return True  # Pickley wrapper
 
-    def exe_path(self, exe):
-        return CFG.base.full_path(exe)
-
     def delete_all_files(self):
         """Delete all files in DOT_META/ folder related to this package spec"""
         runez.delete(CFG.manifest_path(self.canonical_name), fatal=False)
@@ -474,7 +472,7 @@ class PackageSpec:
 
     def installed_sibling_folders(self):
         regex = re.compile(r"^(.+)-(\d+[.\d+]+)$")
-        for item in runez.ls_dir(CFG.meta.path):
+        for item in runez.ls_dir(CFG.meta):
             if item.is_dir():
                 m = regex.match(item.name)
                 if m and m.group(1) == self.canonical_name:
@@ -523,9 +521,10 @@ class PackageSpec:
 class PickleyConfig:
     """Pickley configuration"""
 
-    base: Optional["FolderBase"] = None  # Installation folder
-    meta: Optional["FolderBase"] = None  # DOT_META subfolder
-    cache: Optional["FolderBase"] = None  # DOT_META/.cache subfolder
+    base: Optional[Path] = None  # Installation folder
+    meta: Optional[Path] = None  # DOT_META subfolder
+    cache: Optional[Path] = None  # DOT_META/.cache subfolder
+    manifests: Optional[Path] = None
     cli_config: Optional[dict] = None  # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
     configs: List["RawConfig"]
     _pip_conf = runez.UNSET
@@ -549,6 +548,14 @@ class PickleyConfig:
 
     def __repr__(self):
         return "<not-configured>" if self.base is None else runez.short(self.base)
+
+    @staticmethod
+    def resolved_path(path, base=None) -> Path:
+        """
+        Temporary: to be cleaned up when runez returns `Path` throughout as well.
+        This function turns any string or path into a fully resolved (ie: `~` expanded) absolute path.
+        """
+        return runez.to_path(runez.resolved_path(path, base=base))
 
     @runez.cached_property
     def available_pythons(self):
@@ -581,28 +588,25 @@ class PickleyConfig:
 
     def find_uv(self):
         """Path to uv installation"""
-        return bstrap.find_uv(runez.to_path(self.base.path))
-
-    def uv_version(self, logger=None):
-        uv_path = self.find_uv()
-        if runez.is_executable(uv_path):
-            return program_version(uv_path, dryrun=False, fatal=False, logger=logger)
+        return bstrap.find_uv(runez.to_path(self.base))
 
     def set_base(self, base_path):
         """
-        Args:
-            base_path (str): Path to pickley base installation
+        Parameters
+        ----------
+        base_path : Path | str
+            Path to pickley base installation
         """
         self.configs = []
-        self.base = FolderBase("base", runez.resolved_path(base_path))
-        self.meta = FolderBase("meta", os.path.join(self.base.path, bstrap.DOT_META))
-        self.cache = FolderBase("cache", os.path.join(self.meta.path, ".cache"))
-        self.manifests = FolderBase("manifests", os.path.join(self.meta.path, ".manifest"))
+        self.base = self.resolved_path(base_path)
+        self.meta = self.base / bstrap.DOT_META
+        self.cache = self.meta / ".cache"
+        self.manifests = self.meta / ".manifest"
         if self.cli_config is not None:
             self.configs.append(RawConfig(self, "cli", self.cli_config))
 
         self._add_config_file(self.config_path)
-        self._add_config_file(self.meta.full_path("config.json"))
+        self._add_config_file(self.meta / "config.json")
         package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER") or bstrap.default_package_manager()
         defaults = {
             "delivery": "wrap",
@@ -627,7 +631,7 @@ class PickleyConfig:
         self.cli_config = runez.serialize.json_sanitized(cli_config)
 
     def _add_config_file(self, path, base=None):
-        path = runez.resolved_path(path, base=base)
+        path = CFG.resolved_path(path, base=base)
         if path and all(c.source != path for c in self.configs) and os.path.exists(path):
             values = runez.read_json(path, logger=LOG.warning)
             if values:
@@ -651,25 +655,27 @@ class PickleyConfig:
             for name in runez.flattened(names, split=" "):
                 self._expand_bundle(result, seen, name)
 
-    def symlinked_canonical(self, path) -> Optional[str]:
+    def symlinked_canonical(self, path: Path) -> Optional[str]:
         """Canonical name of pickley-installed package, if installed via symlink"""
         if path and self.meta and os.path.islink(path):
-            path = os.path.realpath(path)
-            if path.startswith(self.meta.path):
-                path = runez.to_path(path)
-                relative = path.relative_to(runez.to_path(self.meta.path))
+            path = path.resolve()
+            try:
+                relative = path.relative_to(self.meta)
                 pv = relative.parts[0]
                 return pv.rpartition("-")[0]
 
+            except ValueError:
+                return None
+
     def soft_lock_path(self, canonical_name):
         """str: Path to lock file used during installation for this package"""
-        return self.meta.full_path(f"{canonical_name}.lock")
+        return self.meta / f"{canonical_name}.lock"
 
     def manifest_path(self, canonical_name):
-        return self.manifests.full_path(f"{canonical_name}.manifest.json")
+        return self.manifests / f"{canonical_name}.manifest.json"
 
     def resolution_cache_path(self, filename):
-        return runez.to_path(self.cache.full_path(f"{filename}.resolved.json"))
+        return self.cache / f"{filename}.resolved.json"
 
     def package_specs(self, names=None, canonical_only=True, include_pickley=False):
         """
@@ -705,12 +711,12 @@ class PickleyConfig:
 
     def scan_installed(self):
         """Scan installed"""
-        for item in self.base.iterdir():
+        for item in runez.ls_dir(self.base):
             spec_name = self.symlinked_canonical(item) or self.wrapped_canonical_name(item)
             if spec_name:
                 yield spec_name
 
-        for item in self.manifests.iterdir():
+        for item in runez.ls_dir(self.manifests):
             if item.name.endswith(".manifest.json"):
                 spec_name = item.name[:-14]
                 if spec_name:
@@ -933,39 +939,6 @@ class TrackedSettings:
             "pinned_version": self.pinned_version,
             "python": self.python,
         }
-
-
-class FolderBase:
-    """
-    This class allows to more easily deal with folders
-    """
-
-    def __init__(self, name, path):
-        """
-        Args:
-            name (str): Internal name of this folder
-            path (str): Path to folder
-        """
-        self.name = name
-        self.path = path
-
-    def __repr__(self):
-        return self.path
-
-    def iterdir(self):
-        path = runez.to_path(self.path)
-        if path.is_dir():
-            yield from path.iterdir()
-
-    def full_path(self, *relative):
-        """
-        Args:
-            *relative: Relative path components
-
-        Returns:
-            (str): Full path based on `self.path`
-        """
-        return os.path.join(self.path, *relative)
 
 
 def _log_to_file(message, error=False):
