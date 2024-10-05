@@ -1,3 +1,4 @@
+import logging
 import os
 
 import pytest
@@ -12,6 +13,7 @@ cli.default_main = main
 PythonDepot.use_path = False
 bstrap.DEFAULT_BASE = ".local/bin"  # Make sure tests stay away from ~/.local/bin
 bstrap.PIP_CONFS = ()  # Don't read any pip.conf files in tests
+CFG.default_logging_level = logging.DEBUG
 assert logged  # Just making fixtures available, with no complaints about unused imports
 
 

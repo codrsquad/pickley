@@ -27,7 +27,7 @@ def test_base(cli, monkeypatch):
     assert "Would wrap pickley" in cli.logged
 
     monkeypatch.setenv("PICKLEY_ROOT", "temp-base")
-    with pytest.raises(SystemExit):  # Env var points to a non-existing folder
+    with pytest.raises(runez.system.AbortException):  # Env var points to a non-existing folder
         find_base()
 
     runez.ensure_folder("temp-base", logger=None)
@@ -287,7 +287,7 @@ def test_package_venv(cli):
     assert "pip install -r requirements.txt" in cli.logged
     assert "pip install runez" in cli.logged
     assert "pickley --version" in cli.logged
-    assert "Symlinked root/usr/local/bin/pickley -> /tmp/pickley/bin/pickley" in cli.logged
+    assert "Symlink /tmp/pickley/bin/pickley <- root/usr/local/bin/pickley" in cli.logged
     assert os.path.islink("root/usr/local/bin/pickley")
     rp = os.path.realpath("root/usr/local/bin/pickley")
     assert os.path.exists(rp)

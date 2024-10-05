@@ -1,6 +1,6 @@
 import runez
 
-from pickley import bstrap, CFG, despecced, PackageSpec, pypi_name_problem, specced
+from pickley import bstrap, CFG, PackageSpec
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -66,11 +66,6 @@ def test_bogus_config(temp_cfg):
     assert actual == expected
 
 
-def test_edge_cases():
-    assert "intentionally refuses" in pypi_name_problem("0-0")
-    assert pypi_name_problem("mgit") is None
-
-
 def test_good_config(cli):
     grab_sample("good-config")
 
@@ -98,15 +93,9 @@ def test_good_config(cli):
     assert str(mgit) == "mgit==1.0.0"
 
 
-def test_speccing():
-    assert specced("mgit", "1.0.0") == "mgit==1.0.0"
-    assert specced(" mgit ", " 1.0.0 ") == "mgit==1.0.0"
-    assert specced("mgit", None) == "mgit"
-    assert specced("mgit", "") == "mgit"
-    assert specced(" mgit ", " ") == "mgit"
-
-    assert despecced("mgit") == ("mgit", None)
-    assert despecced("mgit==1.0.0") == ("mgit", "1.0.0")
-    assert despecced(" mgit == 1.0.0 ") == ("mgit", "1.0.0")
-    assert despecced("mgit==") == ("mgit", None)
-    assert despecced(" mgit == ") == ("mgit", None)
+def test_despecced():
+    assert CFG.despecced("mgit") == ("mgit", None)
+    assert CFG.despecced("mgit==1.0.0") == ("mgit", "1.0.0")
+    assert CFG.despecced(" mgit == 1.0.0 ") == ("mgit", "1.0.0")
+    assert CFG.despecced("mgit==") == ("mgit", None)
+    assert CFG.despecced(" mgit == ") == ("mgit", None)

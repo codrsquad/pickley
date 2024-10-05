@@ -4,7 +4,7 @@ from typing import Optional, Sequence, TYPE_CHECKING
 
 import runez
 
-from pickley import abort, bstrap, CFG, PackageSpec, TrackedManifest
+from pickley import bstrap, CFG, PackageSpec, TrackedManifest
 
 if TYPE_CHECKING:
     from pickley.cli import Requirements
@@ -122,7 +122,7 @@ class PythonVenv:
         r = self.run_python("-mpip", *args, **kwargs)
         if r.failed:
             message = "\n".join(simplified_pip_error(r.error, r.output))
-            abort(message)
+            runez.abort(message)
 
         return r
 

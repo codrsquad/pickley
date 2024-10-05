@@ -3,7 +3,7 @@ from pathlib import Path
 
 import runez
 
-from pickley import abort, bstrap, CFG, PackageSpec, TrackedManifest
+from pickley import bstrap, CFG, PackageSpec, TrackedManifest
 
 LOG = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ class DeliveryMethod:
         if name == "symlink":
             return DeliveryMethodSymlink()
 
-        return abort(f"Unknown delivery method '{runez.red(name)}'")
+        return runez.abort(f"Unknown delivery method '{runez.red(name)}'")
 
     def install(self, pspec: PackageSpec) -> TrackedManifest:
         try:
@@ -87,9 +87,7 @@ class DeliveryMethod:
                     print(f"Would {self.short_name} {short_dest} -> {short_src}")
                     continue
 
-                if not src.exists():
-                    abort(f"Can't {self.short_name} {short_dest} -> {runez.red(short_src)}: source does not exist")
-
+                runez.abort_if(not src.exists(), f"Can't {self.short_name} {short_dest} -> {runez.red(short_src)}: source does not exist")
                 LOG.debug("%s %s -> %s", self.action, short_dest, short_src)
                 self._install(pspec, dest, src)
 
@@ -103,7 +101,7 @@ class DeliveryMethod:
             return manifest
 
         except Exception as e:
-            abort(f"Failed to {self.short_name} {pspec}: {runez.red(e)}")
+            runez.abort(f"Failed to {self.short_name} {pspec}: {runez.red(e)}")
 
     def _install(self, pspec, target: Path, source: Path):
         raise NotImplementedError(f"{self.__class__.__name__} is not implemented")

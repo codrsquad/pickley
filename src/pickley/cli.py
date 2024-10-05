@@ -14,20 +14,7 @@ import runez
 from runez.pyenv import PypiStd, Version
 from runez.render import PrettyTable
 
-from pickley import (
-    __version__,
-    abort,
-    bstrap,
-    CFG,
-    despecced,
-    inform,
-    PackageSpec,
-    parsed_version,
-    ResolvedPackage,
-    specced,
-    TrackedManifest,
-    TrackedSettings,
-)
+from pickley import __version__, bstrap, CFG, PackageSpec, parsed_version, Reporter, ResolvedPackage, TrackedManifest, TrackedSettings
 from pickley.package import VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -41,25 +28,15 @@ class Requirements(NamedTuple):
 
 def setup_audit_log():
     """Setup audit.log log file handler"""
-    if runez.DRYRUN:
-        if not runez.log.console_handler or runez.log.spec.console_level > logging.INFO:
-            runez.log.setup(console_level=logging.INFO)
-
-        return
-
-    if not runez.log.file_handler:
+    if not runez.DRYRUN and not runez.log.file_handler:
         if runez.color.is_coloring():
             runez.log.progress.start(message_color=runez.dim, spinner_color=runez.bold)
 
         log_path = CFG.meta / "audit.log"
-        runez.log.trace("Logging to %s", log_path)
         runez.ensure_folder(CFG.meta)
         runez.log.setup(
-            default_logger=LOG.debug,
-            file_format="%(asctime)s %(timezone)s [%(process)s] %(context)s%(levelname)s - %(message)s",
-            file_level=logging.DEBUG,
+            file_format="%(asctime)s %(timezone)s [%(process)s] %(levelname)s - %(message)s",
             file_location=str(log_path),
-            greetings=":: {argv}",
             rotate="size:500k",
             rotate_count=1,
         )
@@ -129,7 +106,7 @@ class SoftLock:
             else:
                 runez.log.trace(f"Acquired {runez.short(self.lock_path)}")
 
-            runez.write(self.lock_path, runez.joined(os.getpid(), runez.quoted(sys.argv[1:]), delimiter="\n"), logger=False)
+            runez.write(self.lock_path, runez.joined(os.getpid(), runez.quoted(sys.argv[1:]), delimiter="\n"), logger=None)
 
         return self
 
@@ -160,22 +137,22 @@ def perform_install(pspec, is_upgrade=False, quiet=False, verb=None):
         verb = "upgrade" if is_upgrade else "install"
 
     if pspec.resolved_info.problem:
-        abort(f"Can't {verb} {pspec}: {runez.red(pspec.resolved_info.problem)}")
+        runez.abort(f"Can't {verb} {pspec}: {runez.red(pspec.resolved_info.problem)}")
 
     with SoftLock(pspec.canonical_name):
         started = time.time()
         skip_reason = pspec.skip_reason()
         if skip_reason:
-            inform(f"Skipping installation of {pspec}: {runez.bold(skip_reason)}")
+            LOG.info("Skipping installation of %s: %s", pspec, runez.bold(skip_reason))
             return
 
         if is_upgrade and not pspec.currently_installed_version and not quiet:
-            abort(f"'{runez.red(pspec)}' is not installed")
+            runez.abort(f"'{runez.red(pspec)}' is not installed")
 
         if CFG.version_check_delay and pspec.is_up_to_date:
             if not quiet:
                 status = "up-to-date" if is_upgrade else "installed"
-                inform(f"{pspec.canonical_name} v{runez.bold(pspec.currently_installed_version)} is already {status}")
+                LOG.info("%s v%s is already %s", pspec.canonical_name, runez.bold(pspec.currently_installed_version), status)
 
             pspec.groom_installation()
             return
@@ -189,7 +166,7 @@ def perform_install(pspec, is_upgrade=False, quiet=False, verb=None):
             if runez.DRYRUN:
                 action = f"Would state: {action}"
 
-            inform(f"{action} {pspec.canonical_name} v{runez.bold(pspec.target_version)}{runez.dim(note)}")
+            LOG.info("%s %s v%s%s", action, pspec.canonical_name, runez.bold(pspec.target_version), runez.dim(note))
 
         pspec.groom_installation()
 
@@ -211,7 +188,7 @@ def find_base(path=None):
     base_path = CFG.resolved_path(os.environ.get("PICKLEY_ROOT"))
     if base_path:
         if not base_path.is_dir():
-            abort(f"PICKLEY_ROOT points to non-existing directory {runez.red(base_path)}")
+            runez.abort(f"PICKLEY_ROOT points to non-existing directory {runez.red(base_path)}")
 
         return base_path
 
@@ -248,31 +225,32 @@ def find_symbolic_invoker() -> str:
 def main(ctx, verbose, config, index, python, delivery, package_manager):
     """Install python CLIs that keeps themselves up-to-date"""
     runez.system.AbortException = SystemExit
-    level = logging.WARNING
-    if ctx.invoked_subcommand == "package":
-        # Default to using invoker for 'package' subcommand
-        level = logging.INFO
-        package_manager = package_manager or "pip"  # Default to pip for 'package' subcommand
-        python = python or find_symbolic_invoker()
-
     if verbose > 1:
         os.environ["TRACE_DEBUG"] = "1"
 
     runez.log.setup(
-        debug=verbose or os.environ.get("PICKLEY_TRACE"),
+        debug=verbose or os.environ.get("TRACE_DEBUG"),
         default_logger=LOG.debug,
         console_format="%(levelname)s %(message)s" if verbose else "%(message)s",
-        console_level=level,
         console_stream=sys.stderr,
+        file_level=logging.DEBUG,
+        level=CFG.default_logging_level or logging.INFO,
         locations=None,
         trace="TRACE_DEBUG+:: ",
     )
+    Reporter.capture_trace()
+    runez.log.trace(runez.log.spec.argv)
     bstrap.clean_env_vars()
     if runez.SYS_INFO.platform_id.is_macos and "ARCHFLAGS" not in os.environ and runez.SYS_INFO.platform_id.arch:
         # Ensure the proper platform is used on macos
         archflags = f"-arch {runez.SYS_INFO.platform_id.arch}"
         runez.log.trace(f"Setting ARCHFLAGS={archflags}")
         os.environ["ARCHFLAGS"] = archflags
+
+    if ctx.invoked_subcommand == "package":
+        # Default to using invoker for 'package' subcommand
+        package_manager = package_manager or "pip"  # Default to pip for 'package' subcommand
+        python = python or find_symbolic_invoker()
 
     CFG.set_cli(config, delivery, index, python, package_manager)
     if ctx.invoked_subcommand != "package":
@@ -370,7 +348,7 @@ def base(what):
         path = paths.get(what)
         if not path:
             options = [runez.green(s) for s in sorted(paths)]
-            abort(f"Unknown base folder reference '{runez.red(what)}', try one of: {', '.join(options)}")
+            runez.abort(f"Unknown base folder reference '{runez.red(what)}', try one of: {', '.join(options)}")
 
     print(path)
 
@@ -584,7 +562,7 @@ class RunSetup:
 
     @property
     def specced(self):
-        return specced(self.package, self.pinned)
+        return f"{self.package}=={self.pinned}" if self.pinned else self.package
 
     @classmethod
     def from_cli(cls, command):
@@ -593,8 +571,8 @@ class RunSetup:
             # Allows to support cases where command name is different from pypi package name, ex: awscli:aws
             package, _, command = command.rpartition(":")
 
-        package, pinned_package = despecced(package)
-        command, pinned_command = despecced(command)
+        package, pinned_package = CFG.despecced(package)
+        command, pinned_command = CFG.despecced(command)
         pinned = pinned_package or pinned_command
         rs = getattr(cls, "cmd_" + command.replace("-", "_"), None)
         if rs:
@@ -652,7 +630,7 @@ def upgrade(packages):
     """Upgrade an installed package"""
     packages = CFG.package_specs(packages)
     if not packages:
-        inform("No packages installed, nothing to upgrade")
+        LOG.info("No packages installed, nothing to upgrade")
         sys.exit(0)
 
     setup_audit_log()
@@ -665,31 +643,26 @@ def upgrade(packages):
 @click.argument("packages", nargs=-1, required=False)
 def uninstall(all, packages):
     """Uninstall packages"""
-    if packages and all:
-        abort("Either specify packages to uninstall, or --all (but not both)")
-
-    if not packages and not all:
-        abort("Specify packages to uninstall, or --all")
-
-    if packages and bstrap.PICKLEY in packages:
-        abort("Run 'uninstall --all' if you wish to uninstall pickley itself (and everything it installed)")
-
+    runez.abort_if(packages and all, "Either specify packages to uninstall, or --all (but not both)")
+    runez.abort_if(not packages and not all, "Specify packages to uninstall, or --all")
+    runez.abort_if(
+        packages and bstrap.PICKLEY in packages,
+        "Run 'uninstall --all' if you wish to uninstall pickley itself (and everything it installed)",
+    )
     setup_audit_log()
     for pspec in CFG.package_specs(packages):
-        if not pspec.currently_installed_version:
-            abort(f"{runez.bold(pspec.canonical_name)} was not installed with pickley")
-
+        runez.abort_if(not pspec.currently_installed_version, f"{runez.bold(pspec.canonical_name)} was not installed with pickley")
         for ep in pspec.manifest.entrypoints:
             runez.delete(CFG.base / ep)
 
         pspec.delete_all_files()
         action = "Would uninstall" if runez.DRYRUN else "Uninstalled"
-        inform(f"{action} {pspec}")
+        LOG.info("%s %s", action, pspec)
 
     if all:
         runez.delete(CFG.base / bstrap.PICKLEY)
         runez.delete(CFG.meta)
-        inform(f"pickley is now {runez.red('uninstalled')}")
+        LOG.info("pickley is now %s", runez.bold("uninstalled"))
 
 
 @main.command()
@@ -697,16 +670,12 @@ def uninstall(all, packages):
 @click.argument("programs", nargs=-1)
 def version_check(system, programs):
     """Check that programs are present with a minimum version"""
-    if not programs:
-        runez.abort("Specify at least one program to check")
-
+    runez.abort_if(not programs, "Specify at least one program to check")
     specs = []
     for program_spec in programs:
         program, _, min_version = program_spec.partition(":")
         min_version = Version(min_version)
-        if not program or not min_version.is_valid:
-            runez.abort(f"Invalid argument '{program_spec}', expecting format <program>:<version>")
-
+        runez.abort_if(not program or not min_version.is_valid, f"Invalid argument '{program_spec}', expecting format <program>:<version>")
         specs.append((program, min_version))
 
     overview = []
@@ -721,9 +690,10 @@ def version_check(system, programs):
         r = runez.run(full_path, "--version", logger=print if runez.DRYRUN else LOG.debug)
         if not runez.DRYRUN:
             version = parsed_version(r.output or r.error)
-            if not version or version < min_version:
-                runez.abort(f"{runez.short(full_path)} version too low: {version} (need {min_version}+)")
-
+            runez.abort_if(
+                not version or version < min_version,
+                f"{runez.short(full_path)} version too low: {version} (need {min_version}+)",
+            )
             overview.append(f"{program} {version}")
 
     if overview:
@@ -752,12 +722,10 @@ def package(base, dist, symlink, no_compile, sanity_check, project, requirement,
         finalizer.resolve()
         report = finalizer.finalize()
         if report:
-            inform("")
-            inform(report)
-            inform("")
+            print(f"\n{report}\n")
 
         elapsed = f"in {runez.represented_duration(time.time() - started)}"
-        inform(f"Packaged {runez.bold(runez.short(project))} successfully {runez.dim(elapsed)}")
+        LOG.info("Packaged %s successfully %s", runez.bold(runez.short(project)), runez.dim(elapsed))
 
 
 class PackageFinalizer:
@@ -806,19 +774,15 @@ class PackageFinalizer:
             if does_not_implement_cli_flag(r.output, r.error):
                 return f"does not respond to {sanity_check}"
 
-            abort(f"'{exe}' failed {sanity_check} sanity check: {r.full_output}")
+            runez.abort(f"'{exe}' failed {sanity_check} sanity check: {r.full_output}")
 
         return runez.first_line(r.output or r.error)
 
     def resolve(self):
-        if not self.folder.is_dir():
-            abort(f"Folder {runez.red(runez.short(self.folder))} does not exist")
-
+        runez.abort_if(not self.folder.is_dir(), f"Folder {runez.red(runez.short(self.folder))} does not exist")
         self.pspec = PackageSpec(str(self.folder))
-        if not self.pspec.canonical_name:
-            runez.abort(f"Could not determine package name: {self.pspec.resolved_info.problem}")
-
-        LOG.info("Using python: %s", self.pspec.settings.python)
+        runez.abort_if(not self.pspec.canonical_name, f"Could not determine package name: {self.pspec.resolved_info.problem}")
+        LOG.debug("Using python: %s", self.pspec.settings.python)
         if self.dist.startswith("root/"):
             # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues
             target = self.dist[4:]
@@ -869,20 +833,15 @@ def does_not_implement_cli_flag(*messages):
 class Symlinker:
     def __init__(self, spec):
         self.base, _, self.target = spec.partition(":")
-        if not self.base or not self.target:
-            abort(f"Invalid symlink specification '{spec}'")
-
+        runez.abort_if(not self.base or not self.target, f"Invalid symlink specification '{spec}'")
         self.target = CFG.resolved_path(self.target, base=CFG.base)
 
     def apply(self, exe: Path):
-        dest = self.target / exe.name
-        if exe.exists():
-            r = runez.symlink(exe, dest, must_exist=False)
-            if r > 0:
-                inform(f"Symlinked {runez.short(dest)} -> {runez.short(exe)}")
+        if not exe.exists():
+            LOG.info("'%s' does not exist, skipping symlink", exe)
+            return
 
-        else:
-            LOG.debug("'%s' does not exist, skipping symlink", exe)
+        runez.symlink(exe, self.target / exe.name)
 
 
 def delete_file(path):

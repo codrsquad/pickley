@@ -33,69 +33,41 @@ K_LEAVES = {
 PLATFORM = platform.system().lower()
 
 
-def abort(message: str):
-    """Show `message` on stderr as well as `audit.log` and exit with status 1."""
-    _log_to_file(message, error=True)
-    sys.exit(message)
+class Reporter:
+    """Allows to nicely capture logging from `bstrap` module (which is limited to std lib only otherwise)"""
+
+    _original_tracer = None  # Used to capture `runez.log.trace()` output and emit it to `audit.log`
+
+    @staticmethod
+    def abort(message):
+        runez.abort(message)
+
+    @staticmethod
+    def inform(message):
+        LOG.info(message)
+
+    @staticmethod
+    def trace(message):
+        runez.log.trace(message)
+
+    @staticmethod
+    def _captured_trace(message):
+        """Capture `runez.log.trace()` output and emit it to `audit.log`"""
+        Reporter._original_tracer(message)
+        if runez.log.file_handler is not None:
+            record = LOG.makeRecord(bstrap.PICKLEY, logging.DEBUG, "unknown file", 0, message, (), None)
+            runez.log.file_handler.emit(record)
+
+    @staticmethod
+    def capture_trace():
+        """Hijack calls to `runez.log.trace()`."""
+        tracer = runez.log.tracer
+        Reporter._original_tracer = tracer and tracer.trace
+        if tracer:
+            tracer.trace = Reporter._captured_trace
 
 
-def inform(message: str):
-    """Show `message` on stdout as well as `audit.log`."""
-    _log_to_file(message)
-    print(message)
-
-
-bstrap.abort = abort
-bstrap.inform = inform
-bstrap.trace = runez.log.trace
-
-
-def despecced(text):
-    """
-    Args:
-        text (str): Text of form <name>==<version>, or just <name>
-
-    Returns:
-        (str, str | None): Name and version
-    """
-    version = None
-    if text and "==" in text:
-        text = text.strip()
-        i = text.index("==")
-        version = text[i + 2 :].strip() or None
-        text = text[:i].strip()
-
-    return text, version
-
-
-def specced(name, version):
-    """
-    Args:
-        name (str): Pypi package name
-        version (str | None): Version
-
-    Returns:
-        (str): Specced name==version
-    """
-    name = name.strip()
-    if version and version.strip():
-        return f"{name}=={version.strip()}"
-
-    return name
-
-
-def pypi_name_problem(name):
-    if not PypiStd.is_acceptable(name):
-        note = None
-        problem = f"'{runez.red(name)}' is not a valid pypi package name"
-        if name and not name[0].isalpha():
-            note = "\npickley intentionally refuses to look at names that don't start with a letter"
-
-        if note:
-            note += "\nIf you think this name is legit, please submit an issue https://github.com/codrsquad/pickley/issues"
-            problem = runez.joined(problem, note, delimiter="\n")
-
-        return problem
+bstrap.Reporter = Reporter
 
 
 def _absolute_package_spec(given_package_spec: str):
@@ -216,7 +188,7 @@ class ResolvedPackage:
                 return
 
         pip_spec = self.given_package_spec
-        canonical_name, version = despecced(self.given_package_spec)
+        canonical_name, version = CFG.despecced(self.given_package_spec)
         if version:
             pip_spec = f"{canonical_name}=={version}"
             self.resolution_reason = "pinned"
@@ -258,20 +230,18 @@ class ResolvedPackage:
 
             location = None
             line = lines[0]
-            if "==" in line:
-                canonical_name, version = despecced(line)
+            canonical_name, version = CFG.despecced(line)
+            if version:
                 self.pip_spec = [f"{canonical_name}=={version}"]
                 if not self.resolution_reason:
                     self.resolution_reason = "package spec"
 
             else:
                 canonical_name = line.partition(" ")[0]
+                version, location = self._get_version_location(venv, canonical_name)
                 self.resolution_reason = "project reference"
 
             self.resolution_reason = f"{self.resolution_reason} resolved by {settings.package_manager}"
-            if not version:
-                version, location = self._get_version_location(venv, canonical_name)
-
             self._set_canonical(canonical_name, version)
             ep = self._get_entry_points(venv, canonical_name, version, location)
             self.entrypoints = sorted(n for n in ep if "_completer" not in n)
@@ -521,9 +491,11 @@ class PickleyConfig:
     base: Optional[Path] = None  # Installation folder
     meta: Optional[Path] = None  # DOT_META subfolder
     cache: Optional[Path] = None  # DOT_META/.cache subfolder
+    default_logging_level = logging.INFO
     manifests: Optional[Path] = None
     cli_config: Optional[dict] = None  # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
     configs: List["RawConfig"]
+    version_check_delay: int = DEFAULT_VERSION_CHECK_DELAY
     _pip_conf = runez.UNSET
     _pip_conf_index = runez.UNSET
 
@@ -541,7 +513,6 @@ class PickleyConfig:
         self.config_path = None
         self._pip_conf = runez.UNSET
         self._pip_conf_index = runez.UNSET
-        self.version_check_delay = DEFAULT_VERSION_CHECK_DELAY
 
     def __repr__(self):
         return "<not-configured>" if self.base is None else runez.short(self.base)
@@ -612,7 +583,7 @@ class PickleyConfig:
             "package_manager": package_manager,
         }
         self.configs.append(RawConfig(self, "defaults", defaults))
-        self.version_check_delay = self.get_value("version_check_delay", validator=runez.to_int)
+        self.version_check_delay = runez.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY)
 
     def set_cli(self, config_path, delivery, index, python, package_manager):
         """
@@ -805,6 +776,24 @@ class PickleyConfig:
 
         return "\n".join(result).strip()
 
+    @staticmethod
+    def despecced(text):
+        """
+        Args:
+            text (str): Text of form <name>==<version>, or just <name>
+
+        Returns:
+            (str, str | None): Name and version
+        """
+        version = None
+        if text and "==" in text:
+            text = text.strip()
+            i = text.index("==")
+            version = text[i + 2 :].strip() or None
+            text = text[:i].strip()
+
+        return text, version
+
 
 CFG = PickleyConfig()
 
@@ -823,15 +812,19 @@ class TrackedManifest:
 
     @classmethod
     def from_file(cls, path):
-        data = runez.read_json(path)
-        if data:
-            manifest = cls()
-            manifest.entrypoints = data.get("entrypoints")
-            manifest.install_info = TrackedInstallInfo.from_manifest_data(data)
-            manifest.settings = TrackedSettings.from_manifest_data(data)
-            manifest.venv_basename = data.get("venv_basename")
-            manifest.version = Version(data.get("version"))
-            return manifest
+        if path.exists():
+            data = runez.read_json(path, logger=None)
+            if data:
+                manifest = cls()
+                manifest.entrypoints = data.get("entrypoints")
+                manifest.install_info = TrackedInstallInfo.from_manifest_data(data)
+                manifest.settings = TrackedSettings.from_manifest_data(data)
+                manifest.venv_basename = data.get("venv_basename")
+                manifest.version = Version(data.get("version"))
+                runez.log.trace(f"Using manifest {runez.short(path)}, auto-upgrade spec: '{manifest.settings.auto_upgrade_spec}'")
+                return manifest
+
+        runez.log.trace(f"Manifest {runez.short(path)} is not present")
 
     def to_dict(self):
         return {
@@ -937,26 +930,6 @@ class TrackedSettings:
             "pinned_version": self.pinned_version,
             "python": self.python,
         }
-
-
-def _log_to_file(message, error=False):
-    if runez.log.file_handler is not None:
-        # Avoid to log twice to console
-        prev_level = None
-        c = runez.log.console_handler
-        if c is not None and c.level < logging.CRITICAL:
-            prev_level = c.level
-            c.level = logging.CRITICAL
-
-        message = runez.uncolored(message)
-        if error:
-            logging.error(message)
-
-        else:
-            logging.info(message)
-
-        if prev_level is not None:
-            c.level = prev_level
 
 
 class RawConfig:

@@ -157,8 +157,9 @@ def test_download_uv(temp_cfg, monkeypatch):
     assert bstrap.find_uv(temp_cfg.base) == temp_cfg.base / ".pk/.uv/bin/uv"
 
 
-def test_edge_cases(temp_cfg, logged):
+def test_edge_cases(temp_cfg, logged, monkeypatch):
     # For coverage
+    monkeypatch.setattr(bstrap, "Reporter", bstrap._Reporter)
     assert bstrap.which("python3")
     assert bstrap.run_program(sys.executable, "--version") == 0
     with pytest.raises(SystemExit) as exc:
