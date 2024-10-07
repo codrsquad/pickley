@@ -65,16 +65,6 @@ class DeliveryMethod:
     action = "Delivered"
     short_name = "deliver"
 
-    @classmethod
-    def delivery_method_by_name(cls, name) -> "DeliveryMethod":
-        if name == "wrap":
-            return DeliveryMethodWrap()
-
-        if name == "symlink":
-            return DeliveryMethodSymlink()
-
-        return runez.abort(f"Unknown delivery method '{runez.red(name)}'")
-
     def install(self, pspec: PackageSpec) -> TrackedManifest:
         try:
             prev_manifest = pspec.manifest

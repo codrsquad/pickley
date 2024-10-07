@@ -2,27 +2,29 @@ import sys
 
 import runez
 
-from pickley import __version__
-
 
 def test_describe(cli):
     runez.write(".pk/config.json", '{"bake_time": 300}', logger=None)
-    cli.run("-v describe mgit==1.3.0")
+    cli.run("-vv describe mgit==1.3.0")
     assert cli.succeeded
+    assert " -vv describe " in cli.logged
+    assert "pip show mgit" in cli.logged
     assert "mgit==1.3.0: mgit version " in cli.logged
     assert "Applying bake_time of 5 minutes" in cli.logged
 
     if sys.version_info[:2] >= (3, 10):
-        cli.run("describe", ".")
+        cli.run("describe .")
         assert cli.failed
         assert "problem: " in cli.logged
 
         cli.run("describe uv")
         assert cli.succeeded
+        assert "pip show" not in cli.logged
         assert "uv bootstrap" in cli.logged
 
-        cli.run("describe tox-uv")
+        cli.run("-v describe tox-uv")
         assert cli.succeeded
+        assert "pip show" in cli.logged
         assert "entry points: tox" in cli.logged
 
         cli.run("describe https://github.com/codrsquad/pickley.git")
@@ -38,8 +40,8 @@ def test_describe(cli):
 
     cli.run("describe", cli.project_folder)
     assert cli.succeeded
-    assert f"pickley version {__version__}" in cli.logged
-    assert "pickley dev mode" in cli.logged
+    assert ": pickley version " in cli.logged
+    assert "entry points: pickley\n" in cli.logged
 
     cli.run("describe six")
     assert cli.failed

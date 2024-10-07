@@ -202,16 +202,6 @@ class ResolvedPackage:
         self.pip_spec = [self.given_package_spec]
         self.problem = None
         self.resolution_reason = None
-        if settings.auto_upgrade_spec == runez.DEV.project_folder:
-            # Dev mode: install pickley from source in editable mode
-            self.canonical_name = bstrap.PICKLEY
-            self.entrypoints = (bstrap.PICKLEY,)
-            self.pip_spec = ["-e", runez.DEV.project_folder]
-            self.resolution_reason = "pickley dev mode"
-            self.venv_basename = f"{bstrap.PICKLEY}-dev"
-            self.version = Version(__version__)
-            return
-
         if self.given_package_spec == "uv":
             # `uv` is a special case, it's used for bootstrap and does not need a venv
             uv_version = program_version(CFG.find_uv())
@@ -227,20 +217,23 @@ class ResolvedPackage:
             pip_spec = f"{canonical_name}=={version}"
             self.resolution_reason = "pinned"
 
-        elif settings.pinned_version:
-            pip_spec = f"{canonical_name}=={settings.pinned_version}"
-            self.resolution_reason = "pinned by configuration"
+        elif canonical_name == self.given_package_spec:
+            version = CFG.get_value("version", package_name=canonical_name)
+            if version:
+                pip_spec = f"{canonical_name}=={version}"
+                self.resolution_reason = "pinned by configuration"
 
         with runez.TempFolder(dryrun=False):
             venv = PythonVenv(runez.to_path("tmp-venv"), package_manager=settings.package_manager, python_spec=settings.python)
             venv.groom_uv_venv = False
             venv.logger = self.logger
             venv.create_venv()
-            if settings.bake_time:
+            bake_time = runez.to_int(CFG.get_value("bake_time", package_name=canonical_name))
+            if bake_time:
                 # uv allows to exclude newer packages, but pip does not
                 # This can fail if project is new (bake time did not elapse yet since project release)
-                LOG.debug("Applying bake_time of %s", runez.represented_duration(settings.bake_time))
-                ago = time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(time.time() - settings.bake_time))
+                LOG.debug("Applying bake_time of %s", runez.represented_duration(bake_time))
+                ago = time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(time.time() - bake_time))
                 os.environ["UV_EXCLUDE_NEWER"] = ago
 
             r = venv.pip_install(pip_spec, no_deps=True, quiet=True, fatal=False)
@@ -275,12 +268,17 @@ class ResolvedPackage:
                 version, location = self._get_version_location(venv, canonical_name)
                 self.resolution_reason = "project reference"
 
-            self.resolution_reason = f"{self.resolution_reason} resolved by {settings.package_manager}"
+            self.resolution_reason = f"{self.resolution_reason} resolved by {venv.package_manager}"
             self._set_canonical(canonical_name, version)
             ep = self._get_entry_points(venv, canonical_name, version, location)
             self.entrypoints = sorted(n for n in ep if "_completer" not in n)
             if not self.entrypoints:
                 self.problem = runez.red("not a CLI")
+
+            if os.getenv("PICKLEY_DEV") == "1" and self.given_package_spec == runez.DEV.project_folder:
+                # Dev mode: install pickley from source in editable mode (typically in .venv/root/ development base)
+                self.pip_spec = ["-e", self.given_package_spec]
+                self.venv_basename = f"{bstrap.PICKLEY}-dev"
 
     def _get_entry_points(self, venv, canonical_name, version, location):
         # Use `uv pip show` to get location on disk and version of package
@@ -397,13 +395,6 @@ class PackageSpec:
     def target_installation_folder(self):
         """Folder that will hold current installation of this package"""
         return CFG.meta / self.resolved_info.venv_basename
-
-    @property
-    def delivery_method(self):
-        """Delivery method to use for this package"""
-        from pickley.delivery import DeliveryMethod
-
-        return DeliveryMethod.delivery_method_by_name(self.settings.delivery)
 
     @property
     def is_up_to_date(self) -> bool:
@@ -610,12 +601,10 @@ class PickleyConfig:
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta / "config.json")
-        package_manager = os.getenv("PICKLEY_PACKAGE_MANAGER") or bstrap.default_package_manager()
         defaults = {
             "delivery": "wrap",
             "install_timeout": 1800,
             "version_check_delay": DEFAULT_VERSION_CHECK_DELAY,
-            "package_manager": package_manager,
         }
         self.configs.append(RawConfig(self, "defaults", defaults))
         self.version_check_delay = runez.to_int(self.get_value("version_check_delay"), default=DEFAULT_VERSION_CHECK_DELAY)
@@ -918,10 +907,8 @@ class TrackedSettings:
     """
 
     auto_upgrade_spec: str = None  # Spec to use for `pickley auto-upgrade`
-    bake_time: Optional[int] = None  # The amount of time to ignore new releases
     delivery: str = None  # Delivery method name
     package_manager: str  # Desired package manager
-    pinned_version: Optional[str] = None  # Pinned version, if any
     python: Optional[str] = None  # Desired python
 
     def __repr__(self):
@@ -932,11 +919,9 @@ class TrackedSettings:
         settings = cls()
         canonical_name = PypiStd.std_package_name(auto_upgrade_spec)
         settings.auto_upgrade_spec = canonical_name or _absolute_package_spec(auto_upgrade_spec)
-        settings.bake_time = CFG.get_value("bake_time", package_name=canonical_name, validator=runez.to_int)
-        settings.delivery = CFG.get_value("delivery", package_name=canonical_name)
-        settings.package_manager = CFG.get_value("package_manager", package_name=canonical_name)
-        settings.pinned_version = CFG.get_value("version", package_name=canonical_name)
-        settings.python = CFG.get_value("python", package_name=canonical_name)
+        settings.delivery = CFG.cli_config.get("delivery")
+        settings.package_manager = CFG.cli_config.get("package_manager")
+        settings.python = CFG.cli_config.get("python")
         return settings
 
     @classmethod
@@ -949,20 +934,16 @@ class TrackedSettings:
         if data:
             settings = cls()
             settings.auto_upgrade_spec = data.get("auto_upgrade_spec")
-            settings.bake_time = data.get("bake_time")
             settings.delivery = data.get("delivery")
             settings.package_manager = data.get("package_manager")
-            settings.pinned_version = data.get("pinned_version")
             settings.python = data.get("python")
             return settings
 
     def to_dict(self):
         return {
             "auto_upgrade_spec": self.auto_upgrade_spec,
-            "bake_time": self.bake_time,
             "delivery": self.delivery,
             "package_manager": self.package_manager,
-            "pinned_version": self.pinned_version,
             "python": self.python,
         }
 

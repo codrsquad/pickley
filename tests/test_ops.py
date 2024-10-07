@@ -1,12 +1,11 @@
 import os
-import sys
 import time
 from pathlib import Path
 
 import pytest
 import runez
 
-from pickley import bstrap, CFG, PackageSpec, program_version
+from pickley import CFG, PackageSpec, program_version
 from pickley.cli import clean_compiled_artifacts, find_base, SoftLock, SoftLockException
 
 from .conftest import dot_meta
@@ -39,7 +38,8 @@ def test_base(cli, monkeypatch):
     assert find_base("foo/bar/baz") == CFG.resolved_path("foo/bar")
 
 
-def test_dev_mode(cli):
+def test_dev_mode(cli, monkeypatch):
+    monkeypatch.setenv("PICKLEY_DEV", "1")
     cli.run("-nv", "install", runez.DEV.project_folder)
     assert cli.succeeded
     assert "pip install -e " in cli.logged
@@ -58,7 +58,6 @@ def test_edge_cases(temp_cfg, logged):
     assert os.path.isdir("share")
 
 
-@pytest.mark.skipif(not bstrap.USE_UV, reason="to keep test case simple (uv only)")
 def test_facultative(cli):
     runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"), logger=None)
 
@@ -125,7 +124,6 @@ def test_facultative(cli):
     assert "skipped, not installed by pickley" in cli.logged
 
 
-@pytest.mark.skipif(not bstrap.USE_UV or sys.version_info[:2] < (3, 10), reason="to keep test case simple (uv only)")
 def test_install_pypi(cli):
     cli.run("check")
     assert cli.succeeded
@@ -236,7 +234,6 @@ def test_install_pypi(cli):
     assert "No packages installed" in cli.logged
 
 
-@pytest.mark.skipif(not bstrap.USE_UV, reason="to keep test case simple (uv only)")
 def test_invalid(cli):
     cli.run("--color install six")
     assert cli.failed

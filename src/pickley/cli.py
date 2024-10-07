@@ -233,10 +233,10 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
     runez.log.setup(
         debug=verbose or os.environ.get("TRACE_DEBUG"),
         default_logger=LOG.debug,
+        console_level=logging.INFO,
         console_format="%(message)s",
         console_stream=sys.stderr,
         file_level=logging.DEBUG,
-        level=logging.INFO,
         locations=None,
         trace="TRACE_DEBUG+:: ",
     )
@@ -254,7 +254,6 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
 
     if ctx.invoked_subcommand == "package":
         # Default to using invoker for 'package' subcommand
-        package_manager = package_manager or "pip"  # Default to pip for 'package' subcommand
         python = python or find_symbolic_invoker()
 
     CFG.set_cli(config, delivery, index, python, package_manager)
@@ -321,7 +320,7 @@ def base(what):
     if what == "bootstrap-own-wrapper":
         # Internal: called by bootstrap script
         pspec = PackageSpec(f"{bstrap.PICKLEY}=={__version__}")
-        delivery = pspec.delivery_method
+        delivery = VenvPackager.delivery_method_for(pspec)
         delivery.install(pspec)
 
         if bstrap.USE_UV:
@@ -330,7 +329,7 @@ def base(what):
             if runez.is_executable(tmp_uv / "bin/uv"):
                 # Use the .uv/bin/uv obtained during bootstrap
                 runez.move(tmp_uv, uv_spec.target_installation_folder, overwrite=True)
-                delivery = pspec.delivery_method
+                delivery = VenvPackager.delivery_method_for(pspec)
                 delivery.install(uv_spec)
 
             elif not uv_spec.is_healthily_installed:

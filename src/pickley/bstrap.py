@@ -408,7 +408,7 @@ def main(args=None):
         if v and len(v) < 16:  # If long output -> old pickley is busted (stacktrace)
             Reporter.inform(f"Replacing older {PICKLEY} v{v}")
 
-    package_manager = args.package_manager or os.getenv("PICKLEY_PACKAGE_MANAGER") or default_package_manager()
+    package_manager = args.package_manager or default_package_manager()
     pickley_venv = bstrap.pickley_base / DOT_META / f"{PICKLEY}-{pickley_version}"
     if package_manager == "pip":
         needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", pickley_venv, fatal=False)

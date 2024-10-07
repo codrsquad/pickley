@@ -36,7 +36,6 @@ cli:  # empty
 defaults:
   delivery: wrap
   install_timeout: 1800
-  package_manager: {package_manager}
   version_check_delay: 300
 """
 
@@ -61,7 +60,6 @@ def test_bogus_config(temp_cfg):
     expected = SAMPLE_CONFIG.strip().format(
         base=runez.short(CFG.base),
         meta=runez.short(CFG.meta),
-        package_manager=bstrap.default_package_manager(),
     )
     assert actual == expected
 

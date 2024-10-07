@@ -5,6 +5,7 @@ from typing import Optional, Sequence, TYPE_CHECKING
 import runez
 
 from pickley import bstrap, CFG, PackageSpec, TrackedManifest
+from pickley.delivery import DeliveryMethod, DeliveryMethodSymlink, DeliveryMethodWrap
 
 if TYPE_CHECKING:
     from pickley.cli import Requirements
@@ -121,22 +122,26 @@ class PythonVenv:
         kwargs.setdefault("fatal", False)
         r = self.run_python("-mpip", *args, **kwargs)
         if r.failed:
-            message = "\n".join(simplified_pip_error(r.error, r.output))
-            runez.abort(message)
+            ignored = ("You are using pip", "You should consider upgrading", "Ignored the following yanked")
+            r.error = runez.joined(line for line in r.error.splitlines() if not any(x in line for x in ignored))
+            r.output = runez.joined(line for line in r.output.splitlines() if not any(x in line for x in ignored))
 
         return r
 
 
-def simplified_pip_error(error, output):
-    lines = error or output or "pip failed without output"
-    lines = lines.splitlines()
-    for line in lines:
-        if line and "You are using pip" not in line and "You should consider upgrading" not in line:
-            yield line
-
-
 class VenvPackager:
     """Install in a virtualenv"""
+
+    @staticmethod
+    def delivery_method_for(pspec: PackageSpec) -> DeliveryMethod:
+        delivery = pspec.settings.delivery or CFG.get_value("delivery", package_name=pspec.canonical_name)
+        if delivery == "wrap":
+            return DeliveryMethodWrap()
+
+        if delivery == "symlink":
+            return DeliveryMethodSymlink()
+
+        return runez.abort(f"Unknown delivery method '{runez.red(delivery)}'")
 
     @staticmethod
     def install(pspec: PackageSpec) -> TrackedManifest:
@@ -151,7 +156,7 @@ class VenvPackager:
         TrackedManifest
             Installed package manifest
         """
-        delivery = pspec.delivery_method
+        delivery = VenvPackager.delivery_method_for(pspec)
         package_manager = pspec.settings.package_manager
         python_spec = pspec.settings.python
         venv = PythonVenv(pspec.target_installation_folder, package_manager=package_manager, python_spec=python_spec)
