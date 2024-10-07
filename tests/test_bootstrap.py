@@ -23,8 +23,8 @@ def mocked_expanduser(path):
 
 
 def test_bootstrap(cli, monkeypatch):
-    # Ensure changes to DEBUG/DRYRUN globals are restored by monkeypatch
-    monkeypatch.setattr(bstrap, "DEBUG", False)
+    # Ensure changes to VERBOSITY/DRYRUN globals are restored by monkeypatch
+    monkeypatch.setattr(bstrap, "VERBOSITY", 0)
     monkeypatch.setattr(bstrap, "DRYRUN", False)
 
     cli.run("-n base bootstrap-own-wrapper")
@@ -226,10 +226,10 @@ def test_pip_conf(temp_cfg, logged):
     assert bstrap.globally_configured_pypi_mirror([]) == (bstrap.DEFAULT_MIRROR, None)
 
     # Verify that we try reading all stated pip.conf files in order, and user the value from the first valid one
-    runez.write("a", "ouch, this is not a valid config file", logger=False)  # Invalid file
-    runez.write("b", "[global]\nindex-url = /", logger=False)  # Valid, but mirror not actually configured
-    runez.write("c", "[global]\nindex-url = https://example.com/simple//", logger=False)
-    runez.write("d", "[global]\nindex-url = https://example.com/pypi2", logger=False)  # Not needed, previous one wins
+    runez.write("a", "ouch, this is not a valid config file", logger=None)  # Invalid file
+    runez.write("b", "[global]\nindex-url = /", logger=None)  # Valid, but mirror not actually configured
+    runez.write("c", "[global]\nindex-url = https://example.com/simple//", logger=None)
+    runez.write("d", "[global]\nindex-url = https://example.com/pypi2", logger=None)  # Not needed, previous one wins
     assert bstrap.globally_configured_pypi_mirror(["no-such-file.conf", "a", "b", "c", "d"]) == ("https://example.com/simple", Path("c"))
 
     # Keep chatter to a minimum

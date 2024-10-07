@@ -116,7 +116,7 @@ class DeliveryMethodSymlink(DeliveryMethod):
     short_name = "symlink"
 
     def _install(self, pspec, target: Path, source: Path):
-        runez.symlink(source, target, overwrite=True)
+        runez.symlink(source, target, overwrite=True, logger=None)
 
 
 class DeliveryMethodWrap(DeliveryMethod):
@@ -141,6 +141,6 @@ class DeliveryMethodWrap(DeliveryMethod):
             pickley=runez.quoted(pickley, adapter=None),
             source=runez.quoted(str(source), adapter=None),
         )
-        runez.delete(target, logger=False)
-        runez.write(target, contents, logger=False)
-        runez.make_executable(target, logger=False)
+        runez.delete(target, logger=None)
+        runez.write(target, contents, logger=None)
+        runez.make_executable(target, logger=None)

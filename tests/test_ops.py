@@ -78,7 +78,7 @@ def test_facultative(cli):
     assert cli.succeeded
     assert "is already installed" in cli.logged
 
-    cli.run("uninstall virtualenv")
+    cli.run("-v uninstall virtualenv")
     assert cli.succeeded
     assert "Deleted .pk/.manifest/virtualenv.manifest.json" in cli.logged
     assert "Uninstalled virtualenv" in cli.logged
@@ -229,7 +229,6 @@ def test_install_pypi(cli):
     cli.run("uninstall --all")
     assert cli.succeeded
     assert "Uninstalled mgit" in cli.logged
-    assert "Deleted .pk" in cli.logged
     assert "pickley is now uninstalled" in cli.logged
 
     cli.run("list")
@@ -280,12 +279,10 @@ def test_package_venv(cli):
     # TODO: retire the `package` command, not worth the effort to support it
     # Verify that "debian mode" works as expected, with -droot/tmp <-> /tmp
     runez.delete("/tmp/pickley", logger=None)
-    cli.run(
-        "-v", "package", cli.project_folder, "-droot/tmp", "--no-compile", "--sanity-check=--version", "-sroot:root/usr/local/bin", "runez"
-    )
+    cli.run("package", cli.project_folder, "-droot/tmp", "--sanity-check=--version", "-sroot:root/usr/local/bin", "runez")
     assert cli.succeeded
-    assert "pip install -r requirements.txt" in cli.logged
-    assert "pip install runez" in cli.logged
+    assert " install -r requirements.txt" in cli.logged
+    assert " install runez" in cli.logged
     assert "pickley --version" in cli.logged
     assert "Symlink /tmp/pickley/bin/pickley <- root/usr/local/bin/pickley" in cli.logged
     assert os.path.islink("root/usr/local/bin/pickley")
@@ -307,14 +304,14 @@ def test_version_check(cli):
     assert cli.failed
     assert "Invalid argument" in cli.logged
 
-    cli.run("--dryrun", "version-check", "python:1.0")
+    cli.run("-n version-check python:1.0")
     assert cli.succeeded
     assert cli.match("Would run: python --version")
 
-    cli.run("version-check", "--system", "python:1.0")
+    cli.run("-v version-check --system python:1.0")
     assert cli.succeeded
     assert "python --version" in cli.logged
 
-    cli.run("version-check", "--system", "python:100.0")
+    cli.run("version-check --system python:100.0")
     assert cli.failed
     assert "python version too low" in cli.logged

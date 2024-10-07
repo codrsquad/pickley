@@ -66,7 +66,7 @@ class PythonVenv:
         return r
 
     def create_venv_with_pip(self):
-        runez.ensure_folder(self.folder, clean=True, logger=False)
+        runez.ensure_folder(self.folder, clean=True, logger=self.logger)
         runez.run(self.python.executable, "-mvenv", self.folder, logger=self.logger)
         self._run_pip("install", "-U", *bstrap.pip_auto_upgrade())
 
@@ -186,7 +186,7 @@ class VenvPackager:
         Optional[Sequence[Path]]
             List of packaged executables
         """
-        runez.ensure_folder(dist_folder, clean=True, logger=False)
+        runez.ensure_folder(dist_folder, clean=True)
         venv = PythonVenv(dist_folder, package_manager="pip", python_spec=pspec.settings.python)
         venv.create_venv()
         for requirement_file in requirements.requirement_files:

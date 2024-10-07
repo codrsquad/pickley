@@ -36,35 +36,69 @@ PLATFORM = platform.system().lower()
 class Reporter:
     """Allows to nicely capture logging from `bstrap` module (which is limited to std lib only otherwise)"""
 
-    _original_tracer = None  # Used to capture `runez.log.trace()` output and emit it to `audit.log`
+    _original_tracer = None  # `runez.log.trace()` original tracer function
+    _pending_records = None  # Holds records to be emitted to `audit.log` later (when applicable)
 
     @staticmethod
     def abort(message):
+        """Allows to reuse `runez.abort()` from `bstrap` module (when not running in boostrap mode)"""
         runez.abort(message)
 
     @staticmethod
+    def trace(message):
+        """Allows `bstrap` module to use tracing"""
+        Reporter._captured_trace(message)
+
+    @staticmethod
+    def debug(message):
+        """Allows `bstrap` module to use LOG.debug()"""
+        LOG.debug(message)
+
+    @staticmethod
     def inform(message):
+        """Allows `bstrap` module to use LOG.info()"""
         LOG.info(message)
 
     @staticmethod
-    def trace(message):
-        runez.log.trace(message)
+    def capture_trace():
+        """Set up tracing."""
+        tracer = runez.log.tracer
+        if tracer:
+            # Tracing is already active (for commands `install`, `upgrade`, etc.), let's capture it.
+            Reporter._original_tracer = tracer.trace
+            tracer.trace = Reporter._captured_trace
+
+        elif CFG.use_audit_log:
+            # Tracing is not active because user did not use `-vv`, we still want to capture all trace messages in 'audit.log'
+            runez.log.tracer = Reporter
+            if not runez.log.file_handler:
+                # 'audit.log' is not active yet, but can potentially be activated later (commands `auto-upgrade`, etc.)
+                Reporter._pending_records = []
+
+    @staticmethod
+    def flush_pending_records():
+        """'audit.log' was just activated, emit all pending records to it."""
+        if Reporter._pending_records:
+            for pending in Reporter._pending_records:
+                runez.log.file_handler.emit(pending)
+
+            Reporter._pending_records = None
 
     @staticmethod
     def _captured_trace(message):
-        """Capture `runez.log.trace()` output and emit it to `audit.log`"""
-        Reporter._original_tracer(message)
-        if runez.log.file_handler is not None:
-            record = LOG.makeRecord(bstrap.PICKLEY, logging.DEBUG, "unknown file", 0, message, (), None)
-            runez.log.file_handler.emit(record)
+        if Reporter._original_tracer:
+            # Pass through to original tracer (which will show trace messages on stderr)
+            Reporter._original_tracer(message)
 
-    @staticmethod
-    def capture_trace():
-        """Hijack calls to `runez.log.trace()`."""
-        tracer = runez.log.tracer
-        Reporter._original_tracer = tracer and tracer.trace
-        if tracer:
-            tracer.trace = Reporter._captured_trace
+        if CFG.use_audit_log:
+            record = LOG.makeRecord(bstrap.PICKLEY, logging.DEBUG, "unknown file", 0, message, (), None)
+            if runez.log.file_handler is not None:
+                # 'audit.log' is active, emit trace message to it
+                runez.log.file_handler.emit(record)
+
+            elif Reporter._pending_records is not None:
+                # 'audit.log' is not active yet, let's capture all trace messages in memory for now
+                Reporter._pending_records.append(record)
 
 
 bstrap.Reporter = Reporter
@@ -491,11 +525,12 @@ class PickleyConfig:
     base: Optional[Path] = None  # Installation folder
     meta: Optional[Path] = None  # DOT_META subfolder
     cache: Optional[Path] = None  # DOT_META/.cache subfolder
-    default_logging_level = logging.INFO
     manifests: Optional[Path] = None
     cli_config: Optional[dict] = None  # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
     configs: List["RawConfig"]
     version_check_delay: int = DEFAULT_VERSION_CHECK_DELAY
+
+    use_audit_log = False  # If True, capture log in .pk/audit.log
     _pip_conf = runez.UNSET
     _pip_conf_index = runez.UNSET
 

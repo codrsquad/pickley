@@ -16,8 +16,8 @@ from urllib.request import Request, urlopen
 
 DEFAULT_BASE = "~/.local/bin"
 DOT_META = ".pk"
-DEBUG = False
 DRYRUN = False
+VERBOSITY = 0
 HOME = os.path.expanduser("~")
 PICKLEY = "pickley"
 PIP_CONFS = ("~/.config/pip/pip.conf", "/etc/pip.conf")
@@ -34,13 +34,18 @@ class _Reporter:
         sys.exit(f"--------\n\n{message}\n\n--------")
 
     @staticmethod
-    def inform(message):
-        print(message)
+    def trace(message):
+        if VERBOSITY > 1:
+            print(message)
 
     @staticmethod
-    def trace(message):
-        if DEBUG:
+    def debug(message):
+        if VERBOSITY > 0:
             print(message)
+
+    @staticmethod
+    def inform(message):
+        print(message)
 
 
 Reporter = _Reporter
@@ -87,7 +92,7 @@ class Bootstrap:
         if data:
             data = json.loads(data)
             version = data["info"]["version"]
-            Reporter.trace(f"Latest {PICKLEY} version: {version}")
+            Reporter.debug(f"Latest {PICKLEY} version: {version}")
             return version
 
 
@@ -352,11 +357,11 @@ def pip_auto_upgrade():
 
 def main(args=None):
     """Bootstrap pickley"""
-    global DEBUG
+    global VERBOSITY
     global DRYRUN
 
     parser = argparse.ArgumentParser(description=main.__doc__)
-    parser.add_argument("--debug", "-v", action="store_true", help="Show debug output")
+    parser.add_argument("--verbose", "-v", action="count", default=0, help="Use verbose output")
     parser.add_argument("--dryrun", "-n", action="store_true", help="Perform a dryrun")
     parser.add_argument("--base", "-b", default=DEFAULT_BASE, help="Base folder to use (default: ~/.local/bin)")
     parser.add_argument("--check-path", action="store_true", help="Verify that stated --base is on PATH env var")
@@ -367,7 +372,7 @@ def main(args=None):
     parser.add_argument("version", nargs="?", help="Version to bootstrap (default: latest)")
     args = parser.parse_args(args=args)
 
-    DEBUG = args.debug
+    VERBOSITY = args.verbose
     DRYRUN = args.dryrun
     clean_env_vars()
     bstrap = Bootstrap(find_base(args.base), _groomed_mirror_url(args.mirror))

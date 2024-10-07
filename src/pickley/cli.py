@@ -28,18 +28,20 @@ class Requirements(NamedTuple):
 
 def setup_audit_log():
     """Setup audit.log log file handler"""
-    if not runez.DRYRUN and not runez.log.file_handler:
+    if CFG.use_audit_log and not runez.log.file_handler:
         if runez.color.is_coloring():
             runez.log.progress.start(message_color=runez.dim, spinner_color=runez.bold)
 
         log_path = CFG.meta / "audit.log"
         runez.ensure_folder(CFG.meta)
         runez.log.setup(
-            file_format="%(asctime)s %(timezone)s [%(process)s] %(levelname)s - %(message)s",
+            # PID number to distinguish parallel runs, inlined because some trace records are emitted in a custom way
+            file_format=f"%(asctime)s %(timezone)s [{os.getpid()}] %(levelname)s - %(message)s",
             file_location=str(log_path),
             rotate="size:500k",
-            rotate_count=1,
+            rotate_count=4,
         )
+        Reporter.flush_pending_records()
 
 
 class SoftLockException(Exception):
@@ -119,7 +121,7 @@ class SoftLock:
             else:
                 runez.log.trace(f"Released {runez.short(self.lock_path)}")
 
-            runez.delete(self.lock_path, logger=False)
+            runez.delete(self.lock_path, logger=None)
 
 
 def perform_install(pspec, is_upgrade=False, quiet=False, verb=None):
@@ -231,13 +233,16 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
     runez.log.setup(
         debug=verbose or os.environ.get("TRACE_DEBUG"),
         default_logger=LOG.debug,
-        console_format="%(levelname)s %(message)s" if verbose else "%(message)s",
+        console_format="%(message)s",
         console_stream=sys.stderr,
         file_level=logging.DEBUG,
-        level=CFG.default_logging_level or logging.INFO,
+        level=logging.INFO,
         locations=None,
         trace="TRACE_DEBUG+:: ",
     )
+    # Don't pollute audit.log with dryrun or non-essential commands
+    non_essential = ("check", "config", "describe", "diagnostics", "list", "package", "version_check")
+    CFG.use_audit_log = not runez.DRYRUN and ctx.invoked_subcommand not in non_essential
     Reporter.capture_trace()
     runez.log.trace(runez.log.spec.argv)
     bstrap.clean_env_vars()
@@ -666,7 +671,7 @@ def uninstall(all, packages):
 
 
 @main.command()
-@click.option("--system", is_flag=True, help="Look at system PATH (not just pickley installs)")
+@click.option("--system", "-s", is_flag=True, help="Look at system PATH (not just pickley installs)")
 @click.argument("programs", nargs=-1)
 def version_check(system, programs):
     """Check that programs are present with a minimum version"""
@@ -800,7 +805,7 @@ class PackageFinalizer:
     def finalize(self):
         """Run sanity check and/or symlinks, and return a report"""
         with runez.Anchored(self.folder):
-            runez.ensure_folder(CFG.base, clean=True, logger=False)
+            runez.ensure_folder(CFG.base, clean=True)
             dist_folder = CFG.resolved_path(self.dist)
             exes = VenvPackager.package(self.pspec, dist_folder, self.requirements, self.compile)
             if exes:
@@ -844,13 +849,6 @@ class Symlinker:
         runez.symlink(exe, self.target / exe.name)
 
 
-def delete_file(path):
-    if runez.delete(path, fatal=False, logger=False) > 0:
-        return 1
-
-    return 0
-
-
 def should_clean(basename):
     return basename == "__pycache__" or basename.endswith((".pyc", ".pyo"))
 
@@ -858,7 +856,7 @@ def should_clean(basename):
 def clean_compiled_artifacts(folder):
     """Remove usual byte-code compiled artifacts from `folder`"""
     # See https://www.debian.org/doc/packaging-manuals/python-policy/ch-module_packages.html
-    deleted = delete_file(folder / "share" / "python-wheels")
+    deleted = runez.delete(folder / "share" / "python-wheels", fatal=False)
     dirs_to_be_deleted = []
     for root, dirs, files in os.walk(folder):
         for basename in dirs[:]:
@@ -868,10 +866,10 @@ def clean_compiled_artifacts(folder):
 
         for basename in files:
             if should_clean(basename.lower()):
-                deleted += delete_file(os.path.join(root, basename))
+                deleted += runez.delete(os.path.join(root, basename), fatal=False)
 
     for path in dirs_to_be_deleted:
-        deleted += delete_file(path)
+        deleted += runez.delete(path, fatal=False)
 
     if deleted:
         LOG.info("Deleted %s compiled artifacts", deleted)

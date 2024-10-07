@@ -7,7 +7,7 @@ from pickley import __version__
 
 def test_describe(cli):
     runez.write(".pk/config.json", '{"bake_time": 300}', logger=None)
-    cli.run("describe mgit==1.3.0")
+    cli.run("-v describe mgit==1.3.0")
     assert cli.succeeded
     assert "mgit==1.3.0: mgit version " in cli.logged
     assert "Applying bake_time of 5 minutes" in cli.logged
