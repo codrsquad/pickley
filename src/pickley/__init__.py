@@ -121,9 +121,9 @@ def parsed_version(text):
                 return version
 
 
-def program_version(path):
+def program_version(path, logger=None):
     if runez.is_executable(path):
-        r = runez.run(path, "--version", dryrun=False, fatal=False, logger=None)
+        r = runez.run(path, "--version", dryrun=False, fatal=False, logger=logger)
         if r.succeeded:
             return parsed_version(r.output or r.error)
 
@@ -179,6 +179,7 @@ class ResolvedPackage:
         if CFG.version_check_delay and runez.file.is_younger(cache_path, CFG.version_check_delay):
             data = runez.read_json(cache_path)
             if isinstance(data, dict) and "given_package_spec" in data:
+                runez.log.trace(f"Using cached resolved info from {runez.short(cache_path)}")
                 info = cls()
                 info.given_package_spec = data.get("given_package_spec")
                 info.canonical_name = data.get("canonical_name")
@@ -347,16 +348,24 @@ class PackageSpec:
     This class represents a package spec, and provides access to its resolved info and current installation state.
     """
 
+    _auto_upgrade_spec: str = None
     _manifest: "TrackedManifest" = runez.UNSET
 
-    def __init__(self, given_package_spec: str):
+    def __init__(self, given_package_spec: str, authoritative=False):
         """
         Parameters
         ----------
         given_package_spec : str
             Provided package reference (either name, folder or git url)
+        authoritative : bool
+            If True, the `given_package_spec` will be used as package spec when upgrading (otherwise we use the one recorded in manifest)
         """
-        self.settings = TrackedSettings.from_config(given_package_spec)
+        self._canonical_name = PypiStd.std_package_name(given_package_spec)
+        if authoritative or self._canonical_name is None:
+            self._auto_upgrade_spec = given_package_spec
+            runez.log.trace(f"Authoritative auto-upgrade spec '{self._auto_upgrade_spec}'")
+
+        self.settings = TrackedSettings.from_cli(given_package_spec)
 
     def __repr__(self):
         return repr(self.settings)
@@ -364,23 +373,52 @@ class PackageSpec:
     def __lt__(self, other):
         return str(self) < str(other)
 
+    @property
+    def auto_upgrade_spec(self) -> str:
+        """Package spec to use for auto-upgrade"""
+        if self._auto_upgrade_spec is None:
+            manifest = self.manifest
+            if manifest and manifest.settings and manifest.settings.auto_upgrade_spec:
+                # Use previously saved authoritative auto-upgrade spec
+                self._auto_upgrade_spec = manifest.settings.auto_upgrade_spec
+                runez.log.trace(f"Using previous authoritative auto-upgrade spec '{self._auto_upgrade_spec}'")
+
+            else:
+                # Fallback for installations prior to pickley v4.4
+                self._auto_upgrade_spec = self.settings.auto_upgrade_spec
+                runez.log.trace(f"Assuming auto-upgrade spec '{self._auto_upgrade_spec}'")
+
+        return self._auto_upgrade_spec
+
+    @property
+    def canonical_name(self) -> str:
+        if self._canonical_name:
+            # This allows to avoid a full resolution for commands such as 'list'
+            return self._canonical_name
+
+        # Full resolution is needed (example `git+https://...`)
+        return self.resolved_info.canonical_name
+
+    @runez.cached_property
+    def resolution_cache_path(self):
+        filename = self.auto_upgrade_spec
+        if PypiStd.std_package_name(filename) != filename:
+            # If package spec is not a canonical name, use md5 hash of it as filename
+            filename = hashlib.md5(filename.encode()).hexdigest()
+
+        return CFG.cache / f"{filename}.resolved.json"
+
     @runez.cached_property
     def resolved_info(self):
-        canonical_name = PypiStd.std_package_name(self.settings.auto_upgrade_spec)
-        cache_path = CFG.resolution_cache_path(canonical_name or hashlib.md5(self.settings.auto_upgrade_spec.encode()).hexdigest())
-        info = ResolvedPackage.from_cache(cache_path)
+        info = ResolvedPackage.from_cache(self.resolution_cache_path)
         if info is None:
             info = ResolvedPackage()
             info.resolve(self.settings)
             if not info.problem:
                 payload = info.to_dict()
-                runez.save_json(payload, cache_path, fatal=None)
+                runez.save_json(payload, self.resolution_cache_path, fatal=None)
 
         return info
-
-    @property
-    def canonical_name(self) -> str:
-        return self.resolved_info.canonical_name
 
     @property
     def delivery_method_name(self) -> str:
@@ -424,10 +462,13 @@ class PackageSpec:
                     if not runez.is_executable(CFG.base / name):
                         return False
 
-            # uv does not need a typical venv with bin/python
-            exe_path = "uv" if self.canonical_name == "uv" else "python"
-            exe_path = CFG.meta / manifest.venv_basename / "bin" / exe_path
-            return bool(program_version(exe_path))
+            if manifest.venv_basename:
+                # Older pickley versions manifests do not have `venv_basename`
+                # Older pickley versions manifests do not have `venv_basename`
+                # uv does not need a typical venv with bin/python
+                exe_path = "uv" if self.canonical_name == "uv" else "python"
+                exe_path = CFG.meta / manifest.venv_basename / "bin" / exe_path
+                return bool(program_version(exe_path))
 
     def skip_reason(self) -> Optional[str]:
         """Reason for skipping installation, when applicable"""
@@ -687,9 +728,6 @@ class PickleyConfig:
     def manifest_path(self, canonical_name):
         return self.manifests / f"{canonical_name}.manifest.json"
 
-    def resolution_cache_path(self, filename):
-        return self.cache / f"{filename}.resolved.json"
-
     def package_specs(self, names: Sequence[str], canonical_only=True):
         """
         Parameters
@@ -710,9 +748,10 @@ class PickleyConfig:
 
         result = [self.resolved_bundle(name) for name in names]
         result = runez.flattened(result, unique=True)
-        return [PackageSpec(name) for name in result]
+        return [PackageSpec(name, authoritative=not canonical_only) for name in result]
 
-    def wrapped_canonical_name(self, path):
+    @staticmethod
+    def wrapped_canonical_name(path):
         """(str | None): Canonical name of installed python package, if installed via pickley wrapper"""
         if runez.is_executable(path):
             for line in runez.readlines(path, first=12):
@@ -962,7 +1001,7 @@ class TrackedSettings:
         return VenvSettings(canonical_name, self.python, self.package_manager)
 
     @classmethod
-    def from_config(cls, auto_upgrade_spec: str):
+    def from_cli(cls, auto_upgrade_spec: str):
         settings = cls()
         canonical_name = PypiStd.std_package_name(auto_upgrade_spec)
         settings.auto_upgrade_spec = canonical_name or _absolute_package_spec(auto_upgrade_spec)

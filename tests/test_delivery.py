@@ -1,4 +1,4 @@
-from pickley import CFG, program_version
+from pickley import CFG, LOG, program_version
 
 
 def test_alternate_wrapper(cli):
@@ -11,34 +11,34 @@ def test_alternate_wrapper(cli):
     cli.run("-v install mgit")
     assert cli.succeeded
     assert "Wrapped mgit -> .pk/mgit-" in cli.logged
-    assert program_version("./mgit")
+    assert program_version("./mgit", logger=LOG.info)
     assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
     assert CFG.symlinked_canonical(mgit_path) is None
 
     cli.run("install mgit")
     assert cli.succeeded
     assert "is already installed" in cli.logged
-    assert program_version("./mgit")
+    assert program_version("./mgit", logger=LOG.info)
     assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
     assert CFG.symlinked_canonical(mgit_path) is None
 
     cli.run("-d symlink install mgit")
     assert cli.succeeded
     assert "is already installed" in cli.logged
-    assert program_version("./mgit")
+    assert program_version("./mgit", logger=LOG.info)
     assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
     assert CFG.symlinked_canonical(mgit_path) is None
 
     cli.run("-v -d symlink install -f mgit")
     assert cli.succeeded
     assert "Symlinked mgit -> .pk/mgit-" in cli.logged
-    assert program_version("./mgit")
+    assert program_version("./mgit", logger=LOG.info)
     assert CFG.wrapped_canonical_name(mgit_path) is None
     assert CFG.symlinked_canonical(CFG.resolved_path(mgit_path)) == "mgit"
 
     cli.run("-v -d wrap install -f mgit")
     assert cli.succeeded
     assert "Wrapped mgit -> .pk/mgit-" in cli.logged
-    assert program_version("./mgit")
+    assert program_version("./mgit", logger=LOG.info)
     assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
     assert CFG.symlinked_canonical(mgit_path) is None

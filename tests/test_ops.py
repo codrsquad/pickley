@@ -166,6 +166,7 @@ def test_install_pypi(cli):
     mgit = PackageSpec("mgit")
     manifest = mgit.manifest
     assert str(manifest) == "mgit<1.3.0"
+    assert mgit.auto_upgrade_spec == "mgit<1.3.0"
     assert manifest.entrypoints == ["mgit"]
     assert manifest.install_info.args == "install mgit<1.3.0"
     assert manifest.settings.auto_upgrade_spec == "mgit<1.3.0"
@@ -191,21 +192,21 @@ def test_install_pypi(cli):
 
     cli.run("check")
     assert cli.succeeded
-    assert " (currently 1.2.1)" in cli.logged
+    assert "mgit<1.3.0: v1.2.1 up-to-date" in cli.logged
 
     runez.delete("mgit", logger=None)
     cli.run("check")
     assert cli.succeeded
-    assert " (currently 1.2.1 unhealthy)" in cli.logged
+    assert "mgit<1.3.0: v1.2.1 (currently unhealthy)" in cli.logged
 
     cli.run("-vv upgrade mgit")
     assert cli.succeeded
-    assert "Using manifest .pk/.manifest/mgit.manifest.json, auto-upgrade spec: 'mgit<1.3.0'" in cli.logged
+    assert "Using previous authoritative auto-upgrade spec 'mgit<1.3.0'" in cli.logged
     assert "Upgraded mgit v1.2.1" in cli.logged
 
     cli.run("check -f")
     assert cli.succeeded
-    assert " (currently 1.2.1)" in cli.logged
+    assert "mgit: v1.3.0 (currently v1.2.1)" in cli.logged
 
     cli.run("install -f mgit<1.4")
     assert cli.succeeded

@@ -23,7 +23,7 @@ PICKLEY = "pickley"
 PIP_CONFS = ("~/.config/pip/pip.conf", "/etc/pip.conf")
 DEFAULT_MIRROR = "https://pypi.org/simple"
 CURRENT_PYTHON_MM = sys.version_info[:2]
-UV_CUTOFF = (3, 7)
+UV_CUTOFF = (3, 8)
 USE_UV = CURRENT_PYTHON_MM >= UV_CUTOFF  # Default to `uv` for python versions >= this
 _UV_PATH = None
 

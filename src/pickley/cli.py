@@ -14,7 +14,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import __version__, bstrap, CFG, PackageSpec, parsed_version, Reporter, ResolvedPackage, TrackedManifest, TrackedSettings
+from pickley import __version__, bstrap, CFG, PackageSpec, parsed_version, Reporter, ResolvedPackage, TrackedSettings
 from pickley.package import VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -134,11 +134,6 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
         If True, don't chatter
     verb : str
         Verb to use to convey what kind of installation is being done (ex: auto-heal)
-
-    Returns
-    -------
-    TrackedManifest
-        Manifest is successfully installed (or was already up-to-date)
     """
     if pspec.resolved_info.problem:
         runez.abort(f"Can't {verb} {pspec}: {runez.red(pspec.resolved_info.problem)}")
@@ -170,30 +165,22 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
         pspec.groom_installation()
 
 
-def perform_upgrade(canonical_name: str, logger=LOG.info):
+def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
     """
     Parameters
     ----------
-    canonical_name : str
-        Canonical name of package to upgrade
+    pspec : PackageSpec
+        Package to upgrade
     logger : callable
         Logger to use
-
-    Returns
-    -------
-    TrackedManifest
-        Manifest is successfully installed (or was already up-to-date)
     """
-    manifest_path = CFG.manifest_path(canonical_name)
-    manifest = TrackedManifest.from_file(manifest_path)
-    if not manifest or not manifest.settings:
-        runez.abort(f"Can't upgrade '{runez.red(canonical_name)}': not installed with pickley")
+    manifest = pspec.manifest
+    if not manifest or not manifest.version:
+        runez.abort(f"Can't upgrade '{runez.red(pspec)}': not installed with pickley")
 
-    pspec = PackageSpec(manifest.settings.auto_upgrade_spec or canonical_name)
     if pspec.resolved_info.problem:
-        runez.abort(f"Can't upgrade {runez.red(canonical_name)}: {runez.red(pspec.resolved_info.problem)}")
+        runez.abort(f"Can't upgrade {runez.red(pspec)}: {runez.red(pspec.resolved_info.problem)}")
 
-    runez.log.trace(f"Using manifest {runez.short(manifest_path)}, auto-upgrade spec: '{pspec.settings.auto_upgrade_spec}'")
     with SoftLock(pspec.canonical_name):
         started = time.time()
         if pspec.is_up_to_date:
@@ -233,6 +220,7 @@ def find_base(path=None):
         if not base_path.is_dir():
             runez.abort(f"PICKLEY_ROOT points to non-existing directory {runez.red(base_path)}")
 
+        runez.log.trace(f"Using base PICKLEY_ROOT={runez.short(base_path)}")
         return base_path
 
     path = CFG.resolved_path(path or sys.argv[0])
@@ -315,8 +303,9 @@ def auto_heal():
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
     canonical_name = CFG.required_canonical_name(package)
+    pspec = PackageSpec(canonical_name)
     if not force:
-        cache_path = CFG.resolution_cache_path(canonical_name)
+        cache_path = pspec.resolution_cache_path
         if CFG.version_check_delay and runez.file.is_younger(cache_path, CFG.version_check_delay):
             LOG.debug("Skipping auto-upgrade, checked recently")
             sys.exit(0)
@@ -326,7 +315,7 @@ def auto_upgrade(force, package):
         LOG.debug("Lock file present, another installation is in progress")
         sys.exit(0)
 
-    perform_upgrade(canonical_name, logger=LOG.debug)
+    perform_upgrade(pspec, logger=LOG.debug)
 
 
 @main.command()
@@ -335,13 +324,13 @@ def base(what):
     """Show pickley base folder"""
     if what == "bootstrap-own-wrapper":
         # Internal: called by bootstrap script
-        pspec = PackageSpec(f"{bstrap.PICKLEY}=={__version__}")
+        pspec = PackageSpec(f"{bstrap.PICKLEY}=={__version__}", authoritative=True)
         delivery = VenvPackager.delivery_method_for(pspec)
         delivery.install(pspec)
 
         if bstrap.USE_UV:
             tmp_uv = CFG.meta / ".uv"
-            uv_spec = PackageSpec("uv")
+            uv_spec = PackageSpec("uv", authoritative=True)
             if runez.is_executable(tmp_uv / "bin/uv"):
                 # Use the .uv/bin/uv obtained during bootstrap
                 runez.move(tmp_uv, uv_spec.target_installation_folder, overwrite=True)
@@ -403,16 +392,19 @@ def check(force, packages):
             code = 1
 
         elif pspec.is_up_to_date:
-            msg = f"{dv} up-to-date"
+            msg = f"v{dv} up-to-date"
 
         else:
-            msg = f"currently {pspec.currently_installed_version}"
+            msg = "currently"
+            if pspec.currently_installed_version != dv:
+                msg += f" v{pspec.currently_installed_version}"
+
             if not pspec.is_healthily_installed:
                 msg += runez.red(" unhealthy")
 
-            msg = f"{runez.bold(dv)} ({msg})"
+            msg = f"v{runez.bold(dv)} ({msg})"
 
-        print(f"{pspec}: {msg}")
+        print(f"{pspec.auto_upgrade_spec}: {msg}")
 
     sys.exit(code)
 
@@ -429,7 +421,7 @@ def describe(packages):
     """Show current configuration"""
     problems = 0
     for package_spec in packages:
-        settings = TrackedSettings.from_config(package_spec)
+        settings = TrackedSettings.from_cli(package_spec)
         info = ResolvedPackage()
         info.logger = LOG.debug
         info.resolve(settings)
@@ -548,12 +540,11 @@ def cmd_list(border, format, verbose):
         print("No packages installed")
         sys.exit(0)
 
-    report = TabularReport("Package,Version,Delivery,PM,Python", border=border, verbose=verbose)
+    report = TabularReport("Package,Version,PM,Python", additional="Delivery", border=border, verbose=verbose)
     for pspec in packages:
         manifest = pspec.manifest
-        auto_upgrade_spec = manifest and manifest.settings and manifest.settings.auto_upgrade_spec
         report.add_row(
-            Package=runez.bold(auto_upgrade_spec) or pspec.canonical_name,
+            Package=runez.bold(pspec.auto_upgrade_spec),
             Version=manifest and manifest.version,
             Python=manifest and manifest.python_executable,
             PM=manifest and manifest.package_manager,
@@ -649,9 +640,8 @@ def run(command, args):
 def upgrade(packages):
     """Upgrade an installed package"""
     setup_audit_log()
-    names = [CFG.required_canonical_name(p) for p in packages]
-    for canonical_name in names:
-        perform_upgrade(canonical_name)
+    for pspec in CFG.package_specs(packages):
+        perform_upgrade(pspec)
 
 
 @main.command()
@@ -797,7 +787,7 @@ class PackageFinalizer:
 
     def resolve(self):
         runez.abort_if(not self.folder.is_dir(), f"Folder {runez.red(runez.short(self.folder))} does not exist")
-        self.pspec = PackageSpec(str(self.folder))
+        self.pspec = PackageSpec(str(self.folder), authoritative=True)
         runez.abort_if(not self.pspec.canonical_name, f"Could not determine package name: {self.pspec.resolved_info.problem}")
         LOG.debug("Using python: %s", self.pspec.settings.python)
         if self.dist.startswith("root/"):
