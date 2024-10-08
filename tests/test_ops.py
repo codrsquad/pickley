@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import runez
 
-from pickley import CFG, PackageSpec, program_version
+from pickley import CFG, PackageSpec
 from pickley.cli import clean_compiled_artifacts, find_base, SoftLock, SoftLockException
 
 from .conftest import dot_meta
@@ -63,7 +63,7 @@ def test_facultative(cli):
 
     cli.run("-n check virtualenv>10000")
     assert cli.failed
-    assert "virtualenv>10000: " in cli.logged
+    assert "Invalid package name 'virtualenv>10000'" in cli.logged
 
     cli.run("-n check virtualenv")
     assert cli.failed
@@ -133,13 +133,9 @@ def test_install_pypi(cli):
     assert cli.succeeded
     assert "No packages installed" in cli.logged
 
-    cli.run("upgrade")
-    assert cli.succeeded
-    assert "No packages installed" in cli.logged
-
     cli.run("upgrade mgit")
     assert cli.failed
-    assert "'mgit' is not installed" in cli.logged
+    assert "'mgit': not installed with pickley" in cli.logged
 
     cli.run("uninstall mgit --all")
     assert cli.failed
@@ -182,6 +178,11 @@ def test_install_pypi(cli):
 
     cli.run("-v auto-upgrade --force mgit")
     assert cli.succeeded
+    assert "is already up-to-date" in cli.logged
+
+    cli.run("upgrade mgit")
+    assert cli.succeeded
+    assert "is already up-to-date" in cli.logged
 
     cli.run("-v auto-heal")
     assert cli.succeeded
@@ -197,14 +198,18 @@ def test_install_pypi(cli):
     assert cli.succeeded
     assert " (currently 1.2.1 unhealthy)" in cli.logged
 
-    cli.run("upgrade mgit")
+    cli.run("-vv upgrade mgit")
     assert cli.succeeded
-    assert "Upgraded mgit v" in cli.logged
+    assert "Using manifest .pk/.manifest/mgit.manifest.json, auto-upgrade spec: 'mgit<1.3.0'" in cli.logged
+    assert "Upgraded mgit v1.2.1" in cli.logged
 
     cli.run("check -f")
     assert cli.succeeded
-    mgit_version = program_version("mgit")
-    assert f"mgit: {mgit_version} up-to-date" in cli.logged
+    assert " (currently 1.2.1)" in cli.logged
+
+    cli.run("install -f mgit<1.4")
+    assert cli.succeeded
+    assert "Installed mgit v1.3.0" in cli.logged
 
     cli.run("list --format=json")
     assert cli.succeeded

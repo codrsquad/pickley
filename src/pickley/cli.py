@@ -11,7 +11,7 @@ from typing import NamedTuple, Optional, Sequence
 
 import click
 import runez
-from runez.pyenv import PypiStd, Version
+from runez.pyenv import Version
 from runez.render import PrettyTable
 
 from pickley import __version__, bstrap, CFG, PackageSpec, parsed_version, Reporter, ResolvedPackage, TrackedManifest, TrackedSettings
@@ -124,20 +124,22 @@ class SoftLock:
             runez.delete(self.lock_path, logger=None)
 
 
-def perform_install(pspec, is_upgrade=False, quiet=False, verb=None):
+def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
     """
-    Args:
-        pspec (PackageSpec): Package spec to install
-        is_upgrade (bool): If True, intent is an upgrade (not a new install)
-        quiet (bool): If True, don't chatter
-        verb (str): Verb to use to convey what kind of installation is being done (ex: auto-heal)
+    Parameters
+    ----------
+    pspec : PackageSpec
+        Package spec to install
+    quiet : bool
+        If True, don't chatter
+    verb : str
+        Verb to use to convey what kind of installation is being done (ex: auto-heal)
 
-    Returns:
-        (pickley.TrackedManifest): Manifest is successfully installed (or was already up-to-date)
+    Returns
+    -------
+    TrackedManifest
+        Manifest is successfully installed (or was already up-to-date)
     """
-    if not verb:
-        verb = "upgrade" if is_upgrade else "install"
-
     if pspec.resolved_info.problem:
         runez.abort(f"Can't {verb} {pspec}: {runez.red(pspec.resolved_info.problem)}")
 
@@ -148,13 +150,9 @@ def perform_install(pspec, is_upgrade=False, quiet=False, verb=None):
             LOG.info("Skipping installation of %s: %s", pspec, runez.bold(skip_reason))
             return
 
-        if is_upgrade and not pspec.currently_installed_version and not quiet:
-            runez.abort(f"'{runez.red(pspec)}' is not installed")
-
         if CFG.version_check_delay and pspec.is_up_to_date:
             if not quiet:
-                status = "up-to-date" if is_upgrade else "installed"
-                LOG.info("%s v%s is already %s", pspec.canonical_name, runez.bold(pspec.currently_installed_version), status)
+                LOG.info("%s v%s is already installed", pspec.canonical_name, runez.bold(pspec.currently_installed_version))
 
             pspec.groom_installation()
             return
@@ -163,12 +161,55 @@ def perform_install(pspec, is_upgrade=False, quiet=False, verb=None):
         manifest = VenvPackager.install(pspec)
         if manifest and not quiet:
             note = f" in {runez.represented_duration(time.time() - started)}"
-            verb += "d" if verb.endswith("e") else "ed"
-            action = "%s%s" % (verb[0].upper(), verb[1:])
+            action = "%s%sed" % (verb[0].upper(), verb[1:])
             if runez.DRYRUN:
                 action = f"Would state: {action}"
 
             LOG.info("%s %s v%s%s", action, pspec.canonical_name, runez.bold(pspec.target_version), runez.dim(note))
+
+        pspec.groom_installation()
+
+
+def perform_upgrade(canonical_name: str, logger=LOG.info):
+    """
+    Parameters
+    ----------
+    canonical_name : str
+        Canonical name of package to upgrade
+    logger : callable
+        Logger to use
+
+    Returns
+    -------
+    TrackedManifest
+        Manifest is successfully installed (or was already up-to-date)
+    """
+    manifest_path = CFG.manifest_path(canonical_name)
+    manifest = TrackedManifest.from_file(manifest_path)
+    if not manifest or not manifest.settings:
+        runez.abort(f"Can't upgrade '{runez.red(canonical_name)}': not installed with pickley")
+
+    pspec = PackageSpec(manifest.settings.auto_upgrade_spec or canonical_name)
+    if pspec.resolved_info.problem:
+        runez.abort(f"Can't upgrade {runez.red(canonical_name)}: {runez.red(pspec.resolved_info.problem)}")
+
+    runez.log.trace(f"Using manifest {runez.short(manifest_path)}, auto-upgrade spec: '{pspec.settings.auto_upgrade_spec}'")
+    with SoftLock(pspec.canonical_name):
+        started = time.time()
+        if pspec.is_up_to_date:
+            logger("%s v%s is already up-to-date", pspec.canonical_name, runez.bold(pspec.currently_installed_version))
+            pspec.groom_installation()
+            return
+
+        setup_audit_log()
+        manifest = VenvPackager.install(pspec)
+        if manifest:
+            note = f" in {runez.represented_duration(time.time() - started)}"
+            action = "Upgraded"
+            if runez.DRYRUN:
+                action = f"Would state: {action}"
+
+            logger("%s %s v%s%s", action, pspec.canonical_name, runez.bold(pspec.target_version), runez.dim(note))
 
         pspec.groom_installation()
 
@@ -196,21 +237,6 @@ def find_base(path=None):
 
     path = CFG.resolved_path(path or sys.argv[0])
     return _find_base_from_program_path(path) or path.parent
-
-
-def find_symbolic_invoker() -> str:
-    """Symbolic major/minor symlink to invoker, when applicable"""
-    invoker = runez.SYS_INFO.invoker_python
-    folder = invoker.real_exe.parent.parent
-    v = Version.extracted_from_text(folder.name)
-    if v and v.given_components_count == 3:
-        # For setups that provide a <folder>/pythonM.m -> <folder>/pythonM.m.p symlink, prefer the major/minor variant
-        candidates = [folder.parent / folder.name.replace(v.text, v.mm), folder.parent / f"python{v.mm}"]
-        for path in candidates:
-            if path.exists():
-                return path
-
-    return invoker.executable  # pragma: no cover
 
 
 @runez.click.group()
@@ -241,8 +267,8 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
         trace="TRACE_DEBUG+:: ",
     )
     # Don't pollute audit.log with dryrun or non-essential commands
-    non_essential = ("check", "config", "describe", "diagnostics", "list", "package", "version_check")
-    CFG.use_audit_log = not runez.DRYRUN and ctx.invoked_subcommand not in non_essential
+    essential = ("auto-heal", "auto-upgrade", "install", "run", "upgrade", "uninstall")
+    CFG.use_audit_log = not runez.DRYRUN and ctx.invoked_subcommand in essential
     Reporter.capture_trace()
     runez.log.trace(runez.log.spec.argv)
     bstrap.clean_env_vars()
@@ -251,10 +277,6 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
         archflags = f"-arch {runez.SYS_INFO.platform_id.arch}"
         runez.log.trace(f"Setting ARCHFLAGS={archflags}")
         os.environ["ARCHFLAGS"] = archflags
-
-    if ctx.invoked_subcommand == "package":
-        # Default to using invoker for 'package' subcommand
-        python = python or find_symbolic_invoker()
 
     CFG.set_cli(config, delivery, index, python, package_manager)
     if ctx.invoked_subcommand != "package":
@@ -292,25 +314,19 @@ def auto_heal():
 @click.argument("package", required=True)
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
-    if force:
-        CFG.version_check_delay = 0
-
-    canonical_name = PypiStd.std_package_name(package)
-    runez.abort_if(not canonical_name, f"Invalid package name '{package}'")
-    cache_path = CFG.resolution_cache_path(canonical_name)
-    if CFG.version_check_delay and runez.file.is_younger(cache_path, CFG.version_check_delay):
-        LOG.debug("Skipping auto-upgrade, checked recently")
-        sys.exit(0)
+    canonical_name = CFG.required_canonical_name(package)
+    if not force:
+        cache_path = CFG.resolution_cache_path(canonical_name)
+        if CFG.version_check_delay and runez.file.is_younger(cache_path, CFG.version_check_delay):
+            LOG.debug("Skipping auto-upgrade, checked recently")
+            sys.exit(0)
 
     lock_path = CFG.soft_lock_path(canonical_name)
     if lock_path and runez.file.is_younger(lock_path, CFG.install_timeout(canonical_name)):
         LOG.debug("Lock file present, another installation is in progress")
         sys.exit(0)
 
-    manifest = TrackedManifest.from_file(CFG.manifest_path(canonical_name))
-    runez.abort_if(not manifest, f"{canonical_name} not installed with pickley")
-    pspec = PackageSpec(manifest.settings.auto_upgrade_spec)
-    perform_install(pspec, is_upgrade=True, quiet=True)
+    perform_upgrade(canonical_name, logger=LOG.debug)
 
 
 @main.command()
@@ -366,7 +382,7 @@ def check(force, packages):
         CFG.version_check_delay = 0
 
     code = 0
-    packages = CFG.package_specs(packages, canonical_only=False)
+    packages = CFG.package_specs(packages) or CFG.installed_specs()
     if not packages:
         print("No packages installed")
         sys.exit(0)
@@ -465,7 +481,7 @@ def install(force, packages):
         CFG.version_check_delay = 0
 
     setup_audit_log()
-    specs = CFG.package_specs(packages, canonical_only=False, include_pickley=packages and packages[0].startswith("bundle:"))
+    specs = CFG.package_specs(packages, canonical_only=False)
     for pspec in specs:
         perform_install(pspec)
 
@@ -527,21 +543,21 @@ class TabularReport:
 @click.option("--verbose", "-v", is_flag=True, help="Show more information")
 def cmd_list(border, format, verbose):
     """List installed packages"""
-    packages = CFG.package_specs(include_pickley=verbose)
+    packages = CFG.installed_specs(include_pickley=verbose)
     if not packages:
         print("No packages installed")
         sys.exit(0)
 
-    report = TabularReport("Package,Version,Python", additional="Delivery,PackageManager", border=border, verbose=verbose)
+    report = TabularReport("Package,Version,Delivery,PM,Python", border=border, verbose=verbose)
     for pspec in packages:
         manifest = pspec.manifest
-        python = manifest and manifest.settings.python and CFG.available_pythons.find_python(manifest.settings.python)
+        auto_upgrade_spec = manifest and manifest.settings and manifest.settings.auto_upgrade_spec
         report.add_row(
-            Package=pspec.canonical_name,
+            Package=runez.bold(auto_upgrade_spec) or pspec.canonical_name,
             Version=manifest and manifest.version,
-            Python=python,
-            Delivery=manifest and manifest.settings.delivery,
-            PackageManager=manifest and manifest.settings.package_manager,
+            Python=manifest and manifest.python_executable,
+            PM=manifest and manifest.package_manager,
+            Delivery=manifest and manifest.delivery,
         )
 
     print(report.represented(format))
@@ -632,14 +648,10 @@ def run(command, args):
 @click.argument("packages", nargs=-1, required=False)
 def upgrade(packages):
     """Upgrade an installed package"""
-    packages = CFG.package_specs(packages)
-    if not packages:
-        LOG.info("No packages installed, nothing to upgrade")
-        sys.exit(0)
-
     setup_audit_log()
-    for pspec in packages:
-        perform_install(pspec, is_upgrade=True)
+    names = [CFG.required_canonical_name(p) for p in packages]
+    for canonical_name in names:
+        perform_upgrade(canonical_name)
 
 
 @main.command()
@@ -654,7 +666,8 @@ def uninstall(all, packages):
         "Run 'uninstall --all' if you wish to uninstall pickley itself (and everything it installed)",
     )
     setup_audit_log()
-    for pspec in CFG.package_specs(packages):
+    packages = CFG.package_specs(packages) or CFG.installed_specs()
+    for pspec in packages:
         runez.abort_if(not pspec.currently_installed_version, f"{runez.bold(pspec.canonical_name)} was not installed with pickley")
         for ep in pspec.manifest.entrypoints:
             runez.delete(CFG.base / ep)

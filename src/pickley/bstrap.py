@@ -39,11 +39,6 @@ class _Reporter:
             print(message)
 
     @staticmethod
-    def debug(message):
-        if VERBOSITY > 0:
-            print(message)
-
-    @staticmethod
     def inform(message):
         print(message)
 
@@ -92,7 +87,7 @@ class Bootstrap:
         if data:
             data = json.loads(data)
             version = data["info"]["version"]
-            Reporter.debug(f"Latest {PICKLEY} version: {version}")
+            Reporter.trace(f"Latest {PICKLEY} version: {version}")
             return version
 
 

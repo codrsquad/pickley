@@ -82,8 +82,6 @@ def test_good_config(cli):
     cli.run("-n install bundle:dev3")
     assert cli.succeeded
     assert "Would wrap mgit -> .pk/mgit-1.2.1/bin/mgit" in cli.logged
-    # Pickley detected not present in the current temp base, and gets automatically installed
-    assert "Would state: Installed pickley v" in cli.logged
 
     mgit = PackageSpec("mgit==1.0.0")
     pickley = PackageSpec("pickley==1.0.0")

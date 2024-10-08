@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional, Sequence, TYPE_CHECKING
 
 import runez
+from runez.pyenv import PythonInstallation, Version
 
 from pickley import bstrap, CFG, PackageSpec, TrackedManifest
 from pickley.delivery import DeliveryMethod, DeliveryMethodSymlink, DeliveryMethodWrap
@@ -12,22 +13,19 @@ if TYPE_CHECKING:
 
 
 class PythonVenv:
-    def __init__(self, folder: Path, package_manager: Optional[str] = None, python_spec: Optional[str] = None):
+    def __init__(self, folder: Path, python: PythonInstallation, package_manager: str):
         """
         Parameters
         ----------
         folder : Path
             Folder where to create the venv
+        python : PythonInstallation
+            Python installation to use
         package_manager : str
-            Override package manager to use
-        python_spec : str
-            Override python to use
+            Package manager to use ("pip" or "uv")
         """
         self.folder = folder
-        self.python = CFG.available_pythons.find_python(python_spec)
-        if package_manager is None:
-            package_manager = bstrap.default_package_manager(self.python.mm.major, self.python.mm.minor)
-
+        self.python = python
         self.package_manager = package_manager
         self.use_pip = package_manager == "pip"
         self.groom_uv_venv = True
@@ -129,12 +127,27 @@ class PythonVenv:
         return r
 
 
+def find_symbolic_invoker() -> str:
+    """Symbolic major/minor symlink to invoker, when applicable"""
+    invoker = runez.SYS_INFO.invoker_python
+    folder = invoker.real_exe.parent.parent
+    v = Version.extracted_from_text(folder.name)
+    if v and v.given_components_count == 3:
+        # For setups that provide a <folder>/pythonM.m -> <folder>/pythonM.m.p symlink, prefer the major/minor variant
+        candidates = [folder.parent / folder.name.replace(v.text, v.mm), folder.parent / f"python{v.mm}"]
+        for path in candidates:
+            if path.exists():
+                return path
+
+    return invoker.executable  # pragma: no cover
+
+
 class VenvPackager:
     """Install in a virtualenv"""
 
     @staticmethod
     def delivery_method_for(pspec: PackageSpec) -> DeliveryMethod:
-        delivery = pspec.settings.delivery or CFG.get_value("delivery", package_name=pspec.canonical_name)
+        delivery = pspec.delivery_method_name
         if delivery == "wrap":
             return DeliveryMethodWrap()
 
@@ -156,10 +169,8 @@ class VenvPackager:
         TrackedManifest
             Installed package manifest
         """
-        delivery = VenvPackager.delivery_method_for(pspec)
-        package_manager = pspec.settings.package_manager
-        python_spec = pspec.settings.python
-        venv = PythonVenv(pspec.target_installation_folder, package_manager=package_manager, python_spec=python_spec)
+        venv_settings = pspec.settings.venv_settings()
+        venv = PythonVenv(pspec.target_installation_folder, venv_settings.python_installation, venv_settings.package_manager)
         if pspec.canonical_name == "uv":
             # Special case for uv: it does not need a venv
             bstrap.download_uv(venv.folder, version=pspec.target_version, dryrun=runez.DRYRUN)
@@ -168,6 +179,7 @@ class VenvPackager:
             venv.create_venv()
             venv.pip_install(pspec.resolved_info.pip_spec)
 
+        delivery = VenvPackager.delivery_method_for(pspec)
         return delivery.install(pspec)
 
     @staticmethod
@@ -192,7 +204,8 @@ class VenvPackager:
             List of packaged executables
         """
         runez.ensure_folder(dist_folder, clean=True)
-        venv = PythonVenv(dist_folder, package_manager="pip", python_spec=pspec.settings.python)
+        python = CFG.available_pythons.find_python(pspec.settings.python or find_symbolic_invoker())
+        venv = PythonVenv(dist_folder, python, package_manager="pip")
         venv.create_venv()
         for requirement_file in requirements.requirement_files:
             venv.pip_install("-r", requirement_file)
