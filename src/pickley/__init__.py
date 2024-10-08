@@ -146,7 +146,6 @@ class ResolvedPackage:
     pip_spec: List[str] = None  # CLI args to pass to `pip install`
     problem: Optional[str] = None  # Problem with package spec, if any
     resolution_reason: Optional[str] = None  # How version to use was resolved
-    venv_basename: str = None  # The basename of the .pk/ venv pickley uses to install this
     version: Version = None  # Resolved version
 
     logger = runez.log.trace
@@ -162,7 +161,6 @@ class ResolvedPackage:
             "pip_spec": self.pip_spec,
             "problem": self.problem,
             "resolution_reason": self.resolution_reason,
-            "venv_basename": self.venv_basename,
             "version": self.version,
         }
 
@@ -172,7 +170,6 @@ class ResolvedPackage:
             version = Version(version)
 
         self.version = version
-        self.venv_basename = f"{self.canonical_name}-{version}" if self.canonical_name and version else None
 
     @classmethod
     def from_cache(cls, cache_path):
@@ -187,7 +184,6 @@ class ResolvedPackage:
                 info.pip_spec = data.get("pip_spec")
                 info.problem = data.get("problem")
                 info.resolution_reason = data.get("resolution_reason")
-                info.venv_basename = data.get("venv_basename")
                 info.version = Version(data.get("version"))
                 return info
 
@@ -275,7 +271,6 @@ class ResolvedPackage:
             if os.getenv("PICKLEY_DEV") == "1" and self.given_package_spec == runez.DEV.project_folder:
                 # Dev mode: install pickley from source in editable mode (typically in .venv/root/ development base)
                 self.pip_spec = ["-e", self.given_package_spec]
-                self.venv_basename = f"{bstrap.PICKLEY}-dev"
 
     def _get_entry_points(self, venv, canonical_name, version, location):
         # Use `uv pip show` to get location on disk and version of package
@@ -348,8 +343,9 @@ class PackageSpec:
     This class represents a package spec, and provides access to its resolved info and current installation state.
     """
 
-    _auto_upgrade_spec: str = None
+    auto_upgrade_spec: str
     _manifest: "TrackedManifest" = runez.UNSET
+    _manifest_path: Path = None
 
     def __init__(self, given_package_spec: str, authoritative=False):
         """
@@ -362,33 +358,30 @@ class PackageSpec:
         """
         self._canonical_name = PypiStd.std_package_name(given_package_spec)
         if authoritative or self._canonical_name is None:
-            self._auto_upgrade_spec = given_package_spec
-            runez.log.trace(f"Authoritative auto-upgrade spec '{self._auto_upgrade_spec}'")
+            self.auto_upgrade_spec = given_package_spec
+            runez.log.trace(f"Authoritative auto-upgrade spec '{self.auto_upgrade_spec}'")
 
-        self.settings = TrackedSettings.from_cli(given_package_spec)
-
-    def __repr__(self):
-        return repr(self.settings)
-
-    def __lt__(self, other):
-        return str(self) < str(other)
-
-    @property
-    def auto_upgrade_spec(self) -> str:
-        """Package spec to use for auto-upgrade"""
-        if self._auto_upgrade_spec is None:
-            manifest = self.manifest
+        else:
+            self._manifest_path = CFG.manifest_path(self._canonical_name)
+            manifest = TrackedManifest.from_file(self._manifest_path)
             if manifest and manifest.settings and manifest.settings.auto_upgrade_spec:
                 # Use previously saved authoritative auto-upgrade spec
-                self._auto_upgrade_spec = manifest.settings.auto_upgrade_spec
-                runez.log.trace(f"Using previous authoritative auto-upgrade spec '{self._auto_upgrade_spec}'")
+                self._manifest = manifest
+                runez.log.trace(f"Using previous authoritative auto-upgrade spec '{manifest.settings.auto_upgrade_spec}'")
+                self.auto_upgrade_spec = manifest.settings.auto_upgrade_spec
 
             else:
                 # Fallback for installations prior to pickley v4.4
-                self._auto_upgrade_spec = self.settings.auto_upgrade_spec
-                runez.log.trace(f"Assuming auto-upgrade spec '{self._auto_upgrade_spec}'")
+                runez.log.trace(f"Assuming auto-upgrade spec '{self._canonical_name}'")
+                self.auto_upgrade_spec = self._canonical_name
 
-        return self._auto_upgrade_spec
+        self.settings = TrackedSettings.from_cli(self.auto_upgrade_spec)
+
+    def __repr__(self):
+        return self.auto_upgrade_spec
+
+    def __lt__(self, other):
+        return str(self) < str(other)
 
     @property
     def canonical_name(self) -> str:
@@ -398,6 +391,13 @@ class PackageSpec:
 
         # Full resolution is needed (example `git+https://...`)
         return self.resolved_info.canonical_name
+
+    @property
+    def manifest_path(self):
+        if self._manifest_path is None:
+            self._manifest_path = CFG.manifest_path(self.canonical_name)
+
+        return self._manifest_path
 
     @runez.cached_property
     def resolution_cache_path(self):
@@ -432,7 +432,7 @@ class PackageSpec:
     @property
     def target_installation_folder(self):
         """Folder that will hold current installation of this package"""
-        return CFG.meta / self.resolved_info.venv_basename
+        return CFG.meta / f"{self.canonical_name}-{self.target_version}"
 
     @property
     def is_up_to_date(self) -> bool:
@@ -443,7 +443,7 @@ class PackageSpec:
     def manifest(self) -> Optional["TrackedManifest"]:
         """Manifest of the current installation of this package, if any"""
         if self._manifest is runez.UNSET:
-            self._manifest = TrackedManifest.from_file(CFG.manifest_path(self.canonical_name))
+            self._manifest = TrackedManifest.from_file(self.manifest_path)
 
         return self._manifest
 
@@ -462,13 +462,10 @@ class PackageSpec:
                     if not runez.is_executable(CFG.base / name):
                         return False
 
-            if manifest.venv_basename:
-                # Older pickley versions manifests do not have `venv_basename`
-                # Older pickley versions manifests do not have `venv_basename`
-                # uv does not need a typical venv with bin/python
-                exe_path = "uv" if self.canonical_name == "uv" else "python"
-                exe_path = CFG.meta / manifest.venv_basename / "bin" / exe_path
-                return bool(program_version(exe_path))
+            # uv does not need a typical venv with bin/python
+            exe_path = "uv" if self.canonical_name == "uv" else "python"
+            exe_path = self.target_installation_folder / "bin" / exe_path
+            return bool(program_version(exe_path))
 
     def skip_reason(self) -> Optional[str]:
         """Reason for skipping installation, when applicable"""
@@ -499,7 +496,7 @@ class PackageSpec:
 
     def delete_all_files(self):
         """Delete all files in DOT_META/ folder related to this package spec"""
-        runez.delete(CFG.manifest_path(self.canonical_name), fatal=False)
+        runez.delete(self.manifest_path, fatal=False)
         for candidate, _ in self.installed_sibling_folders():
             runez.delete(candidate, fatal=False)
 
@@ -551,10 +548,9 @@ class PackageSpec:
         manifest.package_manager = venv_settings.package_manager
         manifest.python_executable = venv_settings.python_executable
         manifest.settings = self.settings
-        manifest.venv_basename = self.resolved_info.venv_basename
         manifest.version = self.target_version
         payload = manifest.to_dict()
-        runez.save_json(payload, CFG.manifest_path(self.canonical_name))
+        runez.save_json(payload, self.manifest_path)
         runez.save_json(payload, self.target_installation_folder / ".manifest.json")
         return manifest
 
@@ -890,7 +886,6 @@ class TrackedManifest:
     package_manager: str  # Package manager used when package was installed
     python_executable: str = None  # Python interpreter used when package was installed
     settings: "TrackedSettings" = None  # Resolved settings used when package was installed
-    venv_basename: str = None  # The basename of the .pk/ venv pickley used to install this
     version: Version = None  # Version of package installed
 
     def __repr__(self):
@@ -908,7 +903,6 @@ class TrackedManifest:
                 manifest.package_manager = data.get("package_manager")
                 manifest.python_executable = data.get("python")
                 manifest.settings = TrackedSettings.from_dict(data.get("tracked_settings"))
-                manifest.venv_basename = data.get("venv_basename")
                 manifest.version = Version(data.get("version"))
                 return manifest
 
@@ -922,7 +916,6 @@ class TrackedManifest:
             "package_manager": self.package_manager,
             "python": self.python_executable,
             "tracked_settings": self.settings.to_dict(),
-            "venv_basename": self.venv_basename,
             "version": str(self.version) if self.version else None,
         }
 

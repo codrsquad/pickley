@@ -43,7 +43,6 @@ def test_dev_mode(cli, monkeypatch):
     cli.run("-nv", "install", runez.DEV.project_folder)
     assert cli.succeeded
     assert "pip install -e " in cli.logged
-    assert "Would wrap pickley -> .pk/pickley-dev/bin/pickley" in cli.logged
     assert "Would state: Installed pickley v" in cli.logged
 
 
@@ -135,7 +134,7 @@ def test_install_pypi(cli):
 
     cli.run("upgrade mgit")
     assert cli.failed
-    assert "'mgit': not installed with pickley" in cli.logged
+    assert "Can't upgrade 'mgit': not installed with pickley" in cli.logged
 
     cli.run("uninstall mgit --all")
     assert cli.failed
@@ -170,7 +169,6 @@ def test_install_pypi(cli):
     assert manifest.entrypoints == ["mgit"]
     assert manifest.install_info.args == "install mgit<1.3.0"
     assert manifest.settings.auto_upgrade_spec == "mgit<1.3.0"
-    assert manifest.venv_basename == "mgit-1.2.1"
     assert manifest.version == "1.2.1"
 
     cli.run("-v auto-upgrade mgit")
@@ -187,7 +185,7 @@ def test_install_pypi(cli):
 
     cli.run("-v auto-heal")
     assert cli.succeeded
-    assert "mgit is healthy" in cli.logged
+    assert "mgit<1.3.0 is healthy" in cli.logged
     assert "Auto-healed 0 / 1 packages" in cli.logged
 
     cli.run("check")
@@ -206,7 +204,7 @@ def test_install_pypi(cli):
 
     cli.run("check -f")
     assert cli.succeeded
-    assert "mgit: v1.3.0 (currently v1.2.1)" in cli.logged
+    assert "mgit<1.3.0: v1.2.1 up-to-date" in cli.logged
 
     cli.run("install -f mgit<1.4")
     assert cli.succeeded
