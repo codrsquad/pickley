@@ -14,7 +14,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import __version__, bstrap, CFG, PackageSpec, parsed_version, Reporter, ResolvedPackage, TrackedSettings
+from pickley import bstrap, CFG, PackageSpec, parsed_version, Reporter, ResolvedPackage, TrackedSettings
 from pickley.package import VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -229,7 +229,7 @@ def find_base(path=None):
 
 @runez.click.group()
 @click.pass_context
-@runez.click.version(message="%(version)s", version=__version__)
+@runez.click.version(message="%(version)s")
 @click.option("--verbose", "-v", "--debug", count=True, default=0, help="Show verbose output")
 @runez.click.dryrun("-n")
 @runez.click.color()
@@ -324,7 +324,7 @@ def base(what):
     """Show pickley base folder"""
     if what == "bootstrap-own-wrapper":
         # Internal: called by bootstrap script
-        pspec = PackageSpec(f"{bstrap.PICKLEY}=={__version__}", authoritative=True)
+        pspec = PackageSpec(f"{bstrap.PICKLEY}=={CFG.pickley_version}", authoritative=True)
         delivery = VenvPackager.delivery_method_for(pspec)
         delivery.install(pspec)
 

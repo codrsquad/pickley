@@ -208,6 +208,10 @@ class ResolvedPackage:
         if version:
             pip_spec = f"{canonical_name}=={version}"
             self.resolution_reason = "pinned"
+            if canonical_name == bstrap.PICKLEY:
+                self._set_canonical(canonical_name, version)
+                self.entrypoints = (bstrap.PICKLEY,)
+                return
 
         elif canonical_name == self.given_package_spec:
             version = CFG.get_value("version", package_name=canonical_name)
@@ -610,6 +614,10 @@ class PickleyConfig:
         depot.set_preferred_python(preferred)
         return depot
 
+    @runez.cached_property
+    def pickley_version(self):
+        return runez.get_version(__name__) or __version__
+
     @property
     def default_index(self):
         """Default pypi mirror index, as configured by pip.conf (global or user)"""
@@ -934,7 +942,7 @@ class TrackedInstallInfo:
         info.args = runez.quoted(sys.argv[1:])
         info.index = CFG.index
         info.timestamp = datetime.now()
-        info.vpickley = __version__
+        info.vpickley = CFG.pickley_version
         return info
 
     @classmethod
