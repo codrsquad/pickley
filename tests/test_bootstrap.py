@@ -88,12 +88,11 @@ def test_bootstrap(cli, monkeypatch):
     sample_config = '"python-installations": "~/.pyenv/version/**"'
     monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
     mirror = "https://pypi.org/simple"
-    cli.run("0.1", "-m", mirror, "-c", f"{{{sample_config}}}")
+    cli.run(cli.project_folder, "-m", mirror, "-c", f"{{{sample_config}}}")
     assert "base: .local/bin" in cli.logged
     assert f"Seeding .local/bin/{dot_meta('config.json')} with " in cli.logged
     assert f"Seeding .config/pip/pip.conf with {mirror}" in cli.logged
     assert f"Seeding {uv_config} with {mirror}" in cli.logged
-    assert "pickley version 0.1 is already installed" in cli.logged
     assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", f"index-url = {mirror}"]
     assert list(runez.readlines(uv_config)) == ["[pip]", f'index-url = "{mirror}"']
     assert list(runez.readlines(f".local/bin/{dot_meta('config.json')}")) == ["{", f"  {sample_config}", "}"]
@@ -115,7 +114,7 @@ def test_bootstrap(cli, monkeypatch):
     runez.delete(".config", logger=None)
     runez.touch(".config/pip", logger=None)
     runez.touch(".config/uv", logger=None)
-    cli.run("0.1", "-m", "my-mirror")
+    cli.run(cli.project_folder)
     assert cli.succeeded
     assert "Seeding ~/.config/pip/pip.conf failed" in cli.logged
     assert "Seeding ~/.config/uv/uv.toml failed" in cli.logged
