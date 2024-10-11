@@ -55,19 +55,22 @@ def set_mirror_env_vars(mirror):
 
 
 class Bootstrap:
-    def __init__(self, pickley_base, mirror):
-        self.pickley_base = Path(pickley_base)
-        if mirror:
-            seed_mirror(mirror, "~/.config/pip/pip.conf", "global")
-            seed_mirror(mirror, "~/.config/uv/uv.toml", "pip")
+    def __init__(self, args):
+        self.mirror = _groomed_mirror_url(args.mirror)
+        self.package_manager = args.package_manager or default_package_manager()
+        if self.package_manager not in ("uv", "pip"):
+            Reporter.abort(f"Unsupported package manager '{self.package_manager}', state 'uv' or 'pip'")
+
+        self.pickley_base = Path(find_base(args.base)).absolute()
+        self.pickley_spec = args.pickley_spec or PICKLEY
+        if self.mirror:
+            seed_mirror(self.mirror, "~/.config/pip/pip.conf", "global")
+            seed_mirror(self.mirror, "~/.config/uv/uv.toml", "pip")
 
         else:
-            mirror, _ = globally_configured_pypi_mirror()
+            self.mirror, _ = globally_configured_pypi_mirror()
 
-        self.mirror = mirror
-        if mirror and mirror != DEFAULT_MIRROR:
-            os.environ["PIP_INDEX_URL"] = mirror
-            os.environ["UV_INDEX_URL"] = mirror
+        set_mirror_env_vars(self.mirror)
 
     def seed_pickley_config(self, desired_cfg):
         pickley_config = self.pickley_base / DOT_META / "config.json"
@@ -80,30 +83,65 @@ class Bootstrap:
                     json.dump(desired_cfg, fh, sort_keys=True, indent=2)
                     fh.write("\n")
 
-    def get_pickley_version(self, pickley_spec):
-        if not USE_UV:
-            # Legacy implementation, it can only use latest pickley version published
-            url = os.path.dirname(self.mirror)
-            url = f"{url}/pypi/{PICKLEY}/json"
-            data = http_get(url)
-            version = None
-            if data:
-                data = json.loads(data)
-                version = data["info"]["version"]
-                Reporter.trace(f"Latest {PICKLEY} version: {version}")
+    def bootstrap_pickley(self):
+        """Run `pickley bootstrap` in a temporary venv"""
+        with tempfile.TemporaryDirectory() as tmp_folder:
+            if not isinstance(tmp_folder, Path):
+                tmp_folder = Path(tmp_folder)
 
-            return version
+            venv_folder = tmp_folder / "bootstrap-venv"
+            if self.package_manager == "pip":
+                self.bootstrap_pickley_with_pip(venv_folder)
 
-        with tempfile.TemporaryDirectory() as tmp:
-            uv_path = find_uv(self.pickley_base)
-            run_program(uv_path, "-q", "venv", "-p", sys.executable, tmp, dryrun=False)
-            env = dict(os.environ)
-            env["VIRTUAL_ENV"] = tmp
-            run_program(uv_path, "-q", "pip", "install", pickley_spec, dryrun=False, env=env)
-            lines = run_program(uv_path, "pip", "show", PICKLEY, fatal=False, dryrun=False, env=env)
-            for line in lines.splitlines():
-                if line.startswith("Version:"):
-                    return line.split(":")[1].strip()
+            else:
+                self.bootstrap_pickley_with_uv(venv_folder)
+
+            run_program(venv_folder / f"bin/{PICKLEY}", "bootstrap", self.pickley_base, self.pickley_spec)
+
+    def bootstrap_pickley_with_uv(self, venv_folder: Path):
+        uv_path = find_uv(self.pickley_base)
+        run_program(uv_path, "venv", "-p", sys.executable, venv_folder)
+        env = dict(os.environ)
+        env["VIRTUAL_ENV"] = venv_folder
+        args = []
+        if self.pickley_spec.startswith("/"):
+            # Testing or troubleshooting: bootstrapping pickley from a local folder checkout
+            args.append("-e")
+
+        args.append(self.pickley_spec)
+        run_program(uv_path, "-q", "pip", "install", *args, env=env)
+
+    def bootstrap_pickley_with_pip(self, venv_folder: Path):
+        pip = venv_folder / "bin/pip"
+        needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", venv_folder, fatal=False)
+        if not needs_virtualenv and not DRYRUN:  # pragma: no cover, tricky to test, virtualenv fallback is on its way out
+            needs_virtualenv = not is_executable(pip)
+
+        if needs_virtualenv:
+            Reporter.inform("-mvenv failed, falling back to virtualenv")
+            pv = ".".join(str(x) for x in CURRENT_PYTHON_MM)
+            zipapp = venv_folder.parent / "virtualenv.pyz"
+            if not zipapp.exists():
+                url = f"https://bootstrap.pypa.io/virtualenv/{pv}/virtualenv.pyz"
+                download(zipapp, url)
+
+            run_program(sys.executable, zipapp, "-q", "-p", sys.executable, venv_folder)
+
+        run_program(pip, "-q", "install", "-U", *pip_auto_upgrade())
+        run_program(pip, "-q", "install", self.pickley_spec)
+
+    def get_latest_pickley_version(self):
+        # Legacy implementation, it can only use latest pickley version published
+        url = os.path.dirname(self.mirror)
+        url = f"{url}/pypi/{PICKLEY}/json"
+        data = http_get(url)
+        version = None
+        if data:
+            data = json.loads(data)
+            version = data["info"]["version"]
+            Reporter.trace(f"Latest {PICKLEY} version: {version}")
+
+        return version
 
 
 def default_package_manager(*parts):
@@ -122,15 +160,11 @@ def find_uv(pickley_base):
         if is_executable(_UV_PATH):
             v = run_program(_UV_PATH, "--version", dryrun=False, fatal=False)
             if v and len(v) < 64 and v.startswith("uv "):
-                # `<pickley-base>/uv` is available
-                Reporter.trace(f"Using {short(_UV_PATH)}")
                 return _UV_PATH
 
-        # For bootstrap, download uv in <pickley-base>/.pk/.uv/bin/uv
-        # It will later get properly wrapped (<pickley-base>/uv -> .pk/uv-<version>/bin/uv) by `pickley base bootstrap-own-wrapper`
-        uv_tmp_target = pickley_base / DOT_META / ".uv"
+        # For bootstrap, download uv in <pickley-base>/.pk/.cache/uv
+        uv_tmp_target = pickley_base / DOT_META / ".cache/uv"
         _UV_PATH = uv_tmp_target / "bin/uv"
-        Reporter.trace(f"Using {short(_UV_PATH)}")
         if not is_executable(_UV_PATH):
             download_uv(uv_tmp_target, dryrun=False)
 
@@ -385,9 +419,9 @@ def main(args=None):
     VERBOSITY = args.verbose
     DRYRUN = args.dryrun
     clean_env_vars()
-    bstrap = Bootstrap(find_base(args.base), _groomed_mirror_url(args.mirror))
+    bstrap = Bootstrap(args)
     message = f"Using {short(sys.executable)}, base: {short(bstrap.pickley_base)}"
-    if bstrap.mirror:
+    if bstrap.mirror and bstrap.mirror != DEFAULT_MIRROR:
         message += f", mirror: {bstrap.mirror}"
 
     Reporter.inform(message)
@@ -404,9 +438,17 @@ def main(args=None):
         if cfg and isinstance(cfg, dict):
             bstrap.seed_pickley_config(cfg)
 
-    package_manager = args.package_manager or default_package_manager()
-    pickley_spec = args.pickley_spec or PICKLEY
-    pickley_version = bstrap.get_pickley_version(pickley_spec)
+    if args.pickley_spec:
+        return bstrap.bootstrap_pickley()
+
+    pickley_version = bstrap.get_latest_pickley_version()
+    if not pickley_version:
+        Reporter.abort(f"Failed to determine latest {PICKLEY} version")
+
+    if pickley_version >= "4.4":
+        return bstrap.bootstrap_pickley()
+
+    # Legacy bootstrap, will be retired as soon as v4.4+ is released
     pickley_exe = bstrap.pickley_base / PICKLEY
     if not args.force and is_executable(pickley_exe):
         v = run_program(pickley_exe, "--version", dryrun=False, fatal=False)
@@ -418,42 +460,13 @@ def main(args=None):
             Reporter.inform(f"Replacing older {PICKLEY} v{v}")
 
     pickley_venv = bstrap.pickley_base / DOT_META / f"{PICKLEY}-{pickley_version}"
-    if package_manager == "pip":
-        needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", pickley_venv, fatal=False)
-        if not needs_virtualenv and not DRYRUN:  # pragma: no cover, tricky to test, virtualenv fallback is on its way out
-            needs_virtualenv = not is_executable(pickley_venv / "bin/pip")
-
-        if needs_virtualenv:
-            Reporter.inform("-mvenv failed, falling back to virtualenv")
-            pv = ".".join(str(x) for x in CURRENT_PYTHON_MM)
-            zipapp = bstrap.pickley_base / DOT_META / f".cache/virtualenv-{pv}.pyz"
-            ensure_folder(zipapp.parent)
-            if not zipapp.exists():
-                url = f"https://bootstrap.pypa.io/virtualenv/{pv}/virtualenv.pyz"
-                download(zipapp, url)
-
-            run_program(sys.executable, zipapp, "-q", "-p", sys.executable, pickley_venv)
-
-        run_program(pickley_venv / "bin/pip", "-q", "install", "-U", *pip_auto_upgrade())
-        run_program(pickley_venv / "bin/pip", "-q", "install", pickley_spec)
-
-    elif package_manager == "uv":
-        uv_path = find_uv(bstrap.pickley_base)
-        run_program(uv_path, "-q", "venv", "-p", sys.executable, pickley_venv)
-        env = dict(os.environ)
-        env["VIRTUAL_ENV"] = pickley_venv
-        run_program(uv_path, "-q", "pip", "install", pickley_spec, env=env)
+    if bstrap.package_manager == "pip":
+        bstrap.bootstrap_pickley_with_pip(pickley_venv)
 
     else:
-        Reporter.abort(f"Unsupported package manager '{package_manager}', state `uv` or `pip`")
+        bstrap.bootstrap_pickley_with_uv(pickley_venv)
 
-    if pickley_version >= "4.4":
-        args = ["bootstrap", pickley_spec]
-
-    else:
-        args = ["base", "bootstrap-own-wrapper"]
-
-    run_program(pickley_venv / f"bin/{PICKLEY}", *args)
+    run_program(pickley_venv / f"bin/{PICKLEY}", "base", "bootstrap-own-wrapper")
 
 
 if __name__ == "__main__":

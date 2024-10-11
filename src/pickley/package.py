@@ -13,6 +13,10 @@ if TYPE_CHECKING:
 
 
 class PythonVenv:
+    """Python virtual environment as seen by pickley, typically in <base>/.pk/<package>-<version>/"""
+
+    _uv_path = None  # Overridden in tests
+
     def __init__(self, folder: Path, python: PythonInstallation, package_manager: str):
         """
         Parameters
@@ -35,6 +39,18 @@ class PythonVenv:
     def __repr__(self):
         return runez.short(self.folder)
 
+    @classmethod
+    def find_uv(cls):
+        if cls._uv_path is None:
+            path = CFG.base / "uv"
+            if runez.is_executable(path):
+                cls._uv_path = path
+
+            else:
+                return bstrap.find_uv(CFG.base)
+
+        return cls._uv_path
+
     def create_venv(self):
         runez.abort_if(self.python.problem, f"Invalid python: {self.python}")
         if self.use_pip:
@@ -43,7 +59,7 @@ class PythonVenv:
         return self.create_venv_with_uv()
 
     def create_venv_with_uv(self):
-        uv_path = CFG.find_uv()
+        uv_path = PythonVenv.find_uv()
         seed = "--seed" if self.uv_seed else None
         r = runez.run(uv_path, "-q", "venv", seed, "-p", self.python.executable, self.folder, logger=self.logger)
         if self.groom_uv_venv:
@@ -105,7 +121,7 @@ class PythonVenv:
         return self.run_uv("pip", "show", package_name)
 
     def run_uv(self, *args, **kwargs):
-        uv_path = CFG.find_uv()
+        uv_path = PythonVenv.find_uv()
         env = dict(os.environ)
         env["VIRTUAL_ENV"] = self.folder
         kwargs.setdefault("logger", self.logger)
@@ -147,14 +163,17 @@ class VenvPackager:
 
     @staticmethod
     def delivery_method_for(pspec: PackageSpec) -> DeliveryMethod:
-        delivery = pspec.delivery_method_name
-        if delivery == "wrap":
+        return VenvPackager.delivery_method_by_name(pspec.delivery_method_name)
+
+    @staticmethod
+    def delivery_method_by_name(name: str) -> DeliveryMethod:
+        if name == "wrap":
             return DeliveryMethodWrap()
 
-        if delivery == "symlink":
+        if name == "symlink":
             return DeliveryMethodSymlink()
 
-        return runez.abort(f"Unknown delivery method '{runez.red(delivery)}'")
+        return runez.abort(f"Unknown delivery method '{runez.red(name)}'")
 
     @staticmethod
     def install(pspec: PackageSpec) -> TrackedManifest:

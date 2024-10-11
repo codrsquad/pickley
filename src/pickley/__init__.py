@@ -14,7 +14,7 @@ from runez.pyenv import PypiStd, PythonDepot, Version
 
 from pickley import bstrap
 
-__version__ = "4.3.3"
+__version__ = "4.4.0"
 LOG = logging.getLogger(__name__)
 DEFAULT_VERSION_CHECK_DELAY = 300
 K_CLI = {"delivery", "index", "python"}
@@ -30,6 +30,7 @@ K_LEAVES = {
     "version",
     "version_check_delay",
 }
+KNOWN_ENTRYPOINTS = {bstrap.PICKLEY: (bstrap.PICKLEY,), "tox": ("tox",), "uv": ("uv", "uvx")}
 PLATFORM = platform.system().lower()
 
 
@@ -194,15 +195,6 @@ class ResolvedPackage:
         self.pip_spec = [self.given_package_spec]
         self.problem = None
         self.resolution_reason = None
-        if self.given_package_spec == "uv":
-            # `uv` is a special case, it's used for bootstrap and does not need a venv
-            uv_version = program_version(CFG.find_uv())
-            if uv_version:
-                self._set_canonical(self.given_package_spec, uv_version)
-                self.entrypoints = ("uv", "uvx")
-                self.resolution_reason = "uv bootstrap"
-                return
-
         pip_spec = self.given_package_spec
         canonical_name, version = CFG.despecced(self.given_package_spec)
         if version:
@@ -210,7 +202,7 @@ class ResolvedPackage:
             self.resolution_reason = "pinned"
             if canonical_name == bstrap.PICKLEY:
                 self._set_canonical(canonical_name, version)
-                self.entrypoints = (bstrap.PICKLEY,)
+                self.entrypoints = KNOWN_ENTRYPOINTS[bstrap.PICKLEY]
                 return
 
         elif canonical_name == self.given_package_spec:
@@ -278,9 +270,10 @@ class ResolvedPackage:
 
     def _get_entry_points(self, venv, canonical_name, version, location):
         # Use `uv pip show` to get location on disk and version of package
-        if canonical_name in (bstrap.PICKLEY, "tox"):
+        eps = KNOWN_ENTRYPOINTS.get(canonical_name)
+        if eps:
             # Don't bother peeking at metadata for some ultra common cases
-            return (canonical_name,)
+            return eps
 
         ep_name = self._ep_name(canonical_name)
         if ep_name != canonical_name:
@@ -638,10 +631,6 @@ class PickleyConfig:
             self._pip_conf_index, self._pip_conf = bstrap.globally_configured_pypi_mirror()
 
         return self._pip_conf_index
-
-    def find_uv(self):
-        """Path to uv installation"""
-        return bstrap.find_uv(self.base)
 
     def set_base(self, base_path):
         """

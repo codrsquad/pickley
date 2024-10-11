@@ -12,18 +12,23 @@ from .conftest import dot_meta
 
 
 def test_base(cli, monkeypatch):
-    monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")
     folder = os.getcwd()
-    cli.expect_success("-n base", folder)
-    assert "__PYVENV_LAUNCHER__" not in os.environ
-    cli.expect_success("-n base audit", dot_meta("audit.log", parent=folder))
-    cli.expect_success("-n base cache", dot_meta(".cache", parent=folder))
-    cli.expect_success("-n base meta", dot_meta(parent=folder))
-    cli.expect_failure("-n base foo", "Unknown base folder reference")
-
-    cli.run("-n base bootstrap-own-wrapper")
+    cli.run("-vv base")
     assert cli.succeeded
-    assert "Would wrap pickley" in cli.logged
+    assert folder in cli.logged.stdout
+
+    cli.run("-vv base audit.log")
+    assert cli.succeeded
+    assert ".pk/audit.log" in cli.logged.stdout
+
+    cli.run("-n base foo")
+    assert cli.failed
+    assert "Can't find 'foo', try:" in cli.logged.stdout
+
+    monkeypatch.delenv("PICKLEY_ROOT")
+    assert find_base("/foo/.venv/bin/pickley") == CFG.resolved_path("/foo/.venv/root")
+    assert find_base(dot_meta("pickley-0.0.0/bin/pickley", parent="foo")) == CFG.resolved_path("foo")
+    assert find_base("foo/bar/baz") == CFG.resolved_path("foo/bar")
 
     monkeypatch.setenv("PICKLEY_ROOT", "temp-base")
     with pytest.raises(runez.system.AbortException):  # Env var points to a non-existing folder
@@ -31,11 +36,6 @@ def test_base(cli, monkeypatch):
 
     runez.ensure_folder("temp-base", logger=None)
     assert find_base() == CFG.resolved_path("temp-base")
-
-    monkeypatch.delenv("PICKLEY_ROOT")
-    assert find_base("/foo/.venv/bin/pickley") == CFG.resolved_path("/foo/.venv/root")
-    assert find_base(dot_meta("pickley-0.0.0/bin/pickley", parent="foo")) == CFG.resolved_path("foo")
-    assert find_base("foo/bar/baz") == CFG.resolved_path("foo/bar")
 
 
 def test_dev_mode(cli, monkeypatch):

@@ -267,11 +267,11 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
         os.environ["ARCHFLAGS"] = archflags
 
     CFG.set_cli(config, delivery, index, python, package_manager)
-    if ctx.invoked_subcommand != "package":
+    if ctx.invoked_subcommand not in ("bootstrap", "package"):
         CFG.set_base(find_base())
+        runez.Anchored.add(CFG.base)
 
-    runez.Anchored.add(CFG.base)
-    bstrap.set_mirror_env_vars(CFG.index)
+    bstrap.set_mirror_env_vars(index or CFG.index)
 
 
 @main.command()
@@ -318,46 +318,50 @@ def auto_upgrade(force, package):
     perform_upgrade(pspec, logger=LOG.debug)
 
 
+@main.command(hidden=True)
+@click.option("--force", "-f", is_flag=True, help="Force check, even if checked recently")
+@click.argument("base_folder", required=True)
+@click.argument("pickley_spec", required=False)
+def bootstrap(force, base_folder, pickley_spec):
+    """
+    Bootstrap pickley.
+
+    \b
+    This is an internal command, called by the bootstrap `bstrap.py` script from a temporary venv.
+    """
+    base_folder = CFG.resolved_path(base_folder)
+    runez.abort_if(not base_folder.exists(), f"Folder {runez.red(runez.short(base_folder))} does not exist")
+    CFG.set_base(base_folder)
+    runez.Anchored.add(CFG.base)
+    bstrap.set_mirror_env_vars(CFG.index)
+    if force:
+        CFG.version_check_delay = 0
+
+    if bstrap.USE_UV:
+        uv_spec = PackageSpec("uv", authoritative=True)
+        perform_install(uv_spec)
+
+    pspec = PackageSpec(pickley_spec or bstrap.PICKLEY, authoritative=True)
+    perform_install(pspec)
+
+
 @main.command()
 @click.argument("what", required=False)
 def base(what):
     """Show pickley base folder"""
-    if what == "bootstrap-own-wrapper":
-        # Internal: called by bootstrap script
-        pspec = PackageSpec(f"{bstrap.PICKLEY}=={CFG.pickley_version}", authoritative=True)
-        delivery = VenvPackager.delivery_method_for(pspec)
-        delivery.install(pspec)
-
-        if bstrap.USE_UV:
-            tmp_uv = CFG.meta / ".uv"
-            uv_spec = PackageSpec("uv", authoritative=True)
-            if runez.is_executable(tmp_uv / "bin/uv"):
-                # Use the .uv/bin/uv obtained during bootstrap
-                runez.move(tmp_uv, uv_spec.target_installation_folder, overwrite=True)
-                delivery = VenvPackager.delivery_method_for(pspec)
-                delivery.install(uv_spec)
-
-            elif not uv_spec.is_healthily_installed:
-                perform_install(uv_spec)
-
-            runez.delete(tmp_uv)
-
-        return
-
     path = CFG.base
     if what:
-        paths = {
-            "audit": CFG.meta / "audit.log",
-            "cache": CFG.cache,
-            "config": CFG.meta / "config.json",
-            "meta": CFG.meta,
-        }
-        paths["audit.log"] = paths["audit"]
-        paths["config.json"] = paths["config"]
+        paths = {"audit.log": CFG.meta / "audit.log", "config.json": CFG.meta / "config.json"}
         path = paths.get(what)
         if not path:
+            all_installed = set(CFG.scan_installed())
+            if what in all_installed:
+                pspec = PackageSpec(what)
+                path = pspec.target_installation_folder
+
+        if not path:
             options = [runez.green(s) for s in sorted(paths)]
-            runez.abort(f"Unknown base folder reference '{runez.red(what)}', try one of: {', '.join(options)}")
+            runez.abort(f"Can't find '{runez.red(what)}', try: {', '.join(options)}, or the name of an installed package")
 
     print(path)
 
