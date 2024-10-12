@@ -76,7 +76,7 @@ def test_facultative(cli):
     assert cli.succeeded
     assert "is already installed" in cli.logged
 
-    cli.run("-v uninstall virtualenv")
+    cli.run("-vv uninstall virtualenv")
     assert cli.succeeded
     assert "Deleted .pk/.manifest/virtualenv.manifest.json" in cli.logged
     assert "Uninstalled virtualenv" in cli.logged
@@ -166,7 +166,7 @@ def test_install_pypi(cli):
     runez.touch(".pk/mgit-1.0/bin/mgit", logger=None)
     time.sleep(0.1)
     runez.touch(".pk/mgit-1.1/bin/mgit", logger=None)
-    cli.run("install mgit<1.3.0")
+    cli.run("-vv install mgit<1.3.0")
     assert cli.succeeded
     assert "Installed mgit v1.2.1" in cli.logged
     assert "Deleted .pk/mgit-1.0" in cli.logged
@@ -175,7 +175,7 @@ def test_install_pypi(cli):
     assert os.path.exists(".pk/mgit-1.1")  # Still there (version N-1 kept for 7 days) .pk/config
 
     runez.write(".pk/config.json", '{"installation_retention": 0}', logger=None)
-    cli.run("install mgit<1.3.0")
+    cli.run("-vv install mgit<1.3.0")
     assert cli.succeeded
     assert "mgit v1.2.1 is already installed" in cli.logged
     assert "Deleted .pk/mgit-1.1" in cli.logged
@@ -186,7 +186,7 @@ def test_install_pypi(cli):
     assert str(manifest) == "mgit<1.3.0"
     assert mgit.auto_upgrade_spec == "mgit<1.3.0"
     assert manifest.entrypoints == ["mgit"]
-    assert manifest.install_info.args == "install mgit<1.3.0"
+    assert manifest.install_info.args == "-vv install mgit<1.3.0"
     assert manifest.settings.auto_upgrade_spec == "mgit<1.3.0"
     assert manifest.version == "1.2.1"
 
@@ -247,7 +247,7 @@ def test_install_pypi(cli):
 
     runez.write(".pk/config.json", '{"cache_retention": 0}', logger=None)
     runez.delete("mgit", logger=None)
-    cli.run("auto-heal")
+    cli.run("-vv auto-heal")
     assert cli.succeeded
     assert "Deleted .pk/.cache/" in cli.logged
     assert "Auto-healed mgit v1.3.0" in cli.logged

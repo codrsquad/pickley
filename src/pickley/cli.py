@@ -102,12 +102,8 @@ class SoftLock:
                 holder_args = self._locked_by()
 
             # We got the soft lock
-            if runez.DRYRUN:
-                print(f"Would acquire {runez.short(self.lock_path)}")
-
-            else:
-                runez.log.trace(f"Acquired {runez.short(self.lock_path)}")
-
+            msg = "Would acquire" if runez.DRYRUN else "Acquired"
+            runez.log.trace(f"{msg} {runez.short(self.lock_path)}")
             runez.write(self.lock_path, runez.joined(os.getpid(), runez.quoted(sys.argv[1:]), delimiter="\n"), logger=None)
 
         return self
@@ -115,12 +111,8 @@ class SoftLock:
     def __exit__(self, *_):
         """Release lock"""
         if self.lock_path:
-            if runez.DRYRUN:
-                print(f"Would release {runez.short(self.lock_path)}")
-
-            else:
-                runez.log.trace(f"Released {runez.short(self.lock_path)}")
-
+            msg = "Would release" if runez.DRYRUN else "Released"
+            runez.log.trace(f"{msg} {runez.short(self.lock_path)}")
             runez.delete(self.lock_path, logger=None)
 
 
@@ -330,7 +322,7 @@ def bootstrap(base_folder, pickley_spec):
     CFG.set_base(base_folder)
     runez.Anchored.add(CFG.base)
     setup_audit_log()
-    pspec = PackageSpec(pickley_spec or bstrap.PICKLEY, authoritative=True)
+    pspec = PackageSpec(pickley_spec or bstrap.PICKLEY)
     perform_install(pspec)
 
 
@@ -465,7 +457,7 @@ def install(force, packages):
         CFG.version_check_delay = 0
 
     setup_audit_log()
-    specs = CFG.package_specs(packages, canonical_only=False)
+    specs = CFG.package_specs(packages, authoritative=True)
     for pspec in specs:
         perform_install(pspec)
 
@@ -657,7 +649,7 @@ def uninstall(all, packages):
         for ep in pspec.manifest.entrypoints:
             runez.delete(CFG.base / ep)
 
-        pspec.delete_all_files()
+        pspec.uninstall_all_files()
         action = "Would uninstall" if runez.DRYRUN else "Uninstalled"
         LOG.info("%s %s", action, pspec)
 

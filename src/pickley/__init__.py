@@ -414,7 +414,7 @@ class PackageSpec:
             info.resolve(self.settings)
             if not info.problem:
                 payload = info.to_dict()
-                runez.save_json(payload, self.resolution_cache_path, fatal=None)
+                runez.save_json(payload, self.resolution_cache_path, fatal=None, logger=runez.log.trace)
 
             self._resolved_info = info
 
@@ -489,13 +489,14 @@ class PackageSpec:
 
         return True
 
-    def delete_all_files(self):
-        """Delete all files in DOT_META/ folder related to this package spec"""
-        runez.delete(self.manifest_path, fatal=False)
+    def uninstall_all_files(self):
+        """Uninstall all files related to this package spec"""
+        runez.delete(self.manifest_path, fatal=False, logger=runez.log.trace)
         for candidate, _ in self.installed_sibling_folders():
-            runez.delete(candidate, fatal=False)
+            runez.delete(candidate, fatal=False, logger=runez.log.trace)
 
     def installed_sibling_folders(self):
+        """Sibling installations of the form '<canonical_name>-<version>'."""
         regex = re.compile(r"^(.+)-(\d+[.\d+]+)$")
         for item in runez.ls_dir(CFG.meta):
             if item.is_dir():
@@ -504,9 +505,7 @@ class PackageSpec:
                     yield item, m.group(2)
 
     def groom_installation(self):
-        """
-        Groom installation folder, keeping only the latest version, and prev version for up to `keep_for` days.
-        """
+        """Groom installation folder, keeping only the latest version, and prev versions a day."""
         CFG.groom_cache()
         # Minimum time in days for how long to keep the previous latest version, not officially configured, but config used by tests
         age_cutoff = runez.to_int(CFG.get_value("installation_retention", package_name=self.canonical_name))
@@ -528,11 +527,11 @@ class PackageSpec:
         if candidates:
             candidates = sorted(candidates)
             for candidate in candidates[1:]:
-                runez.delete(candidate[1], fatal=False)
+                runez.delete(candidate[1], fatal=False, logger=runez.log.trace)
 
             if current_age and current_age >= age_cutoff:
                 # Clean previous installation (N-1) if it is older than `age_cutoff`
-                runez.delete(candidates[0][1], fatal=False)
+                runez.delete(candidates[0][1], fatal=False, logger=runez.log.trace)
 
     def save_manifest(self):
         manifest = TrackedManifest()
@@ -779,14 +778,14 @@ class PickleyConfig:
     def manifest_path(self, canonical_name):
         return self.manifests / f"{canonical_name}.manifest.json"
 
-    def package_specs(self, names: Sequence[str], canonical_only=True):
+    def package_specs(self, names: Sequence[str], authoritative=None):
         """
         Parameters
         ----------
         names : Sequence[str]
             Package names, if empty: return all installed
-        canonical_only : bool
-            If True, require that all stated `names` be canonical
+        authoritative : bool
+            If True, the given package specs are considered authoritative, will be used as package spec when upgrading
 
         Returns
         -------
@@ -794,12 +793,12 @@ class PickleyConfig:
             Corresponding PackageSpec-s
         """
         names = runez.flattened(names, split=" ")
-        if canonical_only:
+        if not authoritative:
             names = [CFG.required_canonical_name(n) for n in names]
 
         result = [self.resolved_bundle(name) for name in names]
         result = runez.flattened(result, unique=True)
-        return [PackageSpec(name, authoritative=not canonical_only) for name in result]
+        return [PackageSpec(name, authoritative=authoritative) for name in result]
 
     @staticmethod
     def wrapped_canonical_name(path):
@@ -921,7 +920,7 @@ class PickleyConfig:
             for candidate in runez.ls_dir(self.cache):
                 age = now - os.path.getmtime(candidate)
                 if age and age >= age_cutoff:
-                    runez.delete(candidate, fatal=False)
+                    runez.delete(candidate, fatal=False, logger=runez.log.trace)
 
     @staticmethod
     def despecced(text):
