@@ -452,6 +452,11 @@ class PackageSpec:
         manifest = self.manifest
         return manifest and manifest.version
 
+    @runez.cached_property
+    def is_facultative(self) -> bool:
+        """Is this package optional? (ie: OK if present but not installed by pickley)"""
+        return runez.to_boolean(CFG.get_value("facultative", package_name=self.canonical_name))
+
     @property
     def is_healthily_installed(self) -> bool:
         """Double-check that current venv is still usable"""
@@ -467,32 +472,22 @@ class PackageSpec:
             exe_path = CFG.meta / f"{self.canonical_name}-{manifest.version}/bin" / exe_path
             return bool(CFG.program_version(exe_path))
 
-    def skip_reason(self) -> Optional[str]:
-        """Reason for skipping installation, when applicable"""
-        if CFG.version_check_delay:
-            # When --force is used `version_check_delay` is zero (and there is no skip reason possible)
-            is_facultative = CFG.get_value("facultative", package_name=self.canonical_name)
-            if is_facultative and not self.is_clear_for_installation():
-                return "not installed by pickley"
+    @staticmethod
+    def _mentions_pickley(path: Path):
+        for line in runez.readlines(path, first=7):
+            if bstrap.PICKLEY in line:
+                return True
 
     def is_clear_for_installation(self) -> bool:
         """True if we can proceed with installation without needing to uninstall anything"""
-        if self.currently_installed_version:
-            return True
+        if self.resolved_info.entrypoints:
+            for ep in self.resolved_info.entrypoints:
+                path = CFG.base / ep
+                if path.exists() and os.path.getsize(path) > 0 and (path.is_symlink() or runez.is_executable(path)):
+                    if not CFG.symlinked_canonical(path) and not self._mentions_pickley(path):
+                        return False
 
-        target = CFG.base / self.canonical_name
-        if not target or not os.path.exists(target):
-            return True
-
-        if CFG.symlinked_canonical(target):
-            return True
-
-        if os.path.isfile(target) and os.path.getsize(target) == 0 or not runez.is_executable(target):
-            return True  # Empty file or not executable
-
-        for line in runez.readlines(target, first=5):
-            if bstrap.PICKLEY in line:
-                return True  # Pickley wrapper
+        return True
 
     def delete_all_files(self):
         """Delete all files in DOT_META/ folder related to this package spec"""

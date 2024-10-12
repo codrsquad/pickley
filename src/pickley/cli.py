@@ -138,12 +138,15 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
     runez.abort_if(pspec.problem, f"Can't {verb} {pspec}: {runez.red(pspec.problem)}")
     with SoftLock(pspec.canonical_name):
         started = time.time()
-        skip_reason = pspec.skip_reason()
-        if skip_reason:
-            LOG.info("Skipping installation of %s: %s", pspec, runez.bold(skip_reason))
-            return
+        if CFG.version_check_delay and not pspec.is_clear_for_installation():
+            if pspec.is_facultative:
+                LOG.info("Skipping facultative installation '%s', not installed by pickley", pspec)
+                return
+
+            runez.abort(f"{runez.red(pspec.canonical_name)} is not installed by pickley, please uninstall it first")
 
         if CFG.version_check_delay and pspec.is_up_to_date:
+            # When --force is used `version_check_delay` is zero (we force-install)
             if not quiet:
                 LOG.info("%s v%s is already installed", pspec.canonical_name, runez.bold(pspec.currently_installed_version))
 
@@ -367,18 +370,14 @@ def check(force, packages):
         sys.exit(0)
 
     for pspec in packages:
-        skip_reason = pspec.skip_reason()
-        if skip_reason:
-            print(f"{pspec}: {runez.bold('skipped')}, {runez.dim(skip_reason)}]")
-            continue
-
         dv = pspec.target_version
         if pspec.problem:
             msg = pspec.problem
             code = 1
 
         elif not pspec.currently_installed_version:
-            msg = f"{runez.bold(dv)} not installed"
+            msg = runez.dim(f"(v{dv} available)")
+            msg = f"present, but not installed by pickley {msg}"
             code = 1
 
         elif pspec.is_up_to_date:

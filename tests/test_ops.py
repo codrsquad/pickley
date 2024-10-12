@@ -8,8 +8,6 @@ import runez
 from pickley import CFG, PackageSpec
 from pickley.cli import clean_compiled_artifacts, find_base, SoftLock, SoftLockException
 
-from .conftest import dot_meta
-
 
 def test_base(cli, monkeypatch):
     folder = os.getcwd()
@@ -27,7 +25,7 @@ def test_base(cli, monkeypatch):
 
     monkeypatch.delenv("PICKLEY_ROOT")
     assert find_base("/foo/.venv/bin/pickley") == CFG.resolved_path("/foo/.venv/root")
-    assert find_base(dot_meta("pickley-0.0.0/bin/pickley", parent="foo")) == CFG.resolved_path("foo")
+    assert find_base(CFG.base / "foo/.pk/pickley-0.0.0/bin/pickley") == CFG.resolved_path("foo")
     assert find_base("foo/bar/baz") == CFG.resolved_path("foo/bar")
 
     monkeypatch.setenv("PICKLEY_ROOT", "temp-base")
@@ -58,7 +56,9 @@ def test_edge_cases(temp_cfg, logged):
 
 
 def test_facultative(cli):
-    runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, dot_meta("config.json"), logger=None)
+    CFG.set_base(".")
+    config_path = CFG.meta / "config.json"
+    runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, config_path, logger=None)
 
     cli.run("-n check virtualenv>10000")
     assert cli.failed
@@ -116,11 +116,17 @@ def test_facultative(cli):
     runez.make_executable("virtualenv", logger=None)
     cli.run("-n install virtualenv")
     assert cli.succeeded
-    assert "Skipping installation of virtualenv: not installed by pickley" in cli.logged
+    assert "Skipping facultative installation 'virtualenv', not installed by pickley" in cli.logged
 
     cli.run("-n check virtualenv")
-    assert cli.succeeded
-    assert "skipped, not installed by pickley" in cli.logged
+    assert cli.failed
+    assert cli.logged.stdout.contents().strip() == "virtualenv: present, but not installed by pickley (v20.26.6 available)"
+
+    # Fail when not facultative
+    runez.delete(config_path, logger=None)
+    cli.run("-n install virtualenv")
+    assert cli.failed
+    assert "virtualenv is not installed by pickley, please uninstall it first" in cli.logged
 
 
 def test_install_pypi(cli):
@@ -265,7 +271,7 @@ def test_invalid(cli):
     cli.run("--color install six")
     assert cli.failed
     assert "not a CLI" in cli.logged
-    assert not os.path.exists(dot_meta("six.manifest.json"))
+    assert not (CFG.meta / "six.manifest.json").exists()
 
     cli.run("install mgit+foo")
     assert cli.failed
@@ -273,7 +279,7 @@ def test_invalid(cli):
 
 
 def test_lock(temp_cfg):
-    lock_path = dot_meta("foo.lock")
+    lock_path = CFG.meta / "foo.lock"
     with SoftLock("foo", give_up=600) as lock:
         assert str(lock) == "lock foo"
         assert os.path.exists(lock_path)
