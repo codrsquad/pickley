@@ -208,7 +208,7 @@ def test_install_pypi(cli):
     runez.delete("mgit", logger=None)
     cli.run("check")
     assert cli.succeeded
-    assert cli.logged.stdout.contents().strip() == "mgit: v1.2.1 (currently unhealthy) (tracks: mgit<1.3.0)"
+    assert cli.logged.stdout.contents().strip() == "mgit: v1.2.1 available (currently unhealthy) (tracks: mgit<1.3.0)"
 
     cli.run("-vv upgrade mgit")
     assert cli.succeeded

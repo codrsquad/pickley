@@ -392,7 +392,7 @@ def check(force, packages):
             if not pspec.is_healthily_installed:
                 msg += runez.red(" unhealthy")
 
-            msg = f"v{runez.bold(dv)} ({msg})"
+            msg = f"v{runez.bold(dv)} available ({msg})"
 
         if pspec.canonical_name != pspec.auto_upgrade_spec:
             msg += runez.dim(f" (tracks: {pspec.auto_upgrade_spec})")

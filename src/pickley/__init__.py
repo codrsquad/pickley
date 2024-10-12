@@ -464,7 +464,7 @@ class PackageSpec:
 
             # uv does not need a typical venv with bin/python
             exe_path = "uv" if self.canonical_name == "uv" else "python"
-            exe_path = self.target_installation_folder / "bin" / exe_path
+            exe_path = CFG.meta / f"{self.canonical_name}-{manifest.version}/bin" / exe_path
             return bool(CFG.program_version(exe_path))
 
     def skip_reason(self) -> Optional[str]:
