@@ -89,7 +89,7 @@ def test_bootstrap_script(cli, monkeypatch):
         monkeypatch.setenv("UV_CONFIG_FILE", uv_config)
         uv_path = bstrap.find_uv(CFG.base)
         r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
-        assert r.succeeded
+        assert r.succeeded, f"uv venv failed: {r.full_output}"
 
         # Verify that a bogus uv config file fails the run...
         runez.write(uv_config, "[pip]\nindex-url = http://foo", logger=None)
