@@ -120,7 +120,7 @@ def test_facultative(cli):
 
     cli.run("-n check virtualenv")
     assert cli.failed
-    assert cli.logged.stdout.contents().strip() == "virtualenv: present, but not installed by pickley (v20.26.6 available)"
+    cli.match("virtualenv: present, but not installed by pickley (v... available)")
 
     # Fail when not facultative
     runez.delete(config_path, logger=None)

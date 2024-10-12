@@ -533,7 +533,7 @@ def cmd_list(border, format, verbose):
             Python=manifest and manifest.python_executable,
             PM=manifest and manifest.package_manager,
             Delivery=manifest and manifest.delivery,
-            Track=manifest and manifest.settings.auto_upgrade_spec,
+            Track=manifest and manifest.settings and manifest.settings.auto_upgrade_spec,
         )
 
     print(report.represented(format))
