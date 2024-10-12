@@ -87,6 +87,7 @@ def test_good_config(cli):
     pickley = PackageSpec("pickley==1.0.0")
     assert mgit < pickley  # Ordering based on package name, then version
     assert str(mgit) == "mgit==1.0.0"
+    assert str(pickley.resolved_info) == "pickley==1.0.0"
 
 
 def test_despecced():

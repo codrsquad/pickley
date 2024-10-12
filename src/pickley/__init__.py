@@ -14,7 +14,6 @@ from runez.pyenv import PypiStd, PythonDepot, Version
 
 from pickley import bstrap
 
-__version__ = "4.4.0"
 LOG = logging.getLogger(__name__)
 DEFAULT_VERSION_CHECK_DELAY = 300
 K_CLI = {"delivery", "index", "python"}
@@ -448,12 +447,12 @@ class PackageSpec:
 
         return self._manifest
 
-    @runez.cached_property
+    @property
     def currently_installed_version(self):
         manifest = self.manifest
         return manifest and manifest.version
 
-    @runez.cached_property
+    @property
     def is_healthily_installed(self) -> bool:
         """Double-check that current venv is still usable"""
         manifest = self.manifest
@@ -644,7 +643,7 @@ class PickleyConfig:
 
     @runez.cached_property
     def pickley_version(self):
-        return runez.get_version(__name__) or __version__
+        return runez.get_version(__name__)
 
     @property
     def default_index(self):

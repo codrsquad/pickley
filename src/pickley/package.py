@@ -218,6 +218,7 @@ class VenvPackager:
         python = pspec.settings.python or find_symbolic_invoker()
         venv_settings = VenvSettings(pspec.canonical_name, python, "pip")
         venv = PythonVenv(dist_folder, venv_settings)
+        runez.log.trace(f"Packaging '{pspec}' into '{dist_folder}'")
         venv.create_venv()
         for requirement_file in requirements.requirement_files:
             venv.pip_install("-r", requirement_file)

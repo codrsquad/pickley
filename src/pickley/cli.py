@@ -382,7 +382,7 @@ def check(force, packages):
             code = 1
 
         elif pspec.is_up_to_date:
-            msg = f"v{dv} up-to-date"
+            msg = f"v{runez.bold(dv)} up-to-date"
 
         else:
             msg = "currently"
@@ -394,7 +394,10 @@ def check(force, packages):
 
             msg = f"v{runez.bold(dv)} ({msg})"
 
-        print(f"{pspec.auto_upgrade_spec}: {msg}")
+        if pspec.canonical_name != pspec.auto_upgrade_spec:
+            msg += runez.dim(f" (tracks: {pspec.auto_upgrade_spec})")
+
+        print(f"{runez.bold(pspec.canonical_name)}: {msg}")
 
     sys.exit(code)
 
@@ -406,9 +409,10 @@ def config():
 
 
 @main.command()
+@click.option("--verbose", "-v", is_flag=True, help="Show more information")
 @click.argument("packages", nargs=-1, required=True)
-def describe(packages):
-    """Show current configuration"""
+def describe(verbose, packages):
+    """Describe a package spec (version and entrypoints)"""
     problems = 0
     for package_spec in packages:
         runez.abort_if(not package_spec, runez.red("Can't describe empty package spec"))
@@ -417,19 +421,16 @@ def describe(packages):
         info = ResolvedPackage()
         info.logger = LOG.debug
         info.resolve(settings)
-        text = f"{runez.bold(info)}"
-        if info.canonical_name and info.canonical_name != info.given_package_spec:
-            text += f": {runez.bold(info.canonical_name)}"
-
+        text = f"{runez.bold(info.canonical_name)}:"
         if info.version:
             text += f" version {runez.bold(info.version)}"
+
+        if verbose:
+            text += runez.dim(f" ({info.resolution_reason})")
 
         print(text)
         if info.pip_spec:
             text = runez.bold(runez.joined(info.pip_spec))
-            if info.resolution_reason:
-                text += runez.dim(f" ({info.resolution_reason})")
-
             print(f"  pip spec: {text}")
 
         if info.problem:
@@ -532,15 +533,16 @@ def cmd_list(border, format, verbose):
         print("No packages installed")
         sys.exit(0)
 
-    report = TabularReport("Package,Version,PM,Python", additional="Delivery", border=border, verbose=verbose)
+    report = TabularReport("Package,Version,PM,Python", additional="Delivery,Track", border=border, verbose=verbose)
     for pspec in packages:
         manifest = pspec.manifest
         report.add_row(
-            Package=runez.bold(pspec.auto_upgrade_spec),
+            Package=runez.bold(pspec.canonical_name),
             Version=manifest and manifest.version,
             Python=manifest and manifest.python_executable,
             PM=manifest and manifest.package_manager,
             Delivery=manifest and manifest.delivery,
+            Track=manifest and manifest.settings.auto_upgrade_spec,
         )
 
     print(report.represented(format))
