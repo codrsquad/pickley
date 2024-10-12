@@ -47,6 +47,7 @@ def test_bootstrap_script(cli, monkeypatch):
     assert cli.failed
     assert "Unsetting env var __PYVENV_LAUNCHER__" in cli.logged.stdout
     assert "Make sure '~/.local/bin' exists and is writeable" in cli.logged
+    monkeypatch.delenv("__PYVENV_LAUNCHER__")
 
     runez.ensure_folder(".local/bin", logger=None)
     cli.run("-n", cli.project_folder)
