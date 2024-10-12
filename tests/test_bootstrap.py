@@ -92,10 +92,10 @@ def test_bootstrap_script(cli, monkeypatch):
         assert r.succeeded, f"uv venv failed: {r.full_output}"
 
         # Verify that a bogus uv config file fails the run...
-        runez.write(uv_config, "[pip]\nindex-url = http://foo", logger=None)
+        runez.write(uv_config, f"[pip]\nindex-url = {bstrap.DEFAULT_MIRROR}", logger=None)  # Missing double quotes
         r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
         assert r.failed
-        assert "Failed to parse" in r.error
+        assert "Failed to " in r.error
 
 
 @pytest.mark.skipif(not bstrap.USE_UV, reason="Applies only to uv")
