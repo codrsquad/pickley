@@ -41,6 +41,11 @@ class _Reporter:
             print(message)
 
     @staticmethod
+    def debug(message):
+        if VERBOSITY > 0:
+            print(message)
+
+    @staticmethod
     def inform(message):
         print(message)
 
@@ -190,6 +195,9 @@ def download_uv(target, version=None, dryrun=None):
     env["INSTALLER_PRINT_QUIET"] = "1"
     env.setdefault("HOME", str(target))  # uv's installer unfortunately assumes HOME is always defined (it is not in tox tests)
     run_program("/bin/sh", script, env=env, dryrun=dryrun)
+    if script.exists():
+        Reporter.trace(f"Deleting {short(script)}")
+        script.unlink()
 
 
 def http_get(url, timeout=10):
@@ -336,7 +344,7 @@ def run_program(program, *args, **kwargs):
     if not hdry(f"Would run: {description}", dryrun=kwargs.pop("dryrun", None)):
         if fatal:
             stdout = stderr = None
-            Reporter.inform(f"Running: {description}")
+            Reporter.debug(f"Running: {description}")
 
         else:
             stdout = stderr = subprocess.PIPE

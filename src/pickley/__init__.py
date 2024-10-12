@@ -51,6 +51,11 @@ class Reporter:
         Reporter._captured_trace(message)
 
     @staticmethod
+    def debug(message):
+        """Allows `bstrap` module to use LOG.info()"""
+        LOG.debug(message)
+
+    @staticmethod
     def inform(message):
         """Allows `bstrap` module to use LOG.info()"""
         LOG.info(message)
@@ -64,9 +69,11 @@ class Reporter:
             Reporter._original_tracer = tracer.trace
             tracer.trace = Reporter._captured_trace
 
-        elif CFG.use_audit_log:
-            # Tracing is not active because user did not use `-vv`, we still want to capture all trace messages in 'audit.log'
-            runez.log.tracer = Reporter
+        if CFG.use_audit_log:
+            if not runez.log.tracer:
+                # Tracing is not active on stderr because user did not use `-vv`, we still want to capture all messages in 'audit.log'
+                runez.log.tracer = Reporter
+
             if not runez.log.file_handler:
                 # 'audit.log' is not active yet, but can potentially be activated later (commands `auto-upgrade`, etc.)
                 Reporter._pending_records = []
@@ -339,6 +346,7 @@ class PackageSpec:
             If True-ish, the `given_package_spec` will be used as package spec when upgrading (otherwise prev manifest is used)
             If a ResolvedPackage instance, it will be used as the authoritative resolution
         """
+        given_package_spec = CFG.absolute_package_spec(given_package_spec)
         self._canonical_name = PypiStd.std_package_name(given_package_spec)
         if authoritative or self._canonical_name is None:
             self.auto_upgrade_spec = given_package_spec
@@ -584,6 +592,19 @@ class PickleyConfig:
         return "<not-configured>" if self.base is None else runez.short(self.base)
 
     @staticmethod
+    def absolute_package_spec(given_package_spec: str) -> str:
+        if given_package_spec.startswith("http"):
+            given_package_spec = f"git+{given_package_spec}"
+
+        if re.match(r"^(file:|https?:|git[@+])", given_package_spec):
+            return given_package_spec
+
+        if given_package_spec.startswith(".") or "/" in given_package_spec:
+            return str(CFG.resolved_path(given_package_spec))
+
+        return given_package_spec
+
+    @staticmethod
     def parsed_version(text):
         """Parse --version from text, in reverse order to avoid being fooled by warnings..."""
         if text:
@@ -671,7 +692,7 @@ class PickleyConfig:
                 info.set_attributes("uv", "uv", CFG.configured_entrypoints("uv"), "uv", None, "uv bootstrap", uv_version)
                 uv_spec = PackageSpec("uv", authoritative=info)
                 manifest = VenvPackager.install(uv_spec)
-                runez.log.trace(f"Bootstrapped uv v{manifest.version}")
+                LOG.debug("Bootstrapped uv v%s", manifest.version)
 
         return self._uv_path
 
@@ -1045,24 +1066,11 @@ class TrackedSettings:
         uv_seed = self.uv_seed or CFG.get_value("uv_seed", package_name=canonical_name)
         return VenvSettings(canonical_name, self.python, self.package_manager, uv_seed=uv_seed)
 
-    @staticmethod
-    def _absolute_package_spec(given_package_spec: str) -> str:
-        if given_package_spec.startswith("http"):
-            given_package_spec = f"git+{given_package_spec}"
-
-        if re.match(r"^(file:|https?:|git[@+])", given_package_spec):
-            return given_package_spec
-
-        if given_package_spec.startswith(".") or "/" in given_package_spec:
-            return str(CFG.resolved_path(given_package_spec))
-
-        return given_package_spec
-
     @classmethod
     def from_cli(cls, auto_upgrade_spec: str):
         settings = cls()
         canonical_name = PypiStd.std_package_name(auto_upgrade_spec)
-        settings.auto_upgrade_spec = canonical_name or cls._absolute_package_spec(auto_upgrade_spec)
+        settings.auto_upgrade_spec = canonical_name or auto_upgrade_spec
         settings.delivery = CFG.cli_config.get("delivery")
         settings.package_manager = CFG.cli_config.get("package_manager")
         settings.python = CFG.cli_config.get("python")

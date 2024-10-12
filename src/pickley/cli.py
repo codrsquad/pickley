@@ -244,7 +244,7 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
         console_stream=sys.stderr,
         file_level=logging.DEBUG,
         locations=None,
-        trace="TRACE_DEBUG+:: ",
+        trace="TRACE_DEBUG+: ",
     )
     # Don't pollute audit.log with dryrun or non-essential commands
     essential = ("auto-heal", "auto-upgrade", "bootstrap", "install", "run", "upgrade", "uninstall")
@@ -326,6 +326,7 @@ def bootstrap(base_folder, pickley_spec):
 
     CFG.set_base(base_folder)
     runez.Anchored.add(CFG.base)
+    setup_audit_log()
     pspec = PackageSpec(pickley_spec or bstrap.PICKLEY, authoritative=True)
     perform_install(pspec)
 
@@ -410,6 +411,8 @@ def describe(packages):
     """Show current configuration"""
     problems = 0
     for package_spec in packages:
+        runez.abort_if(not package_spec, runez.red("Can't describe empty package spec"))
+        package_spec = CFG.absolute_package_spec(package_spec)
         settings = TrackedSettings.from_cli(package_spec)
         info = ResolvedPackage()
         info.logger = LOG.debug
