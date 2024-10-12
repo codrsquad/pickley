@@ -35,7 +35,21 @@ It can work out of the box, **without any configuration**:
 - All pypi packages with ``console_scripts`` entry point(s) can be immediately installed
 
 - Latest non-prerelease pypi version will be installed by default
-  (can be pinned via explicit pin ``pickley install foo==1.0``, or via configuration)
+
+- Any specification acceptable to ``pip install`` can be stated, for example::
+
+    pickley install tox  # track latest version
+
+    pickley install 'tox>0a0'  # track pre-releases as well
+
+    pickley install 'tox<4'  # track latest version that is strictly less than v4
+
+    pickley install tox==3.24.3  # pin to a specific version
+
+    pickley install tox~=3.28  # track version range
+
+    pickley install git+https://...@some-branch  # track a git branch
+
 
 With **some configuration**, the following becomes possible:
 
@@ -64,21 +78,29 @@ Once you have ``pickley``, you can get other python CLIs and use them as standal
     $ pickley base
     ~/.local/bin
 
-    $ pickley install tox hatch
-    Installed tox v4.5.2 in 6 seconds 501 ms
-    Installed hatch v1.7.0 in 15 seconds
+    $ pickley install install tox 'hatch<2'
+    Installed tox v4.21.2 in 1 second 4 ms
+    Installed hatch v1.12.0 in 1 second 791 ms
 
     $ which tox
     ~/.local/bin/tox
 
     $ tox --version
-    tox version 3.21.4
+    4.21.2 from .../.pk/tox-4.21.2/...
 
     $ pickley list
-    | Package    | Version |
-    -------------|----------
-    | tox        | 4.5.2   |
-    | hatch      | 1.7.0   |
+    | Package | Version | PM | Python           |
+    ----------|---------|----|-------------------
+    | hatch   | 1.12.0  | uv | /usr/bin/python3 |
+    | tox     | 4.21.2  | uv | /usr/bin/python3 |
+    | uv      | 0.4.20  | uv | /usr/bin/python3 |
+
+    $ pickley list -v
+    | Package | Version | PM | Python           | Delivery | Track   |
+    ----------|---------|----|------------------|----------|----------
+    | hatch   | 1.12.0  | uv | /usr/bin/python3 | wrap     | hatch<2 |
+    | tox     | 4.21.2  | uv | /usr/bin/python3 | wrap     | tox     |
+    | uv      | 0.4.20  | uv | /usr/bin/python3 | wrap     | uv      |
 
 
 Configuration
@@ -99,15 +121,30 @@ Features
 
     - latest non pre-release version from pypi is used
 
-- Commands:
+Commands
+========
 
-    - ``check``: exit with code 0 if specified package(s) are up-to-date
+    - ``install``: Install specified package(s)
 
-    - ``install``: install specified package(s)
+    - ``uninstall``: Uninstall specified package(s)
 
-    - ``list``: list installed packages via **pickley**, in folder where it resides (not globally)
+    - ``upgrade``: Upgrade specified package(s)
 
-    - ``package``: can be used to simplify packaging of python projects for internal use
+    - ``check``: Exit with code 0 if specified package(s) are up-to-date
+
+    - ``list``: List installed packages via **pickley**, in folder where it resides (not globally)
+
+    - ``base``: Print the base folder where **pickley** resides
+
+    - ``config``: Show current configuration
+
+    - ``describe``: Describe a package spec (version and entrypoints)
+
+    - ``diagnostics``: Show diagnostics info
+
+    - ``run``: Run a python CLI (auto-install it if needed)
+
+    - ``bootstrap``: Install pickley itself in target base folder
 
 
 Installation
@@ -126,6 +163,11 @@ Handy one-liner using python (see ``--help``, the script accepts a few options):
     $ curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/main/src/pickley/bstrap.py | /usr/bin/python3 - --help
 
 
+If you happen to have uv_ already installed (anywhere), you can run::
+
+    $ uvx pickley bootstrap ~/.local/bin
+
+
 Install from source
 -------------------
 
@@ -133,8 +175,8 @@ Run (you will need tox_)::
 
     git clone https://github.com/codrsquad/pickley.git
     cd pickley
-    python3 -mvenv .venv
-    .venv/bin/pip install -r requirements.txt -r tests/requirements.txt -e .
+    uv venv
+    uv pip install -r requirements.txt -r tests/requirements.txt -e .
     .venv/bin/pickley --help
 
 
@@ -147,3 +189,5 @@ Run (you will need tox_)::
 .. _config: https://github.com/codrsquad/pickley/wiki/Config
 
 .. _similar to pipx: https://github.com/codrsquad/pickley/wiki/Pickley-vs-pipx
+
+.. _uv: https://pypi.org/project/uv/
