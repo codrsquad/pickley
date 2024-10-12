@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import Optional, Sequence, TYPE_CHECKING
 
 import runez
-from runez.pyenv import PythonInstallation, Version
+from runez.pyenv import Version
 
-from pickley import bstrap, CFG, PackageSpec, TrackedManifest
+from pickley import bstrap, CFG, PackageSpec, TrackedManifest, VenvSettings
 from pickley.delivery import DeliveryMethod, DeliveryMethodSymlink, DeliveryMethodWrap
 
 if TYPE_CHECKING:
@@ -15,61 +15,48 @@ if TYPE_CHECKING:
 class PythonVenv:
     """Python virtual environment as seen by pickley, typically in <base>/.pk/<package>-<version>/"""
 
-    _uv_path = None  # Overridden in tests
-
-    def __init__(self, folder: Path, python: PythonInstallation, package_manager: str):
+    def __init__(self, folder: Path, settings: VenvSettings, groom_uv_venv=True):
         """
         Parameters
         ----------
         folder : Path
             Folder where to create the venv
-        python : PythonInstallation
-            Python installation to use
-        package_manager : str
-            Package manager to use ("pip" or "uv")
+        settings : VenvSettings
+            Settings to use for this venv
+        groom_uv_venv : bool
+            If true, ensure the python symlink is as "canonical" as possible
         """
         self.folder = folder
-        self.python = python
-        self.package_manager = package_manager
-        self.use_pip = package_manager == "pip"
-        self.groom_uv_venv = True
-        self.uv_seed = None  # Long term: CLIs should not assume setuptools is always there... (same problem with py3.12)
+        self.settings = settings
+        self.groom_uv_venv = groom_uv_venv
         self.logger = runez.UNSET
 
     def __repr__(self):
         return runez.short(self.folder)
 
-    @classmethod
-    def find_uv(cls):
-        if cls._uv_path is None:
-            path = CFG.base / "uv"
-            if runez.is_executable(path):
-                cls._uv_path = path
-
-            else:
-                return bstrap.find_uv(CFG.base)
-
-        return cls._uv_path
+    @property
+    def use_pip(self):
+        return self.settings.package_manager == "pip"
 
     def create_venv(self):
-        runez.abort_if(self.python.problem, f"Invalid python: {self.python}")
+        runez.abort_if(self.settings.python_installation.problem, f"Invalid python: {self.settings.python_installation}")
         if self.use_pip:
             return self.create_venv_with_pip()
 
         return self.create_venv_with_uv()
 
     def create_venv_with_uv(self):
-        uv_path = PythonVenv.find_uv()
-        seed = "--seed" if self.uv_seed else None
-        r = runez.run(uv_path, "-q", "venv", seed, "-p", self.python.executable, self.folder, logger=self.logger)
+        uv_path = CFG.guarantee_uv_installed()
+        seed = "--seed" if self.settings.uv_seed else None
+        r = runez.run(uv_path, "-q", "venv", seed, "-p", self.settings.python_executable, self.folder, logger=self.logger)
         if self.groom_uv_venv:
             venv_python = self.folder / "bin/python"
             if venv_python.is_symlink():
                 # `uv` fully expands symlinks, use the simplest location instead
                 # This would replace for example `.../python-3.10.1/bin/python3.10` with for example `/usr/local/bin/python-3.10`
                 actual_path = venv_python.resolve()
-                if self.python.executable != actual_path:
-                    runez.symlink(self.python.executable, venv_python, overwrite=True, logger=self.logger)
+                if self.settings.python_executable != actual_path:
+                    runez.symlink(self.settings.python_executable, venv_python, overwrite=True, logger=self.logger)
 
             # Provide a convenience `pip` wrapper, this will allow to conveniently inspect an installed venv with for example:
             # .../.pk/package-M.m.p/bin/pip freeze
@@ -82,7 +69,7 @@ class PythonVenv:
 
     def create_venv_with_pip(self):
         runez.ensure_folder(self.folder, clean=True, logger=self.logger)
-        runez.run(self.python.executable, "-mvenv", self.folder, logger=self.logger)
+        runez.run(self.settings.python_executable, "-mvenv", self.folder, logger=self.logger)
         self._run_pip("install", "-U", *bstrap.pip_auto_upgrade())
 
     def pip_install(self, *args, fatal=True, no_deps=False, quiet=None):
@@ -121,7 +108,7 @@ class PythonVenv:
         return self.run_uv("pip", "show", package_name)
 
     def run_uv(self, *args, **kwargs):
-        uv_path = PythonVenv.find_uv()
+        uv_path = CFG.guarantee_uv_installed()
         env = dict(os.environ)
         env["VIRTUAL_ENV"] = self.folder
         kwargs.setdefault("logger", self.logger)
@@ -189,10 +176,15 @@ class VenvPackager:
             Installed package manifest
         """
         venv_settings = pspec.settings.venv_settings()
-        venv = PythonVenv(pspec.target_installation_folder, venv_settings.python_installation, venv_settings.package_manager)
+        venv = PythonVenv(pspec.target_installation_folder, venv_settings)
         if pspec.canonical_name == "uv":
             # Special case for uv: it does not need a venv
-            bstrap.download_uv(venv.folder, version=pspec.target_version, dryrun=runez.DRYRUN)
+            if bstrap._UV_PATH and runez.is_executable(bstrap._UV_PATH):
+                # Bootstrap already grabbed a uv binary in `.cache/uv/bin/uv`, no need to download it again
+                runez.copy(bstrap._UV_PATH.parent.parent, venv.folder)
+
+            else:
+                bstrap.download_uv(venv.folder, version=pspec.target_version, dryrun=runez.DRYRUN)
 
         else:
             venv.create_venv()
@@ -223,8 +215,9 @@ class VenvPackager:
             List of packaged executables
         """
         runez.ensure_folder(dist_folder, clean=True)
-        python = CFG.available_pythons.find_python(pspec.settings.python or find_symbolic_invoker())
-        venv = PythonVenv(dist_folder, python, package_manager="pip")
+        python = pspec.settings.python or find_symbolic_invoker()
+        venv_settings = VenvSettings(pspec.canonical_name, python, "pip")
+        venv = PythonVenv(dist_folder, venv_settings)
         venv.create_venv()
         for requirement_file in requirements.requirement_files:
             venv.pip_install("-r", requirement_file)

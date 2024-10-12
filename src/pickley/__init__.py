@@ -100,35 +100,6 @@ class Reporter:
 bstrap.Reporter = Reporter
 
 
-def _absolute_package_spec(given_package_spec: str):
-    if given_package_spec.startswith("http"):
-        given_package_spec = f"git+{given_package_spec}"
-
-    if re.match(r"^(file:|https?:|git[@+])", given_package_spec):
-        return given_package_spec
-
-    if given_package_spec.startswith(".") or "/" in given_package_spec:
-        return str(CFG.resolved_path(given_package_spec))
-
-    return given_package_spec
-
-
-def parsed_version(text):
-    """Parse --version from text, in reverse order to avoid being fooled by warnings..."""
-    if text:
-        for line in reversed(text.splitlines()):
-            version = Version.extracted_from_text(line)
-            if version and version.is_valid:
-                return version
-
-
-def program_version(path, logger=None):
-    if runez.is_executable(path):
-        r = runez.run(path, "--version", dryrun=False, fatal=False, logger=logger)
-        if r.succeeded:
-            return parsed_version(r.output or r.error)
-
-
 class ResolvedPackage:
     """
     Resolve a given package spec to a canonical name and version.
@@ -144,7 +115,7 @@ class ResolvedPackage:
     given_package_spec: str
     canonical_name: str = None  # Canonical pypi package name
     entrypoints: Optional[Sequence[str]] = None  # Entry points, if any
-    pip_spec: List[str] = None  # CLI args to pass to `pip install`
+    pip_spec: List[str] = None  # One of: `<name>==<version>`, or `<url>`, or `-e <path>`
     problem: Optional[str] = None  # Problem with package spec, if any
     resolution_reason: Optional[str] = None  # How version to use was resolved
     version: Version = None  # Resolved version
@@ -179,14 +150,28 @@ class ResolvedPackage:
             if isinstance(data, dict) and "given_package_spec" in data:
                 runez.log.trace(f"Using cached resolved info from {runez.short(cache_path)}")
                 info = cls()
-                info.given_package_spec = data.get("given_package_spec")
-                info.canonical_name = data.get("canonical_name")
-                info.entrypoints = data.get("entrypoints")
-                info.pip_spec = data.get("pip_spec")
-                info.problem = data.get("problem")
-                info.resolution_reason = data.get("resolution_reason")
-                info.version = Version(data.get("version"))
+                info.set_attributes(
+                    data.get("given_package_spec"),
+                    data.get("canonical_name"),
+                    data.get("entrypoints"),
+                    data.get("pip_spec"),
+                    data.get("problem"),
+                    data.get("resolution_reason"),
+                    data.get("version"),
+                )
                 return info
+
+    def set_attributes(self, given_package_spec, canonical_name, entrypoints, pip_spec, problem, resolution_reason, version):
+        if not isinstance(version, Version):
+            version = Version(version)
+
+        self.given_package_spec = given_package_spec
+        self.canonical_name = canonical_name
+        self.entrypoints = entrypoints
+        self.pip_spec = pip_spec
+        self.problem = problem
+        self.resolution_reason = resolution_reason
+        self.version = version
 
     def resolve(self, settings: "TrackedSettings"):
         from pickley.package import PythonVenv
@@ -202,7 +187,7 @@ class ResolvedPackage:
             self.resolution_reason = "pinned"
             if canonical_name == bstrap.PICKLEY:
                 self._set_canonical(canonical_name, version)
-                self.entrypoints = KNOWN_ENTRYPOINTS[bstrap.PICKLEY]
+                self.entrypoints = CFG.configured_entrypoints(bstrap.PICKLEY)
                 return
 
         elif canonical_name == self.given_package_spec:
@@ -213,8 +198,8 @@ class ResolvedPackage:
 
         with runez.TempFolder(dryrun=False):
             venv_settings = settings.venv_settings()
-            venv = PythonVenv(runez.to_path("tmp-venv"), venv_settings.python_installation, venv_settings.package_manager)
-            venv.groom_uv_venv = False
+            venv_settings.uv_seed = False
+            venv = PythonVenv(runez.to_path("tmp-venv"), venv_settings, groom_uv_venv=False)
             venv.logger = self.logger
             venv.create_venv()
             bake_time = runez.to_int(CFG.get_value("bake_time", package_name=canonical_name))
@@ -257,7 +242,7 @@ class ResolvedPackage:
                 version, location = self._get_version_location(venv, canonical_name)
                 self.resolution_reason = "project reference"
 
-            self.resolution_reason = f"{self.resolution_reason} resolved by {venv.package_manager}"
+            self.resolution_reason = f"{self.resolution_reason} resolved by {venv_settings.package_manager}"
             self._set_canonical(canonical_name, version)
             ep = self._get_entry_points(venv, canonical_name, version, location)
             self.entrypoints = sorted(n for n in ep if "_completer" not in n)
@@ -270,9 +255,8 @@ class ResolvedPackage:
 
     def _get_entry_points(self, venv, canonical_name, version, location):
         # Use `uv pip show` to get location on disk and version of package
-        eps = KNOWN_ENTRYPOINTS.get(canonical_name)
+        eps = CFG.configured_entrypoints(canonical_name)
         if eps:
-            # Don't bother peeking at metadata for some ultra common cases
             return eps
 
         ep_name = self._ep_name(canonical_name)
@@ -343,20 +327,27 @@ class PackageSpec:
     auto_upgrade_spec: str
     _manifest: "TrackedManifest" = runez.UNSET
     _manifest_path: Path = None
+    _resolved_info: ResolvedPackage = None
 
-    def __init__(self, given_package_spec: str, authoritative=False):
+    def __init__(self, given_package_spec: str, authoritative=None):
         """
         Parameters
         ----------
         given_package_spec : str
             Provided package reference (either name, folder or git url)
-        authoritative : bool
-            If True, the `given_package_spec` will be used as package spec when upgrading (otherwise we use the one recorded in manifest)
+        authoritative : bool | ResolvedPackage
+            If True-ish, the `given_package_spec` will be used as package spec when upgrading (otherwise prev manifest is used)
+            If a ResolvedPackage instance, it will be used as the authoritative resolution
         """
         self._canonical_name = PypiStd.std_package_name(given_package_spec)
         if authoritative or self._canonical_name is None:
             self.auto_upgrade_spec = given_package_spec
-            runez.log.trace(f"Authoritative auto-upgrade spec '{self.auto_upgrade_spec}'")
+            msg = f"Authoritative auto-upgrade spec '{self.auto_upgrade_spec}'"
+            if isinstance(authoritative, ResolvedPackage):
+                msg += f" v{authoritative.version}"
+                self._resolved_info = authoritative
+
+            runez.log.trace(msg)
 
         else:
             self._manifest_path = CFG.manifest_path(self._canonical_name)
@@ -371,6 +362,15 @@ class PackageSpec:
                 # Fallback for installations prior to pickley v4.4
                 runez.log.trace(f"Assuming auto-upgrade spec '{self._canonical_name}'")
                 self.auto_upgrade_spec = self._canonical_name
+
+        cache_file_name = self.auto_upgrade_spec
+        if PypiStd.std_package_name(cache_file_name) != cache_file_name:
+            # If package spec is not a canonical name, use md5 hash of it as filename
+            cache_file_name = hashlib.md5(cache_file_name.encode()).hexdigest()
+
+        self.resolution_cache_path = CFG.cache / f"{cache_file_name}.resolved.json"
+        if self._resolved_info is None:
+            self._resolved_info = ResolvedPackage.from_cache(self.resolution_cache_path)
 
         self.settings = TrackedSettings.from_cli(self.auto_upgrade_spec)
 
@@ -396,26 +396,22 @@ class PackageSpec:
 
         return self._manifest_path
 
-    @runez.cached_property
-    def resolution_cache_path(self):
-        filename = self.auto_upgrade_spec
-        if PypiStd.std_package_name(filename) != filename:
-            # If package spec is not a canonical name, use md5 hash of it as filename
-            filename = hashlib.md5(filename.encode()).hexdigest()
+    @property
+    def problem(self):
+        return self.resolved_info.problem
 
-        return CFG.cache / f"{filename}.resolved.json"
-
-    @runez.cached_property
+    @property
     def resolved_info(self):
-        info = ResolvedPackage.from_cache(self.resolution_cache_path)
-        if info is None:
+        if self._resolved_info is None:
             info = ResolvedPackage()
             info.resolve(self.settings)
             if not info.problem:
                 payload = info.to_dict()
                 runez.save_json(payload, self.resolution_cache_path, fatal=None)
 
-        return info
+            self._resolved_info = info
+
+        return self._resolved_info
 
     @property
     def delivery_method_name(self) -> str:
@@ -462,7 +458,7 @@ class PackageSpec:
             # uv does not need a typical venv with bin/python
             exe_path = "uv" if self.canonical_name == "uv" else "python"
             exe_path = self.target_installation_folder / "bin" / exe_path
-            return bool(program_version(exe_path))
+            return bool(CFG.program_version(exe_path))
 
     def skip_reason(self) -> Optional[str]:
         """Reason for skipping installation, when applicable"""
@@ -505,15 +501,16 @@ class PackageSpec:
                 if m and m.group(1) == self.canonical_name:
                     yield item, m.group(2)
 
-    def groom_installation(self, keep_for=7):
+    def groom_installation(self):
         """
         Groom installation folder, keeping only the latest version, and prev version for up to `keep_for` days.
-
-        Parameters
-        ----------
-        keep_for : int
-            Minimum time in days for how long to keep the previous latest version
         """
+        CFG.groom_cache()
+        # Minimum time in days for how long to keep the previous latest version, not officially configured, but config used by tests
+        age_cutoff = runez.to_int(CFG.get_value("installation_retention", package_name=self.canonical_name))
+        if age_cutoff is None:
+            age_cutoff = runez.date.SECONDS_IN_ONE_DAY
+
         candidates = []
         manifest = self.manifest
         now = time.time()
@@ -531,8 +528,8 @@ class PackageSpec:
             for candidate in candidates[1:]:
                 runez.delete(candidate[1], fatal=False)
 
-            if current_age and current_age > (keep_for * runez.date.SECONDS_IN_ONE_DAY):
-                # Delete version N-1 if it's older than `keep_for` days
+            if current_age and current_age >= age_cutoff:
+                # Clean previous installation (N-1) if it is older than `age_cutoff`
                 runez.delete(candidates[0][1], fatal=False)
 
     def save_manifest(self):
@@ -566,6 +563,7 @@ class PickleyConfig:
     use_audit_log = False  # If True, capture log in .pk/audit.log
     _pip_conf = runez.UNSET
     _pip_conf_index = runez.UNSET
+    _uv_path: Path = None  # Computed once, overridden during tests
 
     def __init__(self):
         self.configs = []
@@ -584,6 +582,22 @@ class PickleyConfig:
 
     def __repr__(self):
         return "<not-configured>" if self.base is None else runez.short(self.base)
+
+    @staticmethod
+    def parsed_version(text):
+        """Parse --version from text, in reverse order to avoid being fooled by warnings..."""
+        if text:
+            for line in reversed(text.splitlines()):
+                version = Version.extracted_from_text(line)
+                if version and version.is_valid:
+                    return version
+
+    @staticmethod
+    def program_version(path, logger=None):
+        if runez.is_executable(path):
+            r = runez.run(path, "--version", dryrun=False, fatal=False, logger=logger)
+            if r.succeeded:
+                return PickleyConfig.parsed_version(r.output or r.error)
 
     @staticmethod
     def resolved_path(path, base=None) -> Path:
@@ -631,6 +645,35 @@ class PickleyConfig:
             self._pip_conf_index, self._pip_conf = bstrap.globally_configured_pypi_mirror()
 
         return self._pip_conf_index
+
+    def configured_entrypoints(self, canonical_name) -> Optional[list]:
+        """Configured entrypoints, if any"""
+        eps = self.get_value("entrypoints")
+        if isinstance(eps, dict):
+            # This allows to optionally configure entrypoints, shall the need arise
+            value = runez.flattened(eps.get(canonical_name))
+            if value:
+                return value
+
+        return KNOWN_ENTRYPOINTS.get(canonical_name)
+
+    def guarantee_uv_installed(self):
+        """Ensure uv is installed in `CFG.base`"""
+        if self._uv_path is None:
+            self._uv_path = self.base / "uv"
+            uv_version = self.program_version(self._uv_path)
+            if not uv_version:
+                from pickley.package import VenvPackager
+
+                uv_path = bstrap.find_uv(CFG.base)
+                uv_version = CFG.program_version(uv_path)
+                info = ResolvedPackage()
+                info.set_attributes("uv", "uv", CFG.configured_entrypoints("uv"), "uv", None, "uv bootstrap", uv_version)
+                uv_spec = PackageSpec("uv", authoritative=info)
+                manifest = VenvPackager.install(uv_spec)
+                runez.log.trace(f"Bootstrapped uv v{manifest.version}")
+
+        return self._uv_path
 
     def set_base(self, base_path):
         """
@@ -783,7 +826,7 @@ class PickleyConfig:
         """
         for c in self.configs:
             value = c.get_nested(section, key)
-            if value:
+            if value is not None:
                 return value
 
     def get_value(self, key, package_name=None, validator=None):
@@ -798,7 +841,7 @@ class PickleyConfig:
         """
         for c in self.configs:
             value = c.get_value(key, package_name, validator)
-            if value:
+            if value is not None:
                 return value
 
     @property
@@ -851,6 +894,19 @@ class PickleyConfig:
             result.append(c.represented())
 
         return "\n".join(result).strip()
+
+    def groom_cache(self):
+        """Delete all files in DOT_META/.cache/ folder that are older than `cache_age`"""
+        if self.cache and self.cache.is_dir():
+            age_cutoff = runez.to_int(self.get_value("cache_retention"))
+            if age_cutoff is None:
+                age_cutoff = runez.date.SECONDS_IN_ONE_DAY
+
+            now = time.time()
+            for candidate in runez.ls_dir(self.cache):
+                age = now - os.path.getmtime(candidate)
+                if age and age >= age_cutoff:
+                    runez.delete(candidate, fatal=False)
 
     @staticmethod
     def despecced(text):
@@ -956,7 +1012,7 @@ class TrackedInstallInfo:
 class VenvSettings:
     """Allows to define in one place how package_manager and python installation are to be resolved"""
 
-    def __init__(self, canonical_name, python_spec, package_manager):
+    def __init__(self, canonical_name, python_spec, package_manager, uv_seed=None):
         self.python_spec = python_spec or CFG.get_value("python", package_name=canonical_name)
         self.python_installation = CFG.available_pythons.find_python(python_spec)
         if not package_manager:
@@ -966,11 +1022,8 @@ class VenvSettings:
             package_manager = bstrap.default_package_manager(self.python_installation.mm.major, self.python_installation.mm.minor)
 
         self.package_manager = package_manager
-
-    @property
-    def python_executable(self):
-        if self.python_installation:
-            return str(self.python_installation.executable)
+        self.python_executable = self.python_installation.executable
+        self.uv_seed = uv_seed
 
 
 class TrackedSettings:
@@ -982,22 +1035,38 @@ class TrackedSettings:
     delivery: str = None  # Delivery method name
     package_manager: str  # Desired package manager
     python: Optional[str] = None  # Desired python
+    uv_seed: bool = None  # Long term: CLIs should not assume setuptools is always there... (same problem with py3.12)
 
     def __repr__(self):
         return self.auto_upgrade_spec
 
     def venv_settings(self) -> VenvSettings:
         canonical_name = PypiStd.std_package_name(self.auto_upgrade_spec)
-        return VenvSettings(canonical_name, self.python, self.package_manager)
+        uv_seed = self.uv_seed or CFG.get_value("uv_seed", package_name=canonical_name)
+        return VenvSettings(canonical_name, self.python, self.package_manager, uv_seed=uv_seed)
+
+    @staticmethod
+    def _absolute_package_spec(given_package_spec: str) -> str:
+        if given_package_spec.startswith("http"):
+            given_package_spec = f"git+{given_package_spec}"
+
+        if re.match(r"^(file:|https?:|git[@+])", given_package_spec):
+            return given_package_spec
+
+        if given_package_spec.startswith(".") or "/" in given_package_spec:
+            return str(CFG.resolved_path(given_package_spec))
+
+        return given_package_spec
 
     @classmethod
     def from_cli(cls, auto_upgrade_spec: str):
         settings = cls()
         canonical_name = PypiStd.std_package_name(auto_upgrade_spec)
-        settings.auto_upgrade_spec = canonical_name or _absolute_package_spec(auto_upgrade_spec)
+        settings.auto_upgrade_spec = canonical_name or cls._absolute_package_spec(auto_upgrade_spec)
         settings.delivery = CFG.cli_config.get("delivery")
         settings.package_manager = CFG.cli_config.get("package_manager")
         settings.python = CFG.cli_config.get("python")
+        settings.uv_seed = CFG.cli_config.get("uv_seed")
         return settings
 
     @classmethod
@@ -1008,6 +1077,7 @@ class TrackedSettings:
             settings.delivery = data.get("delivery")
             settings.package_manager = data.get("package_manager")
             settings.python = data.get("python")
+            settings.uv_seed = data.get("uv_seed")
             return settings
 
     def to_dict(self):
@@ -1016,6 +1086,7 @@ class TrackedSettings:
             "delivery": self.delivery,
             "package_manager": self.package_manager,
             "python": self.python,
+            "uv_seed": self.uv_seed,
         }
 
 

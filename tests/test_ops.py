@@ -132,6 +132,10 @@ def test_install_pypi(cli):
     assert cli.succeeded
     assert "No packages installed" in cli.logged
 
+    cli.run("list -v")
+    assert cli.succeeded
+    assert "pickley" in cli.logged
+
     cli.run("upgrade mgit")
     assert cli.failed
     assert "Can't upgrade 'mgit': not installed with pickley" in cli.logged
@@ -146,7 +150,7 @@ def test_install_pypi(cli):
 
     cli.run("uninstall pickley")
     assert cli.failed
-    assert "Run 'uninstall --all' if you wish to uninstall pickley itself" in cli.logged
+    assert "Run 'uninstall --all' if you wish to uninstall pickley" in cli.logged
 
     cli.run("uninstall mgit")
     assert cli.failed
@@ -159,8 +163,17 @@ def test_install_pypi(cli):
     cli.run("install mgit<1.3.0")
     assert cli.succeeded
     assert "Installed mgit v1.2.1" in cli.logged
+    assert "Deleted .pk/mgit-1.0" in cli.logged
+    assert "Deleted .pk/mgit-1.1" not in cli.logged
     assert not os.path.exists(".pk/mgit-1.0")  # Groomed away
-    assert os.path.exists(".pk/mgit-1.1")  # Still there (version N-1 kept for 7 days)
+    assert os.path.exists(".pk/mgit-1.1")  # Still there (version N-1 kept for 7 days) .pk/config
+
+    runez.write(".pk/config.json", '{"installation_retention": 0}', logger=None)
+    cli.run("install mgit<1.3.0")
+    assert cli.succeeded
+    assert "mgit v1.2.1 is already installed" in cli.logged
+    assert "Deleted .pk/mgit-1.1" in cli.logged
+    assert not os.path.exists(".pk/mgit-1.1")  # Still there (version N-1 kept for 7 days) .pk/config
 
     mgit = PackageSpec("mgit")
     manifest = mgit.manifest
@@ -210,6 +223,10 @@ def test_install_pypi(cli):
     assert cli.succeeded
     assert "Installed mgit v1.3.0" in cli.logged
 
+    cli.run("base mgit")
+    assert cli.succeeded
+    assert ".pk/mgit-1.3.0" in cli.logged.stdout
+
     cli.run("list --format=json")
     assert cli.succeeded
     assert "mgit" in cli.logged
@@ -222,16 +239,18 @@ def test_install_pypi(cli):
     assert cli.succeeded
     assert "mgit" in cli.logged
 
+    runez.write(".pk/config.json", '{"cache_retention": 0}', logger=None)
     runez.delete("mgit", logger=None)
     cli.run("auto-heal")
     assert cli.succeeded
+    assert "Deleted .pk/.cache/" in cli.logged
     assert "Auto-healed mgit v1.3.0" in cli.logged
     assert "Auto-healed 1 / 1 packages" in cli.logged
 
     cli.run("uninstall --all")
     assert cli.succeeded
     assert "Uninstalled mgit" in cli.logged
-    assert "pickley is now uninstalled" in cli.logged
+    assert "Uninstalled pickley and 1 package: mgit<1.4" in cli.logged
 
     cli.run("list")
     assert cli.succeeded
@@ -239,6 +258,10 @@ def test_install_pypi(cli):
 
 
 def test_invalid(cli):
+    cli.run("check six")
+    assert cli.failed
+    assert "not a CLI" in cli.logged
+
     cli.run("--color install six")
     assert cli.failed
     assert "not a CLI" in cli.logged
@@ -254,12 +277,10 @@ def test_lock(temp_cfg):
     with SoftLock("foo", give_up=600) as lock:
         assert str(lock) == "lock foo"
         assert os.path.exists(lock_path)
-        with pytest.raises(SoftLockException) as e:
+        with pytest.raises(SoftLockException, match="giving up"):
             # Try to grab same lock a seconds time, give up after 1 second
             with SoftLock("foo", give_up=1, invalid=600):
-                pass
-
-        assert "giving up" in str(e)
+                raise AssertionError("should not be reached")  # pragma: no cover
 
     assert not os.path.exists(lock_path)  # Check that lock was released
 
@@ -291,8 +312,7 @@ def test_package_venv(cli):
     assert os.path.exists(rp)
     assert runez.is_executable("/tmp/pickley/bin/python")
     assert runez.is_executable("/tmp/pickley/bin/pickley")
-    r = runez.run("/tmp/pickley/bin/pickley", "--version")
-    assert r.succeeded
+    assert CFG.program_version("/tmp/pickley/bin/pickley")
     runez.delete("/tmp/pickley", logger=None)
 
 
@@ -305,13 +325,13 @@ def test_version_check(cli):
     assert cli.failed
     assert "Invalid argument" in cli.logged
 
-    cli.run("-n version-check python:1.0")
-    assert cli.succeeded
-    assert cli.match("Would run: python --version")
+    cli.run("-n version-check foo:1.0")
+    assert cli.failed
+    assert "foo is not installed in " in cli.logged
 
-    cli.run("-v version-check --system python:1.0")
+    cli.run("version-check --system python:1.0")
     assert cli.succeeded
-    assert "python --version" in cli.logged
+    assert cli.logged.stdout.contents().startswith("python ")
 
     cli.run("version-check --system python:100.0")
     assert cli.failed

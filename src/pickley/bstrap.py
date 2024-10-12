@@ -15,11 +15,12 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+expanduser = os.path.expanduser  # Overridden in conftest.py, to ensure tests never look at `~`
 DEFAULT_BASE = "~/.local/bin"
 DOT_META = ".pk"
 DRYRUN = False
 VERBOSITY = 0
-HOME = os.path.expanduser("~")
+HOME = expanduser("~")
 PICKLEY = "pickley"
 PIP_CONFS = ("~/.config/pip/pip.conf", "/etc/pip.conf")
 DEFAULT_MIRROR = "https://pypi.org/simple"
@@ -78,7 +79,7 @@ class Bootstrap:
             msg = f"{short(pickley_config)} with {desired_cfg}"
             if not hdry(f"Would seed {msg}"):
                 Reporter.inform(f"Seeding {msg}")
-                ensure_folder(os.path.dirname(pickley_config))
+                ensure_folder(pickley_config.parent)
                 with open(pickley_config, "wt") as fh:
                     json.dump(desired_cfg, fh, sort_keys=True, indent=2)
                     fh.write("\n")
@@ -114,13 +115,13 @@ class Bootstrap:
     def bootstrap_pickley_with_pip(self, venv_folder: Path):
         pip = venv_folder / "bin/pip"
         needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", venv_folder, fatal=False)
-        if not needs_virtualenv and not DRYRUN:  # pragma: no cover, tricky to test, virtualenv fallback is on its way out
+        if not needs_virtualenv and not DRYRUN:
             needs_virtualenv = not is_executable(pip)
 
         if needs_virtualenv:
             Reporter.inform("-mvenv failed, falling back to virtualenv")
             pv = ".".join(str(x) for x in CURRENT_PYTHON_MM)
-            zipapp = venv_folder.parent / "virtualenv.pyz"
+            zipapp = venv_folder.parent / ".cache/virtualenv.pyz"
             if not zipapp.exists():
                 url = f"https://bootstrap.pypa.io/virtualenv/{pv}/virtualenv.pyz"
                 download(zipapp, url)
@@ -152,7 +153,7 @@ def default_package_manager(*parts):
 
 
 def find_uv(pickley_base):
-    """Find path to `uv` to use during this run."""
+    """Find `uv` to use during this run, download one if necessary."""
     global _UV_PATH
 
     if _UV_PATH is None:
@@ -166,6 +167,7 @@ def find_uv(pickley_base):
         uv_tmp_target = pickley_base / DOT_META / ".cache/uv"
         _UV_PATH = uv_tmp_target / "bin/uv"
         if not is_executable(_UV_PATH):
+            # We may already have a valid `uv` in cache, when iterating locally (in .venv/root/...)
             download_uv(uv_tmp_target, dryrun=False)
 
     return _UV_PATH
@@ -179,8 +181,7 @@ def uv_url(version):
 
 
 def download_uv(target, version=None, dryrun=None):
-    ensure_folder(target, dryrun=dryrun)
-    script = os.path.join(target, ".uv-installer.sh")
+    script = target / ".uv-installer.sh"
     url = uv_url(version)
     download(script, url, dryrun=dryrun)
     env = dict(os.environ)
@@ -254,7 +255,7 @@ def curl_download(target, url, dryrun=None):
 
 def download(target, url, dryrun=None):
     if not hdry(f"Would download {url}", dryrun=dryrun):
-        ensure_folder(os.path.dirname(target), dryrun=dryrun)
+        ensure_folder(target.parent, dryrun=dryrun)
         try:
             return built_in_download(target, url)
 
@@ -264,7 +265,7 @@ def download(target, url, dryrun=None):
 
 
 def ensure_folder(path, dryrun=None):
-    if path and not os.path.isdir(path) and not hdry(f"Would create {short(path)}", dryrun=dryrun):
+    if path and not path.is_dir() and not hdry(f"Would create {short(path)}", dryrun=dryrun):
         Reporter.trace(f"Creating folder {short(path)}")
         os.makedirs(path)
 
@@ -272,11 +273,11 @@ def ensure_folder(path, dryrun=None):
 def find_base(base):
     candidates = base.split(os.pathsep)
     for c in candidates:
-        c = os.path.expanduser(c)
+        c = expanduser(c)
         if c and os.path.isdir(c) and is_writable(c):
             return c
 
-    Reporter.abort(f"Make sure '{candidates[0]}' is writeable.")
+    Reporter.abort(f"Make sure '{candidates[0]}' exists and is writeable.")
 
 
 def _groomed_mirror_url(mirror):
@@ -294,7 +295,7 @@ def globally_configured_pypi_mirror(paths=None):
             import configparser
 
             config = configparser.ConfigParser()
-            config.read(os.path.expanduser(pip_conf_path))
+            config.read(expanduser(pip_conf_path))
             mirror = _groomed_mirror_url(config["global"]["index-url"])
             if mirror:
                 return mirror, Path(pip_conf_path)
@@ -357,9 +358,9 @@ def run_program(program, *args, **kwargs):
 
 def seed_mirror(mirror, path, section):
     try:
-        config_path = os.path.expanduser(path)
-        if not os.path.exists(config_path):
-            ensure_folder(os.path.dirname(config_path))
+        config_path = Path(expanduser(path))
+        if not config_path.exists():
+            ensure_folder(config_path.parent)
             msg = f"{short(config_path)} with {mirror}"
             if not hdry(f"Would seed {msg}"):
                 Reporter.inform(f"Seeding {msg}")

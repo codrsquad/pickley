@@ -14,7 +14,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import bstrap, CFG, PackageSpec, parsed_version, Reporter, ResolvedPackage, TrackedSettings
+from pickley import bstrap, CFG, PackageSpec, Reporter, ResolvedPackage, TrackedSettings
 from pickley.package import VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -135,9 +135,7 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
     verb : str
         Verb to use to convey what kind of installation is being done (ex: auto-heal)
     """
-    if pspec.resolved_info.problem:
-        runez.abort(f"Can't {verb} {pspec}: {runez.red(pspec.resolved_info.problem)}")
-
+    runez.abort_if(pspec.problem, f"Can't {verb} {pspec}: {runez.red(pspec.problem)}")
     with SoftLock(pspec.canonical_name):
         started = time.time()
         skip_reason = pspec.skip_reason()
@@ -178,9 +176,7 @@ def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
     if not manifest or not manifest.version:
         runez.abort(f"Can't upgrade '{runez.red(pspec)}': not installed with pickley")
 
-    if pspec.resolved_info.problem:
-        runez.abort(f"Can't upgrade {runez.red(pspec)}: {runez.red(pspec.resolved_info.problem)}")
-
+    runez.abort_if(pspec.problem, f"Can't upgrade {runez.red(pspec)}: {runez.red(pspec.problem)}")
     with SoftLock(pspec.canonical_name):
         started = time.time()
         if pspec.is_up_to_date:
@@ -192,10 +188,7 @@ def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
         manifest = VenvPackager.install(pspec)
         if manifest:
             note = f" in {runez.represented_duration(time.time() - started)}"
-            action = "Upgraded"
-            if runez.DRYRUN:
-                action = f"Would state: {action}"
-
+            action = "Would state: Upgraded" if runez.DRYRUN else "Upgraded"
             logger("%s %s v%s%s", action, pspec.canonical_name, runez.bold(pspec.target_version), runez.dim(note))
 
         pspec.groom_installation()
@@ -246,7 +239,6 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
 
     runez.log.setup(
         debug=verbose or os.environ.get("TRACE_DEBUG"),
-        default_logger=LOG.debug,
         console_level=logging.INFO,
         console_format="%(message)s",
         console_stream=sys.stderr,
@@ -255,7 +247,7 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
         trace="TRACE_DEBUG+:: ",
     )
     # Don't pollute audit.log with dryrun or non-essential commands
-    essential = ("auto-heal", "auto-upgrade", "install", "run", "upgrade", "uninstall")
+    essential = ("auto-heal", "auto-upgrade", "bootstrap", "install", "run", "upgrade", "uninstall")
     CFG.use_audit_log = not runez.DRYRUN and ctx.invoked_subcommand in essential
     Reporter.capture_trace()
     runez.log.trace(runez.log.spec.argv)
@@ -319,10 +311,9 @@ def auto_upgrade(force, package):
 
 
 @main.command(hidden=True)
-@click.option("--force", "-f", is_flag=True, help="Force check, even if checked recently")
 @click.argument("base_folder", required=True)
 @click.argument("pickley_spec", required=False)
-def bootstrap(force, base_folder, pickley_spec):
+def bootstrap(base_folder, pickley_spec):
     """
     Bootstrap pickley.
 
@@ -330,17 +321,11 @@ def bootstrap(force, base_folder, pickley_spec):
     This is an internal command, called by the bootstrap `bstrap.py` script from a temporary venv.
     """
     base_folder = CFG.resolved_path(base_folder)
-    runez.abort_if(not base_folder.exists(), f"Folder {runez.red(runez.short(base_folder))} does not exist")
+    if not base_folder.exists():
+        runez.abort(f"Folder {runez.red(runez.short(base_folder))} does not exist, please create it first")
+
     CFG.set_base(base_folder)
     runez.Anchored.add(CFG.base)
-    bstrap.set_mirror_env_vars(CFG.index)
-    if force:
-        CFG.version_check_delay = 0
-
-    if bstrap.USE_UV:
-        uv_spec = PackageSpec("uv", authoritative=True)
-        perform_install(uv_spec)
-
     pspec = PackageSpec(pickley_spec or bstrap.PICKLEY, authoritative=True)
     perform_install(pspec)
 
@@ -387,8 +372,8 @@ def check(force, packages):
             continue
 
         dv = pspec.target_version
-        if pspec.resolved_info.problem:
-            msg = pspec.resolved_info.problem
+        if pspec.problem:
+            msg = pspec.problem
             code = 1
 
         elif not pspec.currently_installed_version:
@@ -653,14 +638,16 @@ def upgrade(packages):
 @click.argument("packages", nargs=-1, required=False)
 def uninstall(all, packages):
     """Uninstall packages"""
-    runez.abort_if(packages and all, "Either specify packages to uninstall, or --all (but not both)")
-    runez.abort_if(not packages and not all, "Specify packages to uninstall, or --all")
-    runez.abort_if(
-        packages and bstrap.PICKLEY in packages,
-        "Run 'uninstall --all' if you wish to uninstall pickley itself (and everything it installed)",
-    )
-    setup_audit_log()
+    runez.abort_if(packages and all, f"Either specify packages to uninstall, or --all (but {runez.bold('not both')})")
+    runez.abort_if(not packages and not all, f"Specify {runez.bold('packages to uninstall')}, or {runez.bold('--all')}")
     packages = CFG.package_specs(packages) or CFG.installed_specs()
+    if not all:
+        special = [runez.bold(p.canonical_name) for p in packages if p.canonical_name in (bstrap.PICKLEY, "uv")]
+        if special and not all:
+            special = runez.joined(special, delimiter=" or ")
+            runez.abort(f"Run '{runez.bold('uninstall --all')}' if you wish to uninstall {special}")
+
+    setup_audit_log()
     for pspec in packages:
         runez.abort_if(not pspec.currently_installed_version, f"{runez.bold(pspec.canonical_name)} was not installed with pickley")
         for ep in pspec.manifest.entrypoints:
@@ -673,7 +660,10 @@ def uninstall(all, packages):
     if all:
         runez.delete(CFG.base / bstrap.PICKLEY)
         runez.delete(CFG.meta)
-        LOG.info("pickley is now %s", runez.bold("uninstalled"))
+        msg = "Would uninstall" if runez.DRYRUN else "Uninstalled"
+        overview = runez.short(runez.joined(sorted(packages), delimiter=", "))
+        msg = f"{msg} pickley and {runez.plural(packages, 'package')}: {overview}"
+        LOG.info(msg)
 
 
 @main.command()
@@ -698,14 +688,12 @@ def version_check(system, programs):
         else:
             full_path = CFG.base / program
 
-        r = runez.run(full_path, "--version", logger=print if runez.DRYRUN else LOG.debug)
-        if not runez.DRYRUN:
-            version = parsed_version(r.output or r.error)
-            runez.abort_if(
-                not version or version < min_version,
-                f"{runez.short(full_path)} version too low: {version} (need {min_version}+)",
-            )
-            overview.append(f"{program} {version}")
+        version = CFG.program_version(full_path)
+        runez.abort_if(not version, f"{runez.red(program)} is not installed in {runez.bold(runez.short(CFG.base))}")
+        if version < min_version:
+            runez.abort(f"{runez.bold(runez.short(full_path))} version too low: {runez.red(version)} (need {runez.bold(min_version)}+)")
+
+        overview.append(f"{program} {version}")
 
     if overview:
         print(runez.short(runez.joined(overview, delimiter=" ; ")))
@@ -792,7 +780,7 @@ class PackageFinalizer:
     def resolve(self):
         runez.abort_if(not self.folder.is_dir(), f"Folder {runez.red(runez.short(self.folder))} does not exist")
         self.pspec = PackageSpec(str(self.folder), authoritative=True)
-        runez.abort_if(not self.pspec.canonical_name, f"Could not determine package name: {self.pspec.resolved_info.problem}")
+        runez.abort_if(not self.pspec.canonical_name, f"Could not determine package name: {self.pspec.problem}")
         LOG.debug("Using python: %s", self.pspec.settings.python)
         if self.dist.startswith("root/"):
             # Special case: we're targeting 'root/...' probably for a debian, use target in that case to avoid venv relocation issues

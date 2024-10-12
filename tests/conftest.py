@@ -7,12 +7,18 @@ from runez.pyenv import PythonDepot
 
 from pickley import bstrap
 from pickley.cli import CFG, main
-from pickley.package import PythonVenv
+
+
+def mocked_expanduser(path):
+    if path and path.startswith("~/"):
+        path = path[2:]
+
+    return path
+
 
 cli.default_main = main
 PythonDepot.use_path = False
-bstrap.DEFAULT_BASE = ".local/bin"  # Make sure tests stay away from ~/.local/bin
-bstrap.PIP_CONFS = ()  # Don't read any pip.conf files in tests
+bstrap.expanduser = mocked_expanduser
 assert logged  # Just making fixtures available, with no complaints about unused imports
 
 
@@ -28,7 +34,6 @@ def grab_test_uv():
 
 if bstrap.USE_UV:
     bstrap._UV_PATH = grab_test_uv()
-    PythonVenv._uv_path = bstrap._UV_PATH
 
 
 def dot_meta(relative=None, parent=None):
@@ -50,6 +55,9 @@ class TemporaryBase(runez.TempFolder):
         super(TemporaryBase, self).__enter__()
         os.environ["PICKLEY_ROOT"] = self.tmp_folder
         CFG.reset()
+        if bstrap.USE_UV:
+            CFG._uv_path = bstrap._UV_PATH
+
         return self.tmp_folder
 
     def __exit__(self, *_):

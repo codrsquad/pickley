@@ -94,7 +94,7 @@ class DeliveryMethod:
             runez.abort(f"Failed to {self.short_name} {pspec}: {runez.red(e)}")
 
     def _install(self, pspec, target: Path, source: Path):
-        raise NotImplementedError(f"{self.__class__.__name__} is not implemented")
+        """Descendant-specific implementation"""
 
 
 class DeliveryMethodSymlink(DeliveryMethod):

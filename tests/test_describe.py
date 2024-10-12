@@ -4,6 +4,11 @@ import runez
 
 
 def test_describe(cli):
+    cli.run("-n describe pickley==1.0")
+    assert cli.succeeded
+    assert "pip spec: pickley==1.0 (pinned)" in cli.logged.stdout
+    assert "entry points: pickley" in cli.logged.stdout
+
     runez.write(".pk/config.json", '{"bake_time": 300}', logger=None)
     cli.run("-vv describe mgit==1.3.0")
     assert cli.succeeded
@@ -48,3 +53,9 @@ def test_describe(cli):
     cli.run("describe six")
     assert cli.failed
     assert "problem: not a CLI" in cli.logged.stdout
+
+    # Simulate overriding entry points determination
+    runez.write(".pk/config.json", '{"entrypoints": {"six": "six"}}', logger=None)
+    cli.run("describe six")
+    assert cli.succeeded
+    assert "entry points: six" in cli.logged.stdout
