@@ -22,7 +22,7 @@ def test_bootstrap_command(cli, monkeypatch):
     assert "Folder .local/bin does not exist" in cli.logged
 
     runez.ensure_folder(".local/bin", logger=None)
-    cli.run("-vv", "bootstrap", ".local/bin", cli.project_folder)
+    cli.run("--no-color", "-vv", "bootstrap", ".local/bin", cli.project_folder)
     assert cli.succeeded
     if bstrap.USE_UV:
         assert "Authoritative auto-upgrade spec 'uv' v" in cli.logged
@@ -77,7 +77,7 @@ def test_bootstrap_script(cli, monkeypatch):
     sample_config = '"python-installations": "~/.my-pyenv/version/**"'
     monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
     mirror = "https://pypi.org/simple"
-    cli.run(cli.project_folder, "-m", mirror, "-c", f"{{{sample_config}}}")
+    cli.run("-vv", cli.project_folder, "-m", mirror, "-c", f"{{{sample_config}}}")
     assert cli.succeeded
     assert f"Seeding .config/pip/pip.conf with {mirror}" in cli.logged
     assert f"Seeding {uv_config} with {mirror}" in cli.logged
@@ -119,16 +119,14 @@ def test_download_uv(temp_cfg, monkeypatch):
     assert bstrap.find_uv(temp_cfg.base) == tmp_uv
 
 
-def test_edge_cases(temp_cfg, logged, monkeypatch):
+def test_edge_cases(temp_cfg, monkeypatch):
     # For coverage
     monkeypatch.setattr(bstrap, "Reporter", Reporter)
     monkeypatch.setenv("PATH", "test-programs")
 
     assert bstrap.run_program(sys.executable, "--version") == 0
-    with pytest.raises(runez.system.AbortException) as exc:
+    with pytest.raises(runez.system.AbortException, match=" exited with code"):
         bstrap.run_program(sys.executable, "--no-such-option")
-    assert " exited with code" in str(exc)
-    assert "python --no-such-option" in logged.pop()
 
     runez.touch("test-programs/curl", logger=None)
     runez.touch("test-programs/wget", logger=None)

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Optional, Sequence, TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 
 import runez
 from runez.pyenv import Version
@@ -30,16 +30,15 @@ class PythonVenv:
         self.settings = settings
         self.groom_uv_venv = groom_uv_venv
         self.logger = runez.UNSET
+        self.use_pip = settings.package_manager == "pip"
 
     def __repr__(self):
         return runez.short(self.folder)
 
-    @property
-    def use_pip(self):
-        return self.settings.package_manager == "pip"
-
     def create_venv(self):
-        runez.abort_if(self.settings.python_installation.problem, f"Invalid python: {self.settings.python_installation}")
+        python = self.settings.python_installation
+        runez.abort_if(not python or python.problem, f"Invalid python: {python}")
+        runez.ensure_folder(self.folder, clean=True, logger=self.logger)
         if self.use_pip:
             return self.create_venv_with_pip()
 
@@ -53,7 +52,7 @@ class PythonVenv:
             venv_python = self.folder / "bin/python"
             if venv_python.is_symlink():
                 # `uv` fully expands symlinks, use the simplest location instead
-                # This would replace for example `.../python-3.10.1/bin/python3.10` with for example `/usr/local/bin/python-3.10`
+                # This would replace `.../python-3.10.1/bin/python3.10` with for example `/usr/local/bin/python3.10`
                 actual_path = venv_python.resolve()
                 if self.settings.python_executable != actual_path:
                     runez.symlink(self.settings.python_executable, venv_python, overwrite=True, logger=self.logger)
@@ -64,70 +63,75 @@ class PythonVenv:
             pip_wrapper = '#!/bin/sh -e\n\nVIRTUAL_ENV="$(cd $(dirname $0)/..; pwd)" exec uv pip "$@"'
             runez.write(pip_path, pip_wrapper, logger=None)
             runez.make_executable(pip_path, logger=None)
+            runez.log.trace(f"Created pip wrapper {pip_path}")
 
         return r
 
     def create_venv_with_pip(self):
-        runez.ensure_folder(self.folder, clean=True, logger=self.logger)
         runez.run(self.settings.python_executable, "-mvenv", self.folder, logger=self.logger)
-        self._run_pip("install", "-U", *bstrap.pip_auto_upgrade())
+        return self._run_py_pip("install", "-U", *bstrap.pip_auto_upgrade())
 
     def pip_install(self, *args, fatal=True, no_deps=False, quiet=None):
         """`pip install` into target venv`"""
-        if quiet is None:
-            quiet = not runez.log.debug
+        cmd = list(self._auto_quiet_args("install", no_deps and "--no-deps", quiet=quiet))
+        if quiet is True:
+            passthrough = False
 
-        cmd = []
-        if quiet:
-            cmd.append("-q")
+        else:
+            passthrough = quiet is False or "-q" not in cmd
 
-        if not self.use_pip:
-            cmd.append("pip")
-
-        cmd.append("install")
-        if no_deps:
-            cmd.append("--no-deps")
-
-        cmd.extend(args)
         if self.use_pip:
-            return self._run_pip(*cmd, fatal=fatal)
+            return self._run_py_pip(*cmd, *args, fatal=fatal, passthrough=passthrough)
 
-        return self.run_uv(*cmd, passthrough=not quiet, fatal=fatal)
+        return self._run_uv(*cmd, *args, fatal=fatal, passthrough=passthrough)
 
-    def pip_freeze(self):
-        """Output of `pip freeze`"""
+    def run_pip(self, command, *args, fatal=True, passthrough=False):
+        """Run `pip` command, this only works for commands that are common between `pip` and `uv`"""
         if self.use_pip:
-            return self._run_pip("freeze")
+            return self._run_py_pip(command, *args, fatal=fatal, passthrough=passthrough)
 
-        return self.run_uv("pip", "freeze")
-
-    def pip_show(self, package_name):
-        if self.use_pip:
-            return self._run_pip("show", package_name)
-
-        return self.run_uv("pip", "show", package_name)
-
-    def run_uv(self, *args, **kwargs):
-        uv_path = CFG.guarantee_uv_installed()
-        env = dict(os.environ)
-        env["VIRTUAL_ENV"] = self.folder
-        kwargs.setdefault("logger", self.logger)
-        return runez.run(uv_path, *args, env=env, **kwargs)
+        return self._run_uv("pip", command, *args, fatal=fatal, passthrough=passthrough)
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
         kwargs.setdefault("logger", self.logger)
         return runez.run(self.folder / "bin/python", *args, **kwargs)
 
-    def _run_pip(self, *args, **kwargs):
-        kwargs.setdefault("fatal", False)
+    def _run_py_pip(self, *args, **kwargs):
         r = self.run_python("-mpip", *args, **kwargs)
         if r.failed:
             ignored = ("You are using pip", "You should consider upgrading", "Ignored the following yanked")
-            r.error = runez.joined(line for line in r.error.splitlines() if not any(x in line for x in ignored))
-            r.output = runez.joined(line for line in r.output.splitlines() if not any(x in line for x in ignored))
+            if r.error:
+                r.error = runez.joined(line for line in r.error.splitlines() if not any(x in line for x in ignored))
+
+            if r.output:
+                r.output = runez.joined(line for line in r.output.splitlines() if not any(x in line for x in ignored))
 
         return r
+
+    def _run_uv(self, *args, **kwargs):
+        kwargs.setdefault("logger", self.logger)
+        uv_path = CFG.guarantee_uv_installed()
+        env = dict(kwargs.get("env") or os.environ)
+        env["VIRTUAL_ENV"] = str(self.folder)
+        kwargs["env"] = env
+        return runez.run(uv_path, *args, **kwargs)
+
+    def _auto_quiet_args(self, command, *additional, quiet=None):
+        """Automatically add -q if not in verbose mode"""
+        if quiet is None:
+            quiet = CFG.verbosity < 2 or not runez.color.is_coloring()
+
+        if quiet:
+            yield "-q"
+
+        if not self.use_pip:
+            yield "pip"
+
+        yield command
+        for arg in additional:
+            if arg:
+                yield arg
 
 
 def find_symbolic_invoker() -> str:
@@ -135,14 +139,16 @@ def find_symbolic_invoker() -> str:
     invoker = runez.SYS_INFO.invoker_python
     folder = invoker.real_exe.parent.parent
     v = Version.extracted_from_text(folder.name)
+    found = invoker.executable
     if v and v.given_components_count == 3:
         # For setups that provide a <folder>/pythonM.m -> <folder>/pythonM.m.p symlink, prefer the major/minor variant
         candidates = [folder.parent / folder.name.replace(v.text, v.mm), folder.parent / f"python{v.mm}"]
         for path in candidates:
-            if path.exists():
-                return path
+            if runez.is_executable(path):
+                found = path
+                break
 
-    return invoker.executable  # pragma: no cover
+    return found and str(found)
 
 
 class VenvPackager:
@@ -175,8 +181,7 @@ class VenvPackager:
         TrackedManifest
             Installed package manifest
         """
-        venv_settings = pspec.settings.venv_settings()
-        venv = PythonVenv(pspec.target_installation_folder, venv_settings)
+        venv = pspec.get_installation_venv()
         if pspec.canonical_name == "uv":
             # Special case for uv: it does not need a venv
             if bstrap._UV_PATH and runez.is_executable(bstrap._UV_PATH):
@@ -194,7 +199,7 @@ class VenvPackager:
         return delivery.install(pspec)
 
     @staticmethod
-    def package(pspec: PackageSpec, dist_folder: Path, requirements: "Requirements", run_compile_all: bool) -> Optional[Sequence[Path]]:
+    def package(pspec: PackageSpec, dist_folder: Path, requirements: "Requirements", run_compile_all: bool) -> List[Path]:
         """
         Package `pspec` and `requirements` into a virtual env in `dist_folder`.
 
@@ -211,29 +216,49 @@ class VenvPackager:
 
         Returns
         -------
-        Optional[Sequence[Path]]
+        List[Path]
             List of packaged executables
         """
-        runez.ensure_folder(dist_folder, clean=True)
-        python = pspec.settings.python or find_symbolic_invoker()
-        venv_settings = VenvSettings(pspec.canonical_name, python, "pip")
+        if not pspec.settings.python:
+            pspec.settings.python = find_symbolic_invoker()
+
+        venv_settings = pspec.settings.venv_settings()
         venv = PythonVenv(dist_folder, venv_settings)
-        runez.log.trace(f"Packaging '{pspec}' into '{dist_folder}'")
+        venv.logger = print
+        print(f"Packaging '{pspec}' into '{runez.short(dist_folder)}' with {venv_settings.package_manager} and {venv_settings.python_spec}")
         venv.create_venv()
         for requirement_file in requirements.requirement_files:
-            venv.pip_install("-r", requirement_file)
+            venv.pip_install("-r", requirement_file, quiet=False)
 
         if requirements.additional_packages:
-            venv.pip_install(*requirements.additional_packages)
+            venv.pip_install(*requirements.additional_packages, quiet=False)
 
-        venv.pip_install(requirements.project)
+        venv.pip_install(requirements.project, quiet=False)
         if run_compile_all:
-            venv.run_python("-mcompileall", dist_folder)
+            r = venv.run_python("-mcompileall", dist_folder, fatal=False)
+            if r.failed:
+                print("-mcompileall failed:")
+                output = simplified_compileall(r.full_output)
+                print(output)
+                runez.abort(f"Failed to run `python -mcompileall` on {runez.red(dist_folder)}")
 
-        entrypoints = pspec.resolved_info.entrypoints
-        if entrypoints:
-            result = []
-            for name in entrypoints:
-                result.append(venv.folder / "bin/" / name)
+        return [venv.folder / "bin" / name for name in pspec.resolved_info.entrypoints]
 
-            return result
+
+def simplified_compileall(text):
+    return runez.joined(_compileall_filter(text), delimiter="\n")
+
+
+def _compileall_filter(text):
+    prev = None
+    for line in text.splitlines():
+        if line.startswith(("Listing ", "Compiling ")):
+            prev = line
+
+        else:
+            if prev:
+                yield "..."
+                yield prev  # Show last "Listing" or "Compiling" line for context (what follows is reported errors)
+                prev = None
+
+            yield line

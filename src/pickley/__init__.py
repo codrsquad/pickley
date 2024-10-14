@@ -217,7 +217,7 @@ class ResolvedPackage:
                 os.environ["UV_EXCLUDE_NEWER"] = ago
 
             r = venv.pip_install(pip_spec, no_deps=True, quiet=True, fatal=False)
-            if not r:
+            if r.failed:
                 lines = r.full_output.strip().splitlines()
                 if lines:
                     lines[0] = runez.red(lines[0])
@@ -229,9 +229,9 @@ class ResolvedPackage:
                 self.problem = runez.joined(lines, delimiter="\n") or f"Resolution failed for {pip_spec}"
                 return
 
-            r = venv.pip_freeze()
-            lines = r.output.strip().splitlines()
-            if len(lines) != 1:  # pragma: no cover, hard to trigger (not sure how to make `pip freeze` fail)
+            r = venv.run_pip("freeze", fatal=False)
+            lines = r.output and r.output.strip().splitlines()
+            if not lines or len(lines) != 1:  # pragma: no cover, hard to trigger (not sure how to make `pip freeze` fail)
                 self.problem = f"'pip freeze' for '{runez.joined(pip_spec)}' failed: {r.full_output}"
                 return
 
@@ -308,20 +308,21 @@ class ResolvedPackage:
         return package_name
 
     @staticmethod
-    def _get_version_location(venv, package_name):
-        r = venv.pip_show(package_name)
-        version = None
-        location = None
-        for line in r.output.splitlines():
-            if line.startswith("Version:"):
-                version = line.partition(":")[2].strip()
+    def _get_version_location(venv, canonical_name):
+        version = location = None
+        r = venv.run_pip("show", canonical_name, fatal=False)
+        if r.succeeded:
+            for line in r.output.splitlines():
+                if line.startswith("Version:"):
+                    version = line.partition(":")[2].strip()
 
-            if line.startswith("Location:"):
-                location = line.partition(":")[2].strip()
+                if line.startswith("Location:"):
+                    location = line.partition(":")[2].strip()
 
-            if location and version:
-                break
+                if location and version:
+                    break
 
+        runez.abort_if(not version or not location, f"Could not determine version/location for {canonical_name}: {r.full_output}")
         return version, location
 
 
@@ -382,7 +383,7 @@ class PackageSpec:
         self.settings = TrackedSettings.from_cli(self.auto_upgrade_spec)
 
     def __repr__(self):
-        return self.auto_upgrade_spec
+        return runez.short(self.auto_upgrade_spec)
 
     def __lt__(self, other):
         return str(self) < str(other)
@@ -458,19 +459,31 @@ class PackageSpec:
         return runez.to_boolean(CFG.get_value("facultative", package_name=self.canonical_name))
 
     @property
+    def healthcheck_exe(self) -> Path:
+        """Executable used to determine whether installation is healthy"""
+        manifest = self.manifest
+        version = (manifest and manifest.version) or self.target_version
+        exe_basename = "uv" if self.canonical_name == "uv" else "python"
+        return CFG.meta / f"{self.canonical_name}-{version}/bin" / exe_basename
+
+    @property
     def is_healthily_installed(self) -> bool:
         """Double-check that current venv is still usable"""
         manifest = self.manifest
-        if manifest and manifest.version:
-            if manifest.entrypoints:
-                for name in manifest.entrypoints:
-                    if not runez.is_executable(CFG.base / name):
-                        return False
+        entrypoints = (manifest and manifest.entrypoints) or self.resolved_info.entrypoints
+        if entrypoints:
+            for name in entrypoints:
+                if not runez.is_executable(CFG.base / name):
+                    return False
 
-            # uv does not need a typical venv with bin/python
-            exe_path = "uv" if self.canonical_name == "uv" else "python"
-            exe_path = CFG.meta / f"{self.canonical_name}-{manifest.version}/bin" / exe_path
-            return bool(CFG.program_version(exe_path))
+        return bool(CFG.program_version(self.healthcheck_exe))
+
+    def get_installation_venv(self):
+        """Targeted installation venv (.pk/<canonical_name>-<version>/)"""
+        from pickley.package import PythonVenv
+
+        venv_settings = self.settings.venv_settings()
+        return PythonVenv(self.target_installation_folder, venv_settings)
 
     @staticmethod
     def _mentions_pickley(path: Path):
@@ -561,7 +574,9 @@ class PickleyConfig:
     configs: List["RawConfig"]
     version_check_delay: int = DEFAULT_VERSION_CHECK_DELAY
 
+    pickley_version = runez.get_version(bstrap.PICKLEY)
     use_audit_log = False  # If True, capture log in .pk/audit.log
+    verbosity = 0
     _pip_conf = runez.UNSET
     _pip_conf_index = runez.UNSET
     _uv_path: Path = None  # Computed once, overridden during tests
@@ -634,10 +649,6 @@ class PickleyConfig:
         preferred = runez.flattened(self.get_value("preferred_pythons"), split=",")
         depot.set_preferred_python(preferred)
         return depot
-
-    @runez.cached_property
-    def pickley_version(self):
-        return runez.get_version(__name__)
 
     @property
     def default_index(self):

@@ -1,11 +1,12 @@
 import os
+import sys
 import time
 from pathlib import Path
 
 import pytest
 import runez
 
-from pickley import CFG, PackageSpec
+from pickley import bstrap, CFG, PackageSpec
 from pickley.cli import clean_compiled_artifacts, find_base, SoftLock, SoftLockException
 
 
@@ -40,7 +41,7 @@ def test_dev_mode(cli, monkeypatch):
     monkeypatch.setenv("PICKLEY_DEV", "1")
     cli.run("-nv", "install", runez.DEV.project_folder)
     assert cli.succeeded
-    assert "pip install -e " in cli.logged
+    assert "install -e " in cli.logged
     assert "Would state: Installed pickley v" in cli.logged
 
 
@@ -68,8 +69,13 @@ def test_facultative(cli):
     assert cli.failed
     assert "not installed" in cli.logged
 
-    cli.run("install virtualenv")
+    cli.run("--no-color", "-vv", f"-p{sys.executable}", "install", " virtualenv")
     assert cli.succeeded
+    if bstrap.USE_UV:
+        assert cli.match("Symlink .+/bin/python.* <- .pk/virtualenv-.+/bin/python.*", regex=True)
+        assert cli.match("Created pip wrapper .../bin/pip")
+        assert "platformdirs" not in cli.logged  # Verify that --no-color turns off uv output
+
     assert "Installed virtualenv" in cli.logged
 
     cli.run("-n install virtualenv")
@@ -166,7 +172,7 @@ def test_install_pypi(cli):
     runez.touch(".pk/mgit-1.0/bin/mgit", logger=None)
     time.sleep(0.1)
     runez.touch(".pk/mgit-1.1/bin/mgit", logger=None)
-    cli.run("-vv install mgit<1.3.0")
+    cli.run("--no-color -vv install mgit<1.3.0")
     assert cli.succeeded
     assert "Installed mgit v1.2.1" in cli.logged
     assert "Deleted .pk/mgit-1.0" in cli.logged
@@ -175,7 +181,7 @@ def test_install_pypi(cli):
     assert os.path.exists(".pk/mgit-1.1")  # Still there (version N-1 kept for 7 days) .pk/config
 
     runez.write(".pk/config.json", '{"installation_retention": 0}', logger=None)
-    cli.run("-vv install mgit<1.3.0")
+    cli.run("--no-color -vv install mgit<1.3.0")
     assert cli.succeeded
     assert "mgit v1.2.1 is already installed" in cli.logged
     assert "Deleted .pk/mgit-1.1" in cli.logged
@@ -186,7 +192,7 @@ def test_install_pypi(cli):
     assert str(manifest) == "mgit<1.3.0"
     assert mgit.auto_upgrade_spec == "mgit<1.3.0"
     assert manifest.entrypoints == ["mgit"]
-    assert manifest.install_info.args == "-vv install mgit<1.3.0"
+    assert manifest.install_info.args == "--no-color -vv install mgit<1.3.0"
     assert manifest.settings.auto_upgrade_spec == "mgit<1.3.0"
     assert manifest.version == "1.2.1"
 
@@ -202,6 +208,10 @@ def test_install_pypi(cli):
     assert cli.succeeded
     assert "is already up-to-date" in cli.logged
 
+    cli.run("pip show mgit")
+    assert cli.succeeded
+    assert "Name: mgit" in cli.logged
+
     cli.run("-v auto-heal")
     assert cli.succeeded
     assert "mgit<1.3.0 is healthy" in cli.logged
@@ -216,7 +226,7 @@ def test_install_pypi(cli):
     assert cli.succeeded
     assert cli.logged.stdout.contents().strip() == "mgit: v1.2.1 available (currently unhealthy) (tracks: mgit<1.3.0)"
 
-    cli.run("-vv upgrade mgit")
+    cli.run("--no-color -vv upgrade mgit")
     assert cli.succeeded
     assert "Using previous authoritative auto-upgrade spec 'mgit<1.3.0'" in cli.logged
     assert "Upgraded mgit v1.2.1" in cli.logged
@@ -247,7 +257,7 @@ def test_install_pypi(cli):
 
     runez.write(".pk/config.json", '{"cache_retention": 0}', logger=None)
     runez.delete("mgit", logger=None)
-    cli.run("-vv auto-heal")
+    cli.run("--no-color -vv auto-heal")
     assert cli.succeeded
     assert "Deleted .pk/.cache/" in cli.logged
     assert "Auto-healed mgit v1.3.0" in cli.logged
@@ -303,16 +313,37 @@ def test_main(cli):
     cli.exercise_main("-mpickley", "src/pickley/bstrap.py")
 
 
-def test_package_venv(cli):
+def test_package_command(cli):
     # TODO: retire the `package` command, not worth the effort to support it
+    if bstrap.USE_UV:
+        # Exercise -mcopileall failure
+        cli.run("--no-color", "--package-manager=uv", "package", cli.project_folder, "pyrepl==0.9.0")
+        assert cli.failed
+        assert "Failed to run `python -mcompileall`" in cli.logged
+
+        # Simulate some artifacts to be picked up by cleanup
+        runez.delete(".tox", logger=None)
+        runez.touch(".tox/_pickley_package/dist/a/__pycache__/a.pyc", logger=None)
+        runez.touch(".tox/_pickley_package/dist/a/__pycache__/a2.pyc", logger=None)  # Entire folder deleted, counts as 1 deletion
+        runez.touch(".tox/_pickley_package/dist/b/b1.pyc", logger=None)
+        runez.touch(".tox/_pickley_package/dist/b/b2.pyc", logger=None)
+        cli.run("-n", "--package-manager=uv", "package", "--no-compile", cli.project_folder)
+        assert cli.succeeded
+        assert "Using '.tox/_pickley_package/' as base folder" in cli.logged
+        assert "uv -q venv" in cli.logged
+        assert "Would delete .tox/_pickley_package/dist/a/__pycache__" in cli.logged
+        assert "Would delete .tox/_pickley_package/dist/b/b1.pyc" in cli.logged
+        assert "Would delete .tox/_pickley_package/dist/b/b2.pyc" in cli.logged
+        assert "Deleted 3 compiled artifacts" in cli.logged
+
     # Verify that "debian mode" works as expected, with -droot/tmp <-> /tmp
     runez.delete("/tmp/pickley", logger=None)
-    cli.run("package", cli.project_folder, "-droot/tmp", "--sanity-check=--version", "-sroot:root/usr/local/bin", "runez")
+    cli.run("package", "--base", ".", cli.project_folder, "-droot/tmp", "--sanity-check=--version", "-sroot:root/usr/local/bin", "runez")
     assert cli.succeeded
     assert " install -r requirements.txt" in cli.logged
     assert " install runez" in cli.logged
-    assert "pickley --version" in cli.logged
     assert "Symlink /tmp/pickley/bin/pickley <- root/usr/local/bin/pickley" in cli.logged
+    assert "- /tmp/pickley/bin/pickley, --version:" in cli.logged
     assert os.path.islink("root/usr/local/bin/pickley")
     rp = os.path.realpath("root/usr/local/bin/pickley")
     assert os.path.exists(rp)
