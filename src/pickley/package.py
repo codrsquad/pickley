@@ -45,7 +45,7 @@ class PythonVenv:
         return self.create_venv_with_uv()
 
     def create_venv_with_uv(self):
-        uv_path = CFG.guarantee_uv_installed()
+        uv_path = bstrap.ensure_uv_bootstrapped(CFG.base)
         seed = "--seed" if self.settings.uv_seed else None
         r = runez.run(uv_path, "-q", "venv", seed, "-p", self.settings.python_executable, self.folder, logger=self.logger)
         if self.groom_uv_venv:
@@ -85,12 +85,12 @@ class PythonVenv:
 
         return self._run_uv(*cmd, *args, fatal=fatal, passthrough=passthrough)
 
-    def run_pip(self, command, *args, fatal=True, passthrough=False):
+    def run_pip(self, command, *args, **kwargs):
         """Run `pip` command, this only works for commands that are common between `pip` and `uv`"""
         if self.use_pip:
-            return self._run_py_pip(command, *args, fatal=fatal, passthrough=passthrough)
+            return self._run_py_pip(command, *args, **kwargs)
 
-        return self._run_uv("pip", command, *args, fatal=fatal, passthrough=passthrough)
+        return self._run_uv("pip", command, *args, **kwargs)
 
     def run_python(self, *args, **kwargs):
         """Run python from this venv with given args"""
@@ -111,7 +111,7 @@ class PythonVenv:
 
     def _run_uv(self, *args, **kwargs):
         kwargs.setdefault("logger", self.logger)
-        uv_path = CFG.guarantee_uv_installed()
+        uv_path = bstrap.ensure_uv_bootstrapped(CFG.base)
         env = dict(kwargs.get("env") or os.environ)
         env["VIRTUAL_ENV"] = str(self.folder)
         kwargs["env"] = env
@@ -181,20 +181,16 @@ class VenvPackager:
         TrackedManifest
             Installed package manifest
         """
-        venv = pspec.get_installation_venv()
         if pspec.canonical_name == "uv":
-            # Special case for uv: it does not need a venv
-            if bstrap._UV_PATH and runez.is_executable(bstrap._UV_PATH):
-                # Bootstrap already grabbed a uv binary in `.cache/uv/bin/uv`, no need to download it again
-                runez.copy(bstrap._UV_PATH.parent.parent, venv.folder)
+            # Special case for uv: it does not need a venv and lives at the root of the base, without a wrapper
+            bstrap.download_uv(CFG.base, version=pspec.target_version, dryrun=runez.DRYRUN, copy=runez.copy)
+            manifest = pspec.save_manifest()
+            return manifest
 
-            else:
-                bstrap.download_uv(venv.folder, version=pspec.target_version, dryrun=runez.DRYRUN)
-
-        else:
-            venv.create_venv()
-            venv.pip_install(pspec.resolved_info.pip_spec)
-
+        venv_settings = pspec.settings.venv_settings()
+        venv = PythonVenv(pspec.target_installation_folder, venv_settings)
+        venv.create_venv()
+        venv.pip_install(pspec.resolved_info.pip_spec)
         delivery = VenvPackager.delivery_method_for(pspec)
         return delivery.install(pspec)
 
@@ -251,14 +247,19 @@ def simplified_compileall(text):
 
 def _compileall_filter(text):
     prev = None
+    skipped = 0
     for line in text.splitlines():
         if line.startswith(("Listing ", "Compiling ")):
             prev = line
+            skipped += 1
 
         else:
             if prev:
-                yield "..."
+                if skipped > 1:
+                    yield "..."
+
                 yield prev  # Show last "Listing" or "Compiling" line for context (what follows is reported errors)
                 prev = None
+                skipped = 0
 
             yield line

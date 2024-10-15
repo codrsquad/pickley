@@ -127,9 +127,9 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
     verb : str
         Verb to use to convey what kind of installation is being done (ex: auto-heal)
     """
-    runez.abort_if(pspec.problem, f"Can't {verb} {pspec}: {runez.red(pspec.problem)}")
     with SoftLock(pspec.canonical_name):
         started = time.time()
+        runez.abort_if(pspec.problem, f"Can't {verb} {pspec}: {runez.red(pspec.problem)}")
         if CFG.version_check_delay and not pspec.is_clear_for_installation():
             if pspec.is_facultative:
                 LOG.info("Skipping facultative installation '%s', not installed by pickley", pspec)
@@ -167,13 +167,14 @@ def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
     logger : callable
         Logger to use
     """
-    manifest = pspec.manifest
-    if not manifest or not manifest.version:
-        runez.abort(f"Can't upgrade '{runez.red(pspec)}': not installed with pickley")
-
-    runez.abort_if(pspec.problem, f"Can't upgrade {runez.red(pspec)}: {runez.red(pspec.problem)}")
     with SoftLock(pspec.canonical_name):
         started = time.time()
+        if pspec.canonical_name != "uv":
+            manifest = pspec.manifest
+            if not manifest or not manifest.version:
+                runez.abort(f"Can't upgrade '{runez.red(pspec)}': not installed with pickley")
+
+        runez.abort_if(pspec.problem, f"Can't upgrade {runez.red(pspec)}: {runez.red(pspec.problem)}")
         if pspec.is_up_to_date:
             logger("%s v%s is already up-to-date", pspec.canonical_name, runez.bold(pspec.currently_installed_version))
             pspec.groom_installation()
@@ -187,6 +188,25 @@ def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
             logger("%s %s v%s%s", action, pspec.canonical_name, runez.bold(pspec.target_version), runez.dim(note))
 
         pspec.groom_installation()
+
+
+def perform_auto_upgrade(canonical_name, cooldown, force=False):
+    canonical_name = CFG.required_canonical_name(canonical_name)
+    pspec = PackageSpec(canonical_name)
+    cooldown_path = CFG.cache / f"{canonical_name}.cooldown"
+    if not force and cooldown and runez.file.is_younger(cooldown_path, cooldown):
+        if canonical_name != "uv":
+            LOG.debug("Skipping auto-upgrade, checked recently")
+
+        return
+
+    lock_path = CFG.soft_lock_path(canonical_name)
+    if runez.file.is_younger(lock_path, CFG.install_timeout(canonical_name)):
+        LOG.debug("Lock file '%s' present, another installation is in progress", runez.short(lock_path))
+        return
+
+    runez.touch(cooldown_path)
+    perform_upgrade(pspec, logger=LOG.debug)
 
 
 def _find_base_from_program_path(path: Path):
@@ -266,6 +286,11 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
         runez.Anchored.add(CFG.base)
 
     bstrap.set_mirror_env_vars(index or CFG.index)
+    if CFG.use_audit_log and "uv" not in sys.argv and ctx.invoked_subcommand not in ("bootstrap", "uninstall"):
+        # `uv` is a special case, it does not need a python venv, it is used to determine what to install for all other packages.
+        # We auto-check for new versions of `uv` twice per day, this can be hastened by user running an explicit `pickley upgrade uv`.
+        if bstrap.USE_UV or package_manager == "uv":
+            perform_auto_upgrade("uv", cooldown=12 * runez.date.SECONDS_IN_ONE_HOUR)
 
 
 @main.command()
@@ -296,20 +321,7 @@ def auto_heal():
 @click.argument("package", required=True)
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
-    canonical_name = CFG.required_canonical_name(package)
-    pspec = PackageSpec(canonical_name)
-    if not force:
-        cache_path = pspec.resolution_cache_path
-        if CFG.version_check_delay and runez.file.is_younger(cache_path, CFG.version_check_delay):
-            LOG.debug("Skipping auto-upgrade, checked recently")
-            sys.exit(0)
-
-    lock_path = CFG.soft_lock_path(canonical_name)
-    if lock_path and runez.file.is_younger(lock_path, CFG.install_timeout(canonical_name)):
-        LOG.debug("Lock file present, another installation is in progress")
-        sys.exit(0)
-
-    perform_upgrade(pspec, logger=LOG.debug)
+    perform_auto_upgrade(package, cooldown=CFG.version_check_delay, force=force)
 
 
 @main.command()
@@ -318,7 +330,7 @@ def base(what):
     """Show pickley base folder"""
     path = CFG.base
     if what:
-        paths = {"audit.log": CFG.meta / "audit.log", "config.json": CFG.meta / "config.json"}
+        paths = {"audit.log": CFG.meta / "audit.log", "config.json": CFG.meta / "config.json", "uv": CFG.base}
         path = paths.get(what)
         if not path:
             all_installed = set(CFG.scan_installed())
@@ -350,7 +362,7 @@ def bootstrap(base_folder, pickley_spec):
     CFG.set_base(base_folder)
     runez.Anchored.add(CFG.base)
     setup_audit_log()
-    pspec = PackageSpec(pickley_spec or bstrap.PICKLEY)
+    pspec = PackageSpec(pickley_spec or bstrap.PICKLEY, authoritative=bool(pickley_spec))
     perform_install(pspec)
 
 
@@ -500,11 +512,15 @@ def cmd_list(border, format, verbose):
 @click.argument("package", required=True)
 def pip(command, package):
     """Run a diagnostics `pip` command in specified package"""
+    from pickley.package import PythonVenv
+
     for pspec in CFG.package_specs(package):
-        python = pspec.healthcheck_exe.parent / "python"
-        runez.abort_if(not runez.is_executable(python), f"{runez.red(python)} is not an executable")
-        venv = pspec.get_installation_venv()
-        venv.run_pip(command, pspec.canonical_name if command == "show" else None, passthrough=True)
+        runez.abort_if(pspec.canonical_name == "uv", f"This command does not apply to {runez.bold(pspec.canonical_name)}")
+        runez.abort_if(not pspec.currently_installed_version, f"{runez.red(pspec.canonical_name)} was not installed with pickley")
+        venv_settings = pspec.settings.venv_settings()
+        folder = CFG.meta / f"{pspec.canonical_name}-{pspec.currently_installed_version}"
+        venv = PythonVenv(folder, venv_settings)
+        venv.run_pip(command, pspec.canonical_name if command == "show" else None, stdout=None, stderr=None)
 
 
 @main.command(add_help_option=False, context_settings={"ignore_unknown_options": True})
@@ -726,7 +742,7 @@ class RunSetup:
     @classmethod
     def perform_run(cls, command, args):
         rs = cls.from_cli(command)
-        pspec = PackageSpec(rs.specced)
+        pspec = PackageSpec(rs.specced, authoritative=bool(rs.pinned))
         if not pspec.currently_installed_version:
             perform_install(pspec, quiet=True)
 

@@ -23,31 +23,24 @@ assert logged  # Just making fixtures available, with no complaints about unused
 
 
 def grab_test_uv():
-    # Ensure `uv` is downloaded once for all tests, in the project's `./build/uv` folder
-    target = runez.to_path(runez.DEV.project_path("build/uv"))
-    uv_path = target / "bin/uv"
-    if not runez.is_executable(uv_path):  # pragma: no cover
-        bstrap.download_uv(target)
+    """Ensure `uv` is downloaded once for all tests, in './build/uv'"""
+    build_folder = runez.to_path(runez.DEV.project_path("build"))
+    if bstrap.USE_UV:
+        uv_path = build_folder / "uv"
+        if not bstrap.is_valid_uv_executable(uv_path):
+            bstrap.download_uv(build_folder, dryrun=False)
 
-    return uv_path
+        return uv_path
+
+    forbidden_uv = build_folder / "uv-forbidden"
+    if not forbidden_uv.exists():
+        runez.write(forbidden_uv, "#!/bin/sh\necho This python version is not supposed to use uv\nexit 1", logger=None)
+        runez.make_executable(forbidden_uv, logger=None)
+
+    return forbidden_uv
 
 
-if bstrap.USE_UV:
-    bstrap._UV_PATH = grab_test_uv()
-
-
-def dot_meta(relative=None, parent=None):
-    path = bstrap.DOT_META
-    if relative:
-        if relative.endswith("manifest.json"):
-            path = os.path.join(path, ".manifest")
-
-        path = os.path.join(path, relative)
-
-    if parent:
-        path = os.path.join(parent, path)
-
-    return path
+bstrap._UV_PATH = grab_test_uv()
 
 
 class TemporaryBase(runez.TempFolder):
@@ -57,6 +50,7 @@ class TemporaryBase(runez.TempFolder):
         CFG.reset()
         if bstrap.USE_UV:
             CFG._uv_path = bstrap._UV_PATH
+            runez.touch(os.path.join(self.tmp_folder, ".pk/.cache/uv.cooldown"), logger=None)
 
         return self.tmp_folder
 

@@ -11,8 +11,6 @@ import runez
 from pickley import bstrap, Reporter
 from pickley.cli import CFG
 
-from .conftest import dot_meta
-
 
 def test_bootstrap_command(cli, monkeypatch):
     monkeypatch.setattr(bstrap, "_UV_PATH", None)
@@ -25,8 +23,7 @@ def test_bootstrap_command(cli, monkeypatch):
     cli.run("--no-color", "-vv", "bootstrap", ".local/bin", cli.project_folder)
     assert cli.succeeded
     if bstrap.USE_UV:
-        assert "Authoritative auto-upgrade spec 'uv' v" in cli.logged
-        assert "Bootstrapped uv v" in cli.logged
+        assert "No uv present, bootstrapping uv" in cli.logged
         assert CFG.program_version(".local/bin/uv")
 
     else:
@@ -83,12 +80,12 @@ def test_bootstrap_script(cli, monkeypatch):
     assert f"Seeding {uv_config} with {mirror}" in cli.logged
     assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", f"index-url = {mirror}"]
     assert list(runez.readlines(uv_config)) == ["[pip]", f'index-url = "{mirror}"']
-    assert list(runez.readlines(f".local/bin/{dot_meta('config.json')}")) == ["{", f"  {sample_config}", "}"]
+    assert list(runez.readlines(".local/bin/.pk/config.json")) == ["{", f"  {sample_config}", "}"]
 
     if bstrap.USE_UV:
         # Now verify that uv works with the seeded file
         monkeypatch.setenv("UV_CONFIG_FILE", uv_config)
-        uv_path = bstrap.find_uv(CFG.base)
+        uv_path = bstrap.ensure_uv_bootstrapped(CFG.base)
         r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
         assert r.succeeded, f"uv venv failed: {r.full_output}"
 
@@ -97,26 +94,6 @@ def test_bootstrap_script(cli, monkeypatch):
         r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
         assert r.failed
         assert "Failed to " in r.error
-
-
-@pytest.mark.skipif(not bstrap.USE_UV, reason="Applies only to uv")
-def test_download_uv(temp_cfg, monkeypatch):
-    assert bstrap.uv_url(None)
-
-    monkeypatch.setattr(bstrap, "_UV_PATH", None)
-    tmp_uv = temp_cfg.base / bstrap.DOT_META / ".cache/uv/bin/uv"
-    assert bstrap.find_uv(temp_cfg.base) == tmp_uv
-
-    monkeypatch.setattr(bstrap, "_UV_PATH", None)
-    runez.write("sample-uv", "#!/bin/sh\necho uv 0.0.1", logger=None)
-    runez.make_executable("sample-uv", logger=None)
-    runez.symlink("sample-uv", "uv", logger=None)
-    assert bstrap.find_uv(temp_cfg.base) == temp_cfg.base / "uv"
-
-    # Simulate bad uv download
-    monkeypatch.setattr(bstrap, "_UV_PATH", None)
-    runez.write("sample-uv", "#!/bin/sh\nexit 1", logger=None)
-    assert bstrap.find_uv(temp_cfg.base) == tmp_uv
 
 
 def test_edge_cases(temp_cfg, monkeypatch):
@@ -235,3 +212,23 @@ def test_pip_conf(temp_cfg, logged):
     # Keep chatter to a minimum
     assert "no-such-file.conf" not in logged  # No chatter about non-existing files
     assert "Could not read 'a'" in logged.pop()
+
+
+def test_uv_bootstrap(temp_cfg, logged, monkeypatch):
+    monkeypatch.setattr(bstrap, "VERBOSITY", 2)
+    monkeypatch.setattr(bstrap, "Reporter", bstrap._Reporter)
+    monkeypatch.setattr(bstrap, "download_uv", lambda *_, **__: None)
+    monkeypatch.setattr(bstrap, "_UV_PATH", None)
+
+    # Simulate symlinked uv
+    runez.write("some-uv", "#!/bin/sh\necho uv 0.0.1", logger=None)
+    runez.make_executable("some-uv", logger=None)
+    runez.symlink("some-uv", "uv", logger=None)
+    bstrap.ensure_uv_bootstrapped(temp_cfg.base)
+    assert "Replacing invalid uv executable" in logged.pop()
+
+    # Simulate wrapped uv
+    monkeypatch.setattr(bstrap, "_UV_PATH", None)
+    runez.move("some-uv", "uv", overwrite=True, logger=None)
+    bstrap.ensure_uv_bootstrapped(temp_cfg.base)
+    assert "Replacing uv wrapper" in logged.pop()

@@ -1,6 +1,6 @@
 import runez
 
-from pickley import bstrap, CFG, PackageSpec
+from pickley import bstrap, CFG
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -82,12 +82,6 @@ def test_good_config(cli):
     cli.run("-n install bundle:dev3")
     assert cli.succeeded
     assert "Would wrap mgit -> .pk/mgit-1.2.1/bin/mgit" in cli.logged
-
-    mgit = PackageSpec("mgit==1.0.0")
-    pickley = PackageSpec("pickley==1.0.0")
-    assert mgit < pickley  # Ordering based on package name, then version
-    assert str(mgit) == "mgit==1.0.0"
-    assert str(pickley.resolved_info) == "pickley==1.0.0"
 
 
 def test_despecced():

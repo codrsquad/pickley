@@ -348,7 +348,7 @@ class PackageSpec:
         """
         given_package_spec = CFG.absolute_package_spec(given_package_spec)
         self._canonical_name = PypiStd.std_package_name(given_package_spec)
-        if authoritative or self._canonical_name is None:
+        if authoritative:
             self.auto_upgrade_spec = given_package_spec
             msg = f"Authoritative auto-upgrade spec '{self.auto_upgrade_spec}'"
             if isinstance(authoritative, ResolvedPackage):
@@ -358,16 +358,15 @@ class PackageSpec:
             runez.log.trace(msg)
 
         else:
-            self._manifest_path = CFG.manifest_path(self._canonical_name)
-            manifest = TrackedManifest.from_file(self._manifest_path)
+            # Non-authoritative specs are necessarily canonical names (since only authoritative specs can refer to git urls, etc.)
+            manifest = self.manifest
             if manifest and manifest.settings and manifest.settings.auto_upgrade_spec:
                 # Use previously saved authoritative auto-upgrade spec
-                self._manifest = manifest
                 runez.log.trace(f"Using previous authoritative auto-upgrade spec '{manifest.settings.auto_upgrade_spec}'")
                 self.auto_upgrade_spec = manifest.settings.auto_upgrade_spec
 
             else:
-                # Fallback for installations prior to pickley v4.4
+                # Manifest was produced by an older pickley prior to v4.4
                 runez.log.trace(f"Assuming auto-upgrade spec '{self._canonical_name}'")
                 self.auto_upgrade_spec = self._canonical_name
 
@@ -390,17 +389,16 @@ class PackageSpec:
 
     @property
     def canonical_name(self) -> str:
-        if self._canonical_name:
-            # This allows to avoid a full resolution for commands such as 'list'
-            return self._canonical_name
+        if self._canonical_name is None:
+            # Full resolution is needed because we have been given an authoritative spec (example `git+https://...`)
+            self._canonical_name = self.resolved_info.canonical_name
 
-        # Full resolution is needed (example `git+https://...`)
-        return self.resolved_info.canonical_name
+        return self._canonical_name
 
     @property
     def manifest_path(self):
         if self._manifest_path is None:
-            self._manifest_path = CFG.manifest_path(self.canonical_name)
+            self._manifest_path = CFG.manifests / f"{self.canonical_name}.manifest.json"
 
         return self._manifest_path
 
@@ -433,7 +431,8 @@ class PackageSpec:
     @property
     def target_installation_folder(self):
         """Folder that will hold current installation of this package"""
-        return CFG.meta / f"{self.canonical_name}-{self.target_version}"
+        if self.canonical_name != "uv":
+            return CFG.meta / f"{self.canonical_name}-{self.target_version}"
 
     @property
     def is_up_to_date(self) -> bool:
@@ -461,10 +460,12 @@ class PackageSpec:
     @property
     def healthcheck_exe(self) -> Path:
         """Executable used to determine whether installation is healthy"""
+        if self.canonical_name == "uv":
+            return CFG.base / "uv"
+
         manifest = self.manifest
         version = (manifest and manifest.version) or self.target_version
-        exe_basename = "uv" if self.canonical_name == "uv" else "python"
-        return CFG.meta / f"{self.canonical_name}-{version}/bin" / exe_basename
+        return CFG.meta / f"{self.canonical_name}-{version}/bin/python"
 
     @property
     def is_healthily_installed(self) -> bool:
@@ -478,13 +479,6 @@ class PackageSpec:
 
         return bool(CFG.program_version(self.healthcheck_exe))
 
-    def get_installation_venv(self):
-        """Targeted installation venv (.pk/<canonical_name>-<version>/)"""
-        from pickley.package import PythonVenv
-
-        venv_settings = self.settings.venv_settings()
-        return PythonVenv(self.target_installation_folder, venv_settings)
-
     @staticmethod
     def _mentions_pickley(path: Path):
         for line in runez.readlines(path, first=7):
@@ -493,6 +487,9 @@ class PackageSpec:
 
     def is_clear_for_installation(self) -> bool:
         """True if we can proceed with installation without needing to uninstall anything"""
+        if self.canonical_name == "uv":
+            return True
+
         if self.resolved_info.entrypoints:
             for ep in self.resolved_info.entrypoints:
                 path = CFG.base / ep
@@ -551,15 +548,22 @@ class PackageSpec:
         self._manifest = manifest
         venv_settings = self.settings.venv_settings()
         manifest.entrypoints = self.resolved_info.entrypoints
-        manifest.delivery = self.delivery_method_name
         manifest.install_info = TrackedInstallInfo.current()
-        manifest.package_manager = venv_settings.package_manager
-        manifest.python_executable = venv_settings.python_executable
         manifest.settings = self.settings
         manifest.version = self.target_version
+        if self.canonical_name != "uv":
+            manifest.delivery = self.delivery_method_name
+            manifest.package_manager = venv_settings.package_manager
+            manifest.python_executable = venv_settings.python_executable
+
         payload = manifest.to_dict()
         runez.save_json(payload, self.manifest_path)
-        runez.save_json(payload, self.target_installation_folder / ".manifest.json")
+        if self.canonical_name != "uv":
+            runez.save_json(payload, self.target_installation_folder / ".manifest.json")
+
+        # Touch .cooldown file to let auto-upgrade know we just installed this package
+        cooldown_path = CFG.cache / f"{self.canonical_name}.cooldown"
+        runez.touch(cooldown_path)
         return manifest
 
 
@@ -639,7 +643,7 @@ class PickleyConfig:
     @staticmethod
     def required_canonical_name(text):
         canonical_name = PypiStd.std_package_name(text)
-        runez.abort_if(not canonical_name, f"Invalid package name '{runez.red(text)}'")
+        runez.abort_if(not canonical_name, f"'{runez.red(text)}' is not a canonical pypi package name")
         return canonical_name
 
     @runez.cached_property
@@ -681,24 +685,6 @@ class PickleyConfig:
                 return value
 
         return KNOWN_ENTRYPOINTS.get(canonical_name)
-
-    def guarantee_uv_installed(self):
-        """Ensure uv is installed in `CFG.base`"""
-        if self._uv_path is None:
-            self._uv_path = self.base / "uv"
-            uv_version = self.program_version(self._uv_path)
-            if not uv_version:
-                from pickley.package import VenvPackager
-
-                uv_path = bstrap.find_uv(CFG.base)
-                uv_version = CFG.program_version(uv_path)
-                info = ResolvedPackage()
-                info.set_attributes("uv", "uv", CFG.configured_entrypoints("uv"), "uv", None, "uv bootstrap", uv_version)
-                uv_spec = PackageSpec("uv", authoritative=info)
-                manifest = VenvPackager.install(uv_spec)
-                LOG.debug("Bootstrapped uv v%s", manifest.version)
-
-        return self._uv_path
 
     def set_base(self, base_path):
         """
@@ -786,10 +772,7 @@ class PickleyConfig:
         """str: Path to lock file used during installation for this package"""
         return self.meta / f"{canonical_name}.lock"
 
-    def manifest_path(self, canonical_name):
-        return self.manifests / f"{canonical_name}.manifest.json"
-
-    def package_specs(self, names: Sequence[str], authoritative=None):
+    def package_specs(self, names: Sequence[str], authoritative=False):
         """
         Parameters
         ----------
@@ -961,7 +944,7 @@ class TrackedManifest:
     entrypoints: Sequence[str] = None  # Entry points seen when package was installed
     delivery: str = None  # Delivery method used when package was installed
     install_info: "TrackedInstallInfo" = None  # Info on which pickley run performed the installation
-    package_manager: str  # Package manager used when package was installed
+    package_manager: str = None  # Package manager used when package was installed
     python_executable: str = None  # Python interpreter used when package was installed
     settings: "TrackedSettings" = None  # Resolved settings used when package was installed
     version: Version = None  # Version of package installed

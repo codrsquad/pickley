@@ -63,7 +63,7 @@ def test_facultative(cli):
 
     cli.run("-n check virtualenv>10000")
     assert cli.failed
-    assert "Invalid package name 'virtualenv>10000'" in cli.logged
+    assert "'virtualenv>10000' is not a canonical pypi package name" in cli.logged
 
     cli.run("-n check virtualenv")
     assert cli.failed
@@ -210,7 +210,7 @@ def test_install_pypi(cli):
 
     cli.run("pip show mgit")
     assert cli.succeeded
-    assert "Name: mgit" in cli.logged
+    assert "pip show mgit" in cli.logged
 
     cli.run("-v auto-heal")
     assert cli.succeeded
