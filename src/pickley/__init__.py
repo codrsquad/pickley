@@ -223,7 +223,7 @@ class ResolvedPackage:
                     lines[0] = runez.red(lines[0])
                     if len(lines) > 4:  # pragma: no cover, hard to trigger, happens when a wheel can't be built for example
                         # Truncate pip's output to the first 4 lines (in `uv`, they're the most relevant)
-                        runez.log.trace("Full output of 'pip install %s':\n%s", pip_spec, r.full_output)
+                        runez.log.trace(f"Full output of 'pip install {pip_spec}':\n{r.full_output}")
                         lines = lines[:4]
 
                 self.problem = runez.joined(lines, delimiter="\n") or f"Resolution failed for {pip_spec}"
@@ -336,26 +336,22 @@ class PackageSpec:
     _manifest_path: Path = None
     _resolved_info: ResolvedPackage = None
 
-    def __init__(self, given_package_spec: str, authoritative=None):
+    def __init__(self, given_package_spec: str, authoritative=False):
         """
         Parameters
         ----------
         given_package_spec : str
             Provided package reference (either name, folder or git url)
-        authoritative : bool | ResolvedPackage
+        authoritative : bool
             If True-ish, the `given_package_spec` will be used as package spec when upgrading (otherwise prev manifest is used)
             If a ResolvedPackage instance, it will be used as the authoritative resolution
         """
         given_package_spec = CFG.absolute_package_spec(given_package_spec)
         self._canonical_name = PypiStd.std_package_name(given_package_spec)
+        self.is_uv = self._canonical_name == "uv"
         if authoritative:
             self.auto_upgrade_spec = given_package_spec
-            msg = f"Authoritative auto-upgrade spec '{self.auto_upgrade_spec}'"
-            if isinstance(authoritative, ResolvedPackage):
-                msg += f" v{authoritative.version}"
-                self._resolved_info = authoritative
-
-            runez.log.trace(msg)
+            runez.log.trace(f"Authoritative auto-upgrade spec '{self.auto_upgrade_spec}'")
 
         else:
             # Non-authoritative specs are necessarily canonical names (since only authoritative specs can refer to git urls, etc.)
@@ -392,6 +388,7 @@ class PackageSpec:
         if self._canonical_name is None:
             # Full resolution is needed because we have been given an authoritative spec (example `git+https://...`)
             self._canonical_name = self.resolved_info.canonical_name
+            self.is_uv = self._canonical_name == "uv"
 
         return self._canonical_name
 
@@ -431,8 +428,18 @@ class PackageSpec:
     @property
     def target_installation_folder(self):
         """Folder that will hold current installation of this package"""
-        if self.canonical_name != "uv":
+        if not self.is_uv:
             return CFG.meta / f"{self.canonical_name}-{self.target_version}"
+
+    def upgrade_reason(self):
+        """Reason this package spec needs an upgrade (if any)"""
+        manifest = self.manifest
+        if manifest:
+            if manifest.version != self.target_version:
+                return "new version available"
+
+            if not self.is_healthily_installed:
+                return "unhealthy"
 
     @property
     def is_up_to_date(self) -> bool:
@@ -460,7 +467,7 @@ class PackageSpec:
     @property
     def healthcheck_exe(self) -> Path:
         """Executable used to determine whether installation is healthy"""
-        if self.canonical_name == "uv":
+        if self.is_uv:
             return CFG.base / "uv"
 
         manifest = self.manifest
@@ -487,7 +494,7 @@ class PackageSpec:
 
     def is_clear_for_installation(self) -> bool:
         """True if we can proceed with installation without needing to uninstall anything"""
-        if self.canonical_name == "uv":
+        if self.is_uv:
             return True
 
         if self.resolved_info.entrypoints:
@@ -551,14 +558,14 @@ class PackageSpec:
         manifest.install_info = TrackedInstallInfo.current()
         manifest.settings = self.settings
         manifest.version = self.target_version
-        if self.canonical_name != "uv":
+        if not self.is_uv:
             manifest.delivery = self.delivery_method_name
             manifest.package_manager = venv_settings.package_manager
             manifest.python_executable = venv_settings.python_executable
 
         payload = manifest.to_dict()
         runez.save_json(payload, self.manifest_path)
-        if self.canonical_name != "uv":
+        if not self.is_uv:
             runez.save_json(payload, self.target_installation_folder / ".manifest.json")
 
         # Touch .cooldown file to let auto-upgrade know we just installed this package

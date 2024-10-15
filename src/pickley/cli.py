@@ -127,23 +127,24 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
     verb : str
         Verb to use to convey what kind of installation is being done (ex: auto-heal)
     """
+    runez.abort_if(pspec.problem, f"Can't {verb} {pspec}: {runez.red(pspec.problem)}")
+    if not pspec.is_clear_for_installation():
+        if pspec.is_facultative:
+            LOG.info("Skipping facultative installation '%s', not installed by pickley", pspec)
+            return
+
+        runez.abort(f"{runez.red(pspec.canonical_name)} is not installed by pickley, please uninstall it first")
+
     with SoftLock(pspec.canonical_name):
         started = time.time()
-        runez.abort_if(pspec.problem, f"Can't {verb} {pspec}: {runez.red(pspec.problem)}")
-        if CFG.version_check_delay and not pspec.is_clear_for_installation():
-            if pspec.is_facultative:
-                LOG.info("Skipping facultative installation '%s', not installed by pickley", pspec)
-                return
-
-            runez.abort(f"{runez.red(pspec.canonical_name)} is not installed by pickley, please uninstall it first")
-
-        if CFG.version_check_delay and pspec.is_up_to_date:
+        if CFG.version_check_delay and pspec.manifest:
             # When --force is used `version_check_delay` is zero (we force-install)
-            if not quiet:
-                LOG.info("%s v%s is already installed", pspec.canonical_name, runez.bold(pspec.currently_installed_version))
-
-            pspec.groom_installation()
-            return
+            upgrade_reason = pspec.upgrade_reason()
+            if not upgrade_reason:
+                logger = Reporter.trace if quiet else Reporter.inform
+                logger(f"{pspec.canonical_name} v{runez.bold(pspec.currently_installed_version)} is already installed")
+                pspec.groom_installation()
+                return
 
         setup_audit_log()
         manifest = VenvPackager.install(pspec)
@@ -167,15 +168,16 @@ def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
     logger : callable
         Logger to use
     """
+    if not pspec.is_uv:
+        manifest = pspec.manifest
+        if not manifest or not manifest.version:
+            runez.abort(f"Can't upgrade '{runez.red(pspec)}': not installed with pickley")
+
     with SoftLock(pspec.canonical_name):
         started = time.time()
-        if pspec.canonical_name != "uv":
-            manifest = pspec.manifest
-            if not manifest or not manifest.version:
-                runez.abort(f"Can't upgrade '{runez.red(pspec)}': not installed with pickley")
-
         runez.abort_if(pspec.problem, f"Can't upgrade {runez.red(pspec)}: {runez.red(pspec.problem)}")
-        if pspec.is_up_to_date:
+        upgrade_reason = pspec.upgrade_reason()
+        if not upgrade_reason:
             logger("%s v%s is already up-to-date", pspec.canonical_name, runez.bold(pspec.currently_installed_version))
             pspec.groom_installation()
             return
@@ -183,7 +185,7 @@ def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
         setup_audit_log()
         manifest = VenvPackager.install(pspec)
         if manifest:
-            note = f" in {runez.represented_duration(time.time() - started)}"
+            note = f" (reason: {upgrade_reason}) in {runez.represented_duration(time.time() - started)}"
             action = "Would state: Upgraded" if runez.DRYRUN else "Upgraded"
             logger("%s %s v%s%s", action, pspec.canonical_name, runez.bold(pspec.target_version), runez.dim(note))
 
@@ -195,7 +197,7 @@ def perform_auto_upgrade(canonical_name, cooldown, force=False):
     pspec = PackageSpec(canonical_name)
     cooldown_path = CFG.cache / f"{canonical_name}.cooldown"
     if not force and cooldown and runez.file.is_younger(cooldown_path, cooldown):
-        if canonical_name != "uv":
+        if not pspec.is_uv:
             LOG.debug("Skipping auto-upgrade, checked recently")
 
         return
@@ -391,18 +393,14 @@ def check(force, packages):
             msg = f"present, but not installed by pickley {msg}"
             code = 1
 
-        elif pspec.is_up_to_date:
-            msg = f"v{runez.bold(dv)} up-to-date"
-
         else:
-            msg = "currently"
-            if pspec.currently_installed_version != dv:
-                msg += f" v{pspec.currently_installed_version}"
+            msg = f"v{runez.bold(dv)}"
+            upgrade_reason = pspec.upgrade_reason()
+            if upgrade_reason:
+                msg += f" available (upgrade reason: {upgrade_reason})"
 
-            if not pspec.is_healthily_installed:
-                msg += runez.red(" unhealthy")
-
-            msg = f"v{runez.bold(dv)} available ({msg})"
+            else:
+                msg += " up-to-date"
 
         if pspec.canonical_name != pspec.auto_upgrade_spec:
             msg += runez.dim(f" (tracks: {pspec.auto_upgrade_spec})")
@@ -515,7 +513,7 @@ def pip(command, package):
     from pickley.package import PythonVenv
 
     for pspec in CFG.package_specs(package):
-        runez.abort_if(pspec.canonical_name == "uv", f"This command does not apply to {runez.bold(pspec.canonical_name)}")
+        runez.abort_if(pspec.is_uv, f"This command does not apply to {runez.bold(pspec.canonical_name)}")
         runez.abort_if(not pspec.currently_installed_version, f"{runez.red(pspec.canonical_name)} was not installed with pickley")
         venv_settings = pspec.settings.venv_settings()
         folder = CFG.meta / f"{pspec.canonical_name}-{pspec.currently_installed_version}"

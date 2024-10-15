@@ -70,7 +70,7 @@ class Bootstrap:
             Reporter.abort(f"Unsupported package manager '{self.package_manager}', state 'uv' or 'pip'")
 
         self.pickley_base = Path(find_base(args.base)).absolute()
-        self.pickley_spec = args.pickley_spec or PICKLEY
+        self.pickley_spec = args.pickley_spec
         if self.mirror:
             seed_mirror(self.mirror, "~/.config/pip/pip.conf", "global")
             seed_mirror(self.mirror, "~/.config/uv/uv.toml", "pip")
@@ -104,7 +104,12 @@ class Bootstrap:
             else:
                 self.bootstrap_pickley_with_uv(venv_folder)
 
-            run_program(venv_folder / f"bin/{PICKLEY}", "bootstrap", self.pickley_base, self.pickley_spec)
+            args = ["bootstrap", self.pickley_base]
+            if self.pickley_spec:
+                # Not explicitly stating pickley spec to use makes bootstrap use previous authoritative spec
+                args.append(self.pickley_spec)
+
+            run_program(venv_folder / f"bin/{PICKLEY}", *args)
 
     def bootstrap_pickley_with_uv(self, venv_folder: Path):
         uv_path = ensure_uv_bootstrapped(self.pickley_base)
@@ -112,11 +117,11 @@ class Bootstrap:
         env = dict(os.environ)
         env["VIRTUAL_ENV"] = venv_folder
         args = []
-        if self.pickley_spec.startswith("/"):
+        if self.pickley_spec and self.pickley_spec.startswith("/"):
             # Testing or troubleshooting: bootstrapping pickley from a local folder checkout
             args.append("-e")
 
-        args.append(self.pickley_spec)
+        args.append(self.pickley_spec or PICKLEY)
         run_program(uv_path, "-q", "pip", "install", *args, env=env)
 
     def bootstrap_pickley_with_pip(self, venv_folder: Path):
@@ -136,7 +141,7 @@ class Bootstrap:
             run_program(sys.executable, zipapp, "-q", "-p", sys.executable, venv_folder)
 
         run_program(pip, "-q", "install", "-U", *pip_auto_upgrade())
-        run_program(pip, "-q", "install", self.pickley_spec)
+        run_program(pip, "-q", "install", self.pickley_spec or PICKLEY)
 
     def get_latest_pickley_version(self):
         # Legacy implementation, it can only use latest pickley version published

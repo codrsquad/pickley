@@ -151,6 +151,7 @@ def test_install_pypi(cli):
     cli.run("upgrade mgit")
     assert cli.failed
     assert "Can't upgrade 'mgit': not installed with pickley" in cli.logged
+    assert "Traceback" not in cli.logged
 
     cli.run("uninstall mgit --all")
     assert cli.failed
@@ -224,7 +225,7 @@ def test_install_pypi(cli):
     runez.delete("mgit", logger=None)
     cli.run("check")
     assert cli.succeeded
-    assert cli.logged.stdout.contents().strip() == "mgit: v1.2.1 available (currently unhealthy) (tracks: mgit<1.3.0)"
+    assert cli.logged.stdout.contents().strip() == "mgit: v1.2.1 available (upgrade reason: unhealthy) (tracks: mgit<1.3.0)"
 
     cli.run("--no-color -vv upgrade mgit")
     assert cli.succeeded

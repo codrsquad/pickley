@@ -1,4 +1,4 @@
-from pickley import CFG, LOG
+from pickley import bstrap, CFG, LOG
 
 
 def test_alternate_wrapper(cli):
@@ -21,6 +21,14 @@ def test_alternate_wrapper(cli):
     assert CFG.program_version("./mgit", logger=LOG.info)
     assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
     assert CFG.symlinked_canonical(mgit_path) is None
+
+    if bstrap.USE_UV:
+        cli.run("--no-color -vv install uv")
+        assert cli.succeeded
+        assert "Manifest .pk/.manifest/uv.manifest.json is not present" in cli.logged
+        assert "Copy .pk/.cache/uv-" in cli.logged
+        assert "Touched .pk/.cache/uv.cooldown" in cli.logged
+        assert "Installed uv v" in cli.logged
 
     cli.run("-d symlink install mgit")
     assert cli.succeeded

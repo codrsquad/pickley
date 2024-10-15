@@ -181,7 +181,7 @@ class VenvPackager:
         TrackedManifest
             Installed package manifest
         """
-        if pspec.canonical_name == "uv":
+        if pspec.is_uv:
             # Special case for uv: it does not need a venv and lives at the root of the base, without a wrapper
             bstrap.download_uv(CFG.base, version=pspec.target_version, dryrun=runez.DRYRUN, copy=runez.copy)
             manifest = pspec.save_manifest()
