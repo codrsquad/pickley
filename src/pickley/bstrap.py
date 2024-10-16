@@ -11,7 +11,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -92,23 +91,20 @@ class Bootstrap:
 
     def bootstrap_pickley(self):
         """Run `pickley bootstrap` in a temporary venv"""
-        with tempfile.TemporaryDirectory() as tmp_folder:
-            if not isinstance(tmp_folder, Path):
-                tmp_folder = Path(tmp_folder)
+        # Venv in .cache/ will be auto-cleaned up after 24 hours, leaving it there as it can be useful for inspection (if bootstrap fails)
+        venv_folder = self.pickley_base / ".cache/pickley-bootstrap-venv"
+        if self.package_manager == "pip":
+            self.bootstrap_pickley_with_pip(venv_folder)
 
-            venv_folder = tmp_folder / "bootstrap-venv"
-            if self.package_manager == "pip":
-                self.bootstrap_pickley_with_pip(venv_folder)
+        else:
+            self.bootstrap_pickley_with_uv(venv_folder)
 
-            else:
-                self.bootstrap_pickley_with_uv(venv_folder)
+        args = ["bootstrap", self.pickley_base]
+        if self.pickley_spec:
+            # Not explicitly stating pickley spec to use makes bootstrap use previous authoritative spec
+            args.append(self.pickley_spec)
 
-            args = ["bootstrap", self.pickley_base]
-            if self.pickley_spec:
-                # Not explicitly stating pickley spec to use makes bootstrap use previous authoritative spec
-                args.append(self.pickley_spec)
-
-            run_program(venv_folder / f"bin/{PICKLEY}", *args)
+        run_program(venv_folder / f"bin/{PICKLEY}", *args)
 
     def bootstrap_pickley_with_uv(self, venv_folder: Path):
         uv_bootstrap = UvBootstrap(self.pickley_base)
