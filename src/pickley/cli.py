@@ -116,7 +116,7 @@ class SoftLock:
             runez.delete(self.lock_path, logger=None)
 
 
-def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
+def perform_install(pspec: PackageSpec, quiet=False):
     """
     Parameters
     ----------
@@ -124,10 +124,8 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
         Package spec to install
     quiet : bool
         If True, don't chatter
-    verb : str
-        Verb to use to convey what kind of installation is being done (ex: auto-heal)
     """
-    runez.abort_if(pspec.problem, f"Can't {verb} {pspec}: {runez.red(pspec.problem)}")
+    runez.abort_if(pspec.problem, f"Can't install {pspec}: {runez.red(pspec.problem)}")
     if not pspec.is_clear_for_installation():
         if pspec.is_facultative:
             LOG.info("Skipping facultative installation '%s', not installed by pickley", pspec)
@@ -154,7 +152,7 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
             if upgrade_reason:
                 note += f"  (reason: {upgrade_reason})"
 
-            action = "%s%sed" % (verb[0].upper(), verb[1:])
+            action = "Would state: Installed" if runez.DRYRUN else "Installed"
             if runez.DRYRUN:
                 action = f"Would state: {action}"
 
@@ -163,21 +161,27 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
         pspec.groom_installation()
 
 
-def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
+def perform_upgrade(pspec: PackageSpec, fatal=True, logger=LOG.debug, verb="auto-upgrade"):
     """
     Parameters
     ----------
     pspec : PackageSpec
         Package to upgrade
+    fatal : bool
+        If True, abort on error
     logger : callable
         Logger to use
+    verb : str
+        Verb to use to convey what kind of installation is being done (ex: auto-heal)
     """
     if not pspec.is_uv:
         manifest = pspec.manifest
         if not manifest or not manifest.version:
-            runez.abort(f"Can't upgrade '{runez.red(pspec)}': not installed with pickley")
+            return runez.abort(f"Can't upgrade '{runez.red(pspec)}': not installed with pickley", fatal=fatal)
 
-    runez.abort_if(pspec.problem, f"Can't upgrade {runez.red(pspec)}: {runez.red(pspec.problem)}")
+    if pspec.problem:
+        return runez.abort(f"Can't {verb} {runez.red(pspec)}: {runez.red(pspec.problem)}", fatal=fatal)
+
     with SoftLock(pspec.canonical_name):
         started = time.time()
         upgrade_reason = pspec.upgrade_reason()
@@ -187,13 +191,22 @@ def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
             return
 
         setup_audit_log()
-        manifest = VenvPackager.install(pspec)
-        if manifest:
-            note = f" (reason: {upgrade_reason}) in {runez.represented_duration(time.time() - started)}"
-            action = "Would state: Upgraded" if runez.DRYRUN else "Upgraded"
-            logger("%s %s v%s%s", action, pspec.canonical_name, runez.bold(pspec.target_version), runez.dim(note))
+        manifest = VenvPackager.install(pspec, fatal=fatal)
+        outcome = ""
+        action = "%s%sed" % (verb[0].upper(), verb.rstrip("e")[1:])
+        if runez.DRYRUN:
+            outcome = "Would state: "
 
-        pspec.groom_installation()
+        elif not manifest:
+            # We failed to upgrade, in non-fatal mode
+            logger = LOG.error
+            outcome = f"{runez.red('Failed')} to "
+            action = verb.lower()
+
+        note = f" (upgrade reason: {upgrade_reason}) in {runez.represented_duration(time.time() - started)}"
+        logger(f"{outcome}{action} {runez.bold(pspec.canonical_name)} v{runez.bold(pspec.target_version)}{runez.dim(note)}")
+        if manifest:
+            pspec.groom_installation()
 
 
 def _find_base_from_program_path(path: Path):
@@ -284,7 +297,7 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
             cooldown_path = CFG.cache / "uv.cooldown"
             if not runez.file.is_younger(cooldown_path, 12 * runez.date.SECONDS_IN_ONE_HOUR):
                 runez.touch(cooldown_path)
-                perform_upgrade(pspec, logger=LOG.debug)
+                perform_upgrade(pspec)
 
 
 @main.command()
@@ -306,7 +319,7 @@ def auto_heal():
             continue
 
         healed += 1
-        perform_install(spec, verb="auto-heal")
+        perform_upgrade(spec, fatal=False, logger=LOG.info, verb="auto-heal")
 
     print("Auto-healed %s / %s packages" % (healed, total))
 
@@ -329,7 +342,7 @@ def auto_upgrade(force, package):
         return
 
     runez.touch(cooldown_path)
-    perform_upgrade(pspec, logger=LOG.debug)
+    perform_upgrade(pspec)
 
 
 @main.command()
@@ -588,7 +601,7 @@ def upgrade(packages):
     """Upgrade an installed package"""
     setup_audit_log()
     for pspec in CFG.package_specs(packages):
-        perform_upgrade(pspec)
+        perform_upgrade(pspec, logger=LOG.info, verb="upgrade")
 
 
 @main.command()

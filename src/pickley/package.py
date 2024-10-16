@@ -169,12 +169,14 @@ class VenvPackager:
         return runez.abort(f"Unknown delivery method '{runez.red(name)}'")
 
     @staticmethod
-    def install(pspec: PackageSpec) -> TrackedManifest:
+    def install(pspec: PackageSpec, fatal=True) -> TrackedManifest:
         """
         Parameters
         ----------
         pspec : PackageSpec
             Targeted package spec
+        fatal : bool
+            If true, abort on failure
 
         Returns
         -------
@@ -193,9 +195,10 @@ class VenvPackager:
         venv_settings = pspec.settings.venv_settings()
         venv = PythonVenv(pspec.target_installation_folder(), venv_settings)
         venv.create_venv()
-        venv.pip_install(pspec.resolved_info.pip_spec)
-        delivery = VenvPackager.delivery_method_for(pspec)
-        return delivery.install(pspec)
+        r = venv.pip_install(pspec.resolved_info.pip_spec, fatal=fatal)
+        if r.succeeded:
+            delivery = VenvPackager.delivery_method_for(pspec)
+            return delivery.install(pspec)
 
     @staticmethod
     def package(pspec: PackageSpec, dist_folder: Path, requirements: "Requirements", run_compile_all: bool) -> List[Path]:
