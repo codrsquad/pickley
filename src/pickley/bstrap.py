@@ -99,7 +99,13 @@ class Bootstrap:
         else:
             self.bootstrap_pickley_with_uv(venv_folder)
 
-        args = ["bootstrap", self.pickley_base]
+        args = []
+        if VERBOSITY > 0:
+            vv = "v" * VERBOSITY
+            args.append(f"-{vv}")
+
+        args.append("bootstrap")
+        args.append(self.pickley_base)
         if self.pickley_spec:
             # Not explicitly stating pickley spec to use makes bootstrap use previous authoritative spec
             args.append(self.pickley_spec)
