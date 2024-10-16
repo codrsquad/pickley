@@ -29,7 +29,6 @@ DEFAULT_MIRROR = "https://pypi.org/simple"
 CURRENT_PYTHON_MM = sys.version_info[:2]
 UV_CUTOFF = (3, 8)
 USE_UV = CURRENT_PYTHON_MM >= UV_CUTOFF  # Default to `uv` for python versions >= this
-_UV_PATH = None
 
 
 class _Reporter:
@@ -112,8 +111,9 @@ class Bootstrap:
             run_program(venv_folder / f"bin/{PICKLEY}", *args)
 
     def bootstrap_pickley_with_uv(self, venv_folder: Path):
-        uv_path = ensure_uv_bootstrapped(self.pickley_base)
-        run_program(uv_path, "venv", "-p", sys.executable, venv_folder)
+        uv_bootstrap = UvBootstrap(self.pickley_base)
+        uv_bootstrap.auto_bootstrap(shutil.move)
+        run_program(uv_bootstrap.uv_path, "venv", "-p", sys.executable, venv_folder)
         env = dict(os.environ)
         env["VIRTUAL_ENV"] = venv_folder
         args = []
@@ -122,7 +122,7 @@ class Bootstrap:
             args.append("-e")
 
         args.append(self.pickley_spec or PICKLEY)
-        run_program(uv_path, "-q", "pip", "install", *args, env=env)
+        run_program(uv_bootstrap.uv_path, "-q", "pip", "install", *args, env=env)
 
     def bootstrap_pickley_with_pip(self, venv_folder: Path):
         pip = venv_folder / "bin/pip"
@@ -164,56 +164,53 @@ def default_package_manager(*parts):
     return "uv" if parts >= UV_CUTOFF else "pip"
 
 
-def is_valid_uv_executable(uv_path):
-    if not uv_path.exists():
-        Reporter.trace("No uv present, bootstrapping uv")
-        return False
+class UvBootstrap:
+    """Download uv from official releases"""
 
-    if not is_executable(uv_path) or uv_path.is_symlink():
-        Reporter.trace(f"Replacing invalid uv executable '{uv_path}'")
-        return False
+    def __init__(self, pickley_base):
+        self.pickley_base = pickley_base
+        self.uv_path = pickley_base / "uv"
+        self.uv_tmp = None  # Path to which last download was extracted, if any
 
-    if os.path.getsize(uv_path) < 50000:
-        # Small size means previous iteration wrapper, we want the real uv
-        Reporter.trace(f"Replacing uv wrapper '{uv_path}'")
-        return False
+    def auto_bootstrap(self, move):
+        reason = self.bootstrap_reason()
+        if reason:
+            Reporter.trace(f"Bootstrapping uv: {reason}")
+            self.uv_tmp = self.download_uv()
+            move(self.uv_tmp / "bin/uv", self.pickley_base / "uv")
+            move(self.uv_tmp / "bin/uvx", self.pickley_base / "uvx")
 
-    return True
+    def bootstrap_reason(self):
+        if not self.uv_path.exists():
+            return "uv not present"
 
+        if not is_executable(self.uv_path) or self.uv_path.is_symlink():
+            return "invalid uv file"
 
-def ensure_uv_bootstrapped(pickley_base):
-    """Ensure that `<base>/uv` is present and usable, download one if necessary."""
-    global _UV_PATH
+        if os.path.getsize(self.uv_path) < 50000:
+            # Small size means previous iteration wrapper, we want the real uv
+            return "replacing uv wrapper"
 
-    if _UV_PATH is None:
-        _UV_PATH = pickley_base / "uv"
-        if not is_valid_uv_executable(_UV_PATH):
-            download_uv(pickley_base, dryrun=False)
+    @staticmethod
+    def uv_url(version):
+        if version:
+            return f"https://github.com/astral-sh/uv/releases/download/{version}/uv-installer.sh"
 
-    return _UV_PATH
+        return "https://github.com/astral-sh/uv/releases/latest/download/uv-installer.sh"
 
-
-def uv_url(version):
-    if version:
-        return f"https://github.com/astral-sh/uv/releases/download/{version}/uv-installer.sh"
-
-    return "https://github.com/astral-sh/uv/releases/latest/download/uv-installer.sh"
-
-
-def download_uv(pickley_base: Path, version=None, dryrun=None, copy=shutil.copy):
-    ts = int(time.time() * 1000)  # Avoid dealing with cache issues, .pk/.cache is auto cleaned once per day
-    uv_tmp = pickley_base / DOT_META / f".cache/uv-{ts}"
-    script = uv_tmp / ".uv-installer.sh"
-    url = uv_url(version)
-    download(script, url, dryrun=dryrun)
-    env = dict(os.environ)
-    env["CARGO_DIST_FORCE_INSTALL_DIR"] = str(uv_tmp)
-    env["INSTALLER_NO_MODIFY_PATH"] = "1"
-    env["INSTALLER_PRINT_QUIET"] = "1"
-    env.setdefault("HOME", str(uv_tmp))  # uv's installer assumes HOME is always defined (it is not in some CI systems)
-    run_program("/bin/sh", script, env=env, dryrun=dryrun)
-    copy(uv_tmp / "bin/uv", pickley_base / "uv")
-    copy(uv_tmp / "bin/uvx", pickley_base / "uvx")
+    def download_uv(self, version=None, dryrun=False):
+        ts = int(time.time() * 1000)  # Avoid dealing with cache issues, .pk/.cache is auto cleaned once per day
+        uv_tmp = self.pickley_base / DOT_META / f".cache/uv-{ts}"
+        script = uv_tmp / ".uv-installer.sh"
+        url = self.uv_url(version)
+        download(script, url, dryrun=dryrun)
+        env = dict(os.environ)
+        env["CARGO_DIST_FORCE_INSTALL_DIR"] = str(uv_tmp)
+        env["INSTALLER_NO_MODIFY_PATH"] = "1"
+        env["INSTALLER_PRINT_QUIET"] = "1"
+        env.setdefault("HOME", str(uv_tmp))  # uv's installer assumes HOME is always defined (it is not on some CI systems)
+        run_program("/bin/sh", script, env=env, dryrun=dryrun)
+        return uv_tmp
 
 
 def http_get(url, timeout=10):

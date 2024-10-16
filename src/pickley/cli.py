@@ -291,7 +291,7 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
     if CFG.use_audit_log and "uv" not in sys.argv and ctx.invoked_subcommand not in ("bootstrap", "uninstall"):
         # `uv` is a special case, it does not need a python venv, it is used to determine what to install for all other packages.
         # We auto-check for new versions of `uv` twice per day, this can be hastened by user running an explicit `pickley upgrade uv`.
-        if bstrap.USE_UV or package_manager == "uv":
+        if (bstrap.USE_UV or package_manager == "uv") and CFG.uv_bootstrap.uv_tmp is None:
             perform_auto_upgrade("uv", cooldown=12 * runez.date.SECONDS_IN_ONE_HOUR)
 
 

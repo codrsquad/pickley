@@ -22,36 +22,19 @@ bstrap.expanduser = mocked_expanduser
 assert logged  # Just making fixtures available, with no complaints about unused imports
 
 
-def grab_test_uv():
-    """Ensure `uv` is downloaded once for all tests, in './build/uv'"""
-    build_folder = runez.to_path(runez.DEV.project_path("build"))
-    if bstrap.USE_UV:
-        uv_path = build_folder / "uv"
-        if not bstrap.is_valid_uv_executable(uv_path):
-            bstrap.download_uv(build_folder, dryrun=False)
-
-        return uv_path
-
-    forbidden_uv = build_folder / "uv-forbidden"
-    if not forbidden_uv.exists():
-        runez.write(forbidden_uv, "#!/bin/sh\necho This python version is not supposed to use uv\nexit 1", logger=None)
-        runez.make_executable(forbidden_uv, logger=None)
-
-    return forbidden_uv
-
-
-bstrap._UV_PATH = grab_test_uv()
+TEST_UV = bstrap.UvBootstrap(runez.to_path(runez.DEV.project_path("build/test-uv"))) if bstrap.USE_UV else None
 
 
 class TemporaryBase(runez.TempFolder):
     def __enter__(self):
         super(TemporaryBase, self).__enter__()
         os.environ["PICKLEY_ROOT"] = self.tmp_folder
-        CFG.reset()
-        if bstrap.USE_UV:
-            CFG._uv_path = bstrap._UV_PATH
+        # Provide a `uv` binary out-of-the-box so that tests don't have to bootstrap uv over and over
+        if TEST_UV:
+            runez.copy(TEST_UV.uv_path, os.path.join(self.tmp_folder, "uv"), logger=None)
             runez.touch(os.path.join(self.tmp_folder, ".pk/.cache/uv.cooldown"), logger=None)
 
+        CFG.reset()
         return self.tmp_folder
 
     def __exit__(self, *_):
@@ -65,6 +48,5 @@ cli.context = TemporaryBase
 @pytest.fixture
 def temp_cfg():
     with TemporaryBase() as base:
-        CFG.reset()
         CFG.set_base(base)
         yield CFG

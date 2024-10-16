@@ -45,7 +45,7 @@ class PythonVenv:
         return self.create_venv_with_uv()
 
     def create_venv_with_uv(self):
-        uv_path = bstrap.ensure_uv_bootstrapped(CFG.base)
+        uv_path = CFG.uv_bootstrap.uv_path
         seed = "--seed" if self.settings.uv_seed else None
         r = runez.run(uv_path, "-q", "venv", seed, "-p", self.settings.python_executable, self.folder, logger=self.logger)
         if self.groom_uv_venv:
@@ -111,7 +111,7 @@ class PythonVenv:
 
     def _run_uv(self, *args, **kwargs):
         kwargs.setdefault("logger", self.logger)
-        uv_path = bstrap.ensure_uv_bootstrapped(CFG.base)
+        uv_path = CFG.uv_bootstrap.uv_path
         env = dict(kwargs.get("env") or os.environ)
         env["VIRTUAL_ENV"] = str(self.folder)
         kwargs["env"] = env
@@ -183,7 +183,10 @@ class VenvPackager:
         """
         if pspec.is_uv:
             # Special case for uv: it does not need a venv and lives at the root of the base, without a wrapper
-            bstrap.download_uv(CFG.base, version=pspec.target_version, dryrun=runez.DRYRUN, copy=runez.copy)
+            uv_tmp = CFG.uv_bootstrap.download_uv(version=pspec.target_version, dryrun=runez.DRYRUN)
+            runez.move(uv_tmp / "bin/uv", CFG.base / "uv")
+            runez.move(uv_tmp / "bin/uvx", CFG.base / "uvx")
+            runez.delete(uv_tmp)
             manifest = pspec.save_manifest()
             return manifest
 

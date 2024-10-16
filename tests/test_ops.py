@@ -289,8 +289,23 @@ def test_invalid(cli):
     assert "Can't install mgit+foo: " in cli.logged
 
 
-def test_lock(temp_cfg):
+def test_lock(temp_cfg, monkeypatch):
     lock_path = CFG.meta / "foo.lock"
+
+    # Verify that a SystemExit honors lock release
+    assert not lock_path.exists()
+    with SoftLock("foo"):
+        assert lock_path.exists()
+        with pytest.raises(runez.system.AbortException):
+            runez.abort("oops")
+    assert not lock_path.exists()
+
+    monkeypatch.setattr(runez.system, "AbortException", SystemExit)
+    with SoftLock("foo"):
+        assert lock_path.exists()
+        with pytest.raises(SystemExit):
+            runez.abort("oops")
+
     with SoftLock("foo", give_up=600) as lock:
         assert str(lock) == "lock foo"
         assert os.path.exists(lock_path)
@@ -323,7 +338,7 @@ def test_package_command(cli):
         assert "Failed to run `python -mcompileall`" in cli.logged
 
         # Simulate some artifacts to be picked up by cleanup
-        runez.delete(".tox", logger=None)
+        runez.delete(".tox/_pickley_package/dist", logger=None)
         runez.touch(".tox/_pickley_package/dist/a/__pycache__/a.pyc", logger=None)
         runez.touch(".tox/_pickley_package/dist/a/__pycache__/a2.pyc", logger=None)  # Entire folder deleted, counts as 1 deletion
         runez.touch(".tox/_pickley_package/dist/b/b1.pyc", logger=None)

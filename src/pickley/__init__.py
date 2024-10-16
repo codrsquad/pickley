@@ -590,7 +590,7 @@ class PickleyConfig:
     verbosity = 0
     _pip_conf = runez.UNSET
     _pip_conf_index = runez.UNSET
-    _uv_path: Path = None  # Computed once, overridden during tests
+    _uv_bootstrap: Optional[bstrap.UvBootstrap] = None  # Computed once, overridden during tests
 
     def __init__(self):
         self.configs = []
@@ -606,6 +606,7 @@ class PickleyConfig:
         self.config_path = None
         self._pip_conf = runez.UNSET
         self._pip_conf_index = runez.UNSET
+        self._uv_bootstrap = None
 
     def __repr__(self):
         return "<not-configured>" if self.base is None else runez.short(self.base)
@@ -681,6 +682,14 @@ class PickleyConfig:
             self._pip_conf_index, self._pip_conf = bstrap.globally_configured_pypi_mirror()
 
         return self._pip_conf_index
+
+    @property
+    def uv_bootstrap(self):
+        if self._uv_bootstrap is None:
+            self._uv_bootstrap = bstrap.UvBootstrap(self.base)
+            self._uv_bootstrap.auto_bootstrap(runez.move)
+
+        return self._uv_bootstrap
 
     def configured_entrypoints(self, canonical_name) -> Optional[list]:
         """Configured entrypoints, if any"""

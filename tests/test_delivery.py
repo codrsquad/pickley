@@ -26,7 +26,7 @@ def test_alternate_wrapper(cli):
         cli.run("--no-color -vv install uv")
         assert cli.succeeded
         assert "Manifest .pk/.manifest/uv.manifest.json is not present" in cli.logged
-        assert "Copy .pk/.cache/uv-" in cli.logged
+        assert "Move .pk/.cache/uv-" in cli.logged
         assert "Touched .pk/.cache/uv.cooldown" in cli.logged
         assert "Installed uv v" in cli.logged
 
