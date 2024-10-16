@@ -231,6 +231,10 @@ class ResolvedPackage:
 
             r = venv.run_pip("freeze", fatal=False)
             lines = r.output and r.output.strip().splitlines()
+            # Edge case: older pythons venvs sometimes report having `pkg_resources`, even with --no-deps
+            if lines:
+                lines = [x for x in lines if not x.startswith("pkg_resources")]
+
             if not lines or len(lines) != 1:  # pragma: no cover, hard to trigger (not sure how to make `pip freeze` fail)
                 self.problem = f"'pip freeze' for '{runez.joined(pip_spec)}' failed: {r.full_output}"
                 return
