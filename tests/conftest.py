@@ -22,7 +22,8 @@ bstrap.expanduser = mocked_expanduser
 assert logged  # Just making fixtures available, with no complaints about unused imports
 
 
-TEST_UV = bstrap.UvBootstrap(runez.to_path(runez.DEV.project_path("build/test-uv"))) if bstrap.USE_UV else None
+TEST_UV = bstrap.UvBootstrap(runez.to_path(runez.DEV.project_path("build/test-uv")))
+TEST_UV.auto_bootstrap(runez.move)
 
 
 class TemporaryBase(runez.TempFolder):
@@ -30,9 +31,8 @@ class TemporaryBase(runez.TempFolder):
         super(TemporaryBase, self).__enter__()
         os.environ["PICKLEY_ROOT"] = self.tmp_folder
         # Provide a `uv` binary out-of-the-box so that tests don't have to bootstrap uv over and over
-        if TEST_UV:
-            runez.copy(TEST_UV.uv_path, os.path.join(self.tmp_folder, "uv"), logger=None)
-            runez.touch(os.path.join(self.tmp_folder, ".pk/.cache/uv.cooldown"), logger=None)
+        runez.copy(TEST_UV.uv_path, os.path.join(self.tmp_folder, "uv"), logger=None)
+        runez.touch(os.path.join(self.tmp_folder, ".pk/.cache/uv.cooldown"), logger=None)
 
         CFG.reset()
         return self.tmp_folder
