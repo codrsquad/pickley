@@ -21,7 +21,7 @@ def test_bootstrap_command(cli):
     cli.run("--no-color", "-vv", "bootstrap", ".local/bin", cli.project_folder)
     assert cli.succeeded
     if bstrap.USE_UV:
-        assert "Bootstrapping uv: uv not present" in cli.logged
+        assert "Auto-bootstrapping uv, reason: uv not present" in cli.logged
         assert CFG.program_version(".local/bin/uv")
 
     else:
@@ -34,6 +34,7 @@ def test_bootstrap_command(cli):
 def test_bootstrap_script(cli, monkeypatch):
     # Ensure changes to bstrap.py globals are restored
     cli.main = bstrap.main
+    monkeypatch.setattr(bstrap, "DRYRUN", False)  # Protect global variable changes from test runs (avoid polluting other tests)
     monkeypatch.setattr(bstrap, "Reporter", bstrap._Reporter)
     monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")
 
@@ -45,11 +46,15 @@ def test_bootstrap_script(cli, monkeypatch):
     monkeypatch.delenv("__PYVENV_LAUNCHER__")
 
     runez.ensure_folder(".local/bin", logger=None)
+    # Verify that uv is seeded even in dryrun mode
+    uv_path = CFG.resolved_path(".local/bin/uv")
+    assert not runez.is_executable(uv_path)  # Not seed by conftest.py (it seeds ./uv)
     cli.run("-n", cli.project_folder)
     assert cli.succeeded
     assert "bin/pickley bootstrap " in cli.logged
     if bstrap.USE_UV:
-        assert "uv -q pip install -e " in cli.logged
+        assert runez.is_executable(uv_path)  # Seeded by bootstrap command run above
+        assert ".local/bin/uv -q pip install -e " in cli.logged
 
     else:
         assert " -mvenv --clear " in cli.logged
@@ -68,33 +73,35 @@ def test_bootstrap_script(cli, monkeypatch):
     assert " is in your PATH environment variable." in cli.logged
 
     # Full bootstrap run, with seeding
-    uv_config = ".config/uv/uv.toml"
     sample_config = '"python-installations": "~/.my-pyenv/version/**"'
     monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
     mirror = "https://pypi.org/simple"
     cli.run("-vv", cli.project_folder, "-m", mirror, "-c", f"{{{sample_config}}}")
     assert cli.succeeded
     assert f"Seeding .config/pip/pip.conf with {mirror}" in cli.logged
-    assert f"Seeding {uv_config} with {mirror}" in cli.logged
     assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", f"index-url = {mirror}"]
-    assert list(runez.readlines(uv_config)) == ["[pip]", f'index-url = "{mirror}"']
     assert list(runez.readlines(".local/bin/.pk/config.json")) == ["{", f"  {sample_config}", "}"]
 
     if bstrap.USE_UV:
+        uv_config = ".config/uv/uv.toml"
+        assert f"Seeding {uv_config} with {mirror}" in cli.logged
+        assert list(runez.readlines(uv_config)) == ["[pip]", f'index-url = "{mirror}"']
+
         # Now verify that uv works with the seeded file
         monkeypatch.setenv("UV_CONFIG_FILE", uv_config)
-        r = runez.run("./uv", "venv", "exercise-venv", fatal=False, logger=None)
+        r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
         assert r.succeeded, f"uv venv failed: {r.full_output}"
 
         # Verify that a bogus uv config file fails the run...
         runez.write(uv_config, f"[pip]\nindex-url = {bstrap.DEFAULT_MIRROR}", logger=None)  # Missing double quotes
-        r = runez.run("./uv", "venv", "exercise-venv", fatal=False, logger=None)
+        r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
         assert r.failed
         assert "Failed to " in r.error
 
 
 def test_edge_cases(temp_cfg, monkeypatch):
     # For coverage
+    monkeypatch.setattr(bstrap, "DRYRUN", False)  # Protect global variable changes from test runs (avoid polluting other tests)
     monkeypatch.setattr(bstrap, "Reporter", Reporter)
     monkeypatch.setenv("PATH", "test-programs")
 

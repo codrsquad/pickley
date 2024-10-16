@@ -67,9 +67,10 @@ class DeliveryMethod:
 
     def install(self, pspec: PackageSpec) -> TrackedManifest:
         try:
+            folder = pspec.target_installation_folder()
             prev_manifest = pspec.manifest
             for name in pspec.resolved_info.entrypoints:
-                src = pspec.target_installation_folder / "bin" / name
+                src = folder / "bin" / name
                 dest = CFG.base / name
                 short_src = runez.short(src)
                 short_dest = runez.short(dest)

@@ -190,6 +190,7 @@ def test_install_pypi(cli):
 
     mgit = PackageSpec("mgit")
     manifest = mgit.manifest
+    assert str(mgit.resolved_info) == "mgit<1.3.0"
     assert str(manifest) == "mgit<1.3.0"
     assert mgit.auto_upgrade_spec == "mgit<1.3.0"
     assert manifest.entrypoints == ["mgit"]

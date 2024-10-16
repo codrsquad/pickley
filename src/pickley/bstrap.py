@@ -112,7 +112,7 @@ class Bootstrap:
 
     def bootstrap_pickley_with_uv(self, venv_folder: Path):
         uv_bootstrap = UvBootstrap(self.pickley_base)
-        uv_bootstrap.auto_bootstrap(shutil.move)
+        uv_bootstrap.auto_bootstrap_uv()
         run_program(uv_bootstrap.uv_path, "venv", "-p", sys.executable, venv_folder)
         env = dict(os.environ)
         env["VIRTUAL_ENV"] = venv_folder
@@ -170,15 +170,16 @@ class UvBootstrap:
     def __init__(self, pickley_base):
         self.pickley_base = pickley_base
         self.uv_path = pickley_base / "uv"
-        self.uv_tmp = None  # Path to which last download was extracted, if any
+        self.freshly_bootstrapped = None  # Set by auto_bootstrap_uv, when a bootstrap was needed
 
-    def auto_bootstrap(self, move):
-        reason = self.bootstrap_reason()
-        if reason:
-            Reporter.trace(f"Bootstrapping uv: {reason}")
-            self.uv_tmp = self.download_uv()
-            move(self.uv_tmp / "bin/uv", self.pickley_base / "uv")
-            move(self.uv_tmp / "bin/uvx", self.pickley_base / "uvx")
+    def auto_bootstrap_uv(self):
+        self.freshly_bootstrapped = self.bootstrap_reason()
+        if self.freshly_bootstrapped:
+            Reporter.trace(f"Auto-bootstrapping uv, reason: {self.freshly_bootstrapped}")
+            uv_tmp = self.download_uv()
+            shutil.move(uv_tmp / "bin/uv", self.pickley_base / "uv")
+            shutil.move(uv_tmp / "bin/uvx", self.pickley_base / "uvx")
+            shutil.rmtree(uv_tmp, ignore_errors=True)
 
     def bootstrap_reason(self):
         if not self.uv_path.exists():

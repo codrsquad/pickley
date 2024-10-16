@@ -333,10 +333,9 @@ class PackageSpec:
 
     auto_upgrade_spec: str
     _manifest: "TrackedManifest" = runez.UNSET
-    _manifest_path: Path = None
     _resolved_info: ResolvedPackage = None
 
-    def __init__(self, given_package_spec: str, authoritative=False):
+    def __init__(self, given_package_spec: str, authoritative=False, settings=None):
         """
         Parameters
         ----------
@@ -345,11 +344,16 @@ class PackageSpec:
         authoritative : bool
             If True-ish, the `given_package_spec` will be used as package spec when upgrading (otherwise prev manifest is used)
             If a ResolvedPackage instance, it will be used as the authoritative resolution
+        settings : TrackedSettings
+            Settings to use for this package spec (applies only to uv)
         """
         given_package_spec = CFG.absolute_package_spec(given_package_spec)
         self._canonical_name = PypiStd.std_package_name(given_package_spec)
         self.is_uv = self._canonical_name == "uv"
-        if authoritative:
+        if settings:
+            self.auto_upgrade_spec = settings.auto_upgrade_spec
+
+        elif authoritative:
             self.auto_upgrade_spec = given_package_spec
             runez.log.trace(f"Authoritative auto-upgrade spec '{self.auto_upgrade_spec}'")
 
@@ -375,7 +379,7 @@ class PackageSpec:
         if self._resolved_info is None:
             self._resolved_info = ResolvedPackage.from_cache(self.resolution_cache_path)
 
-        self.settings = TrackedSettings.from_cli(self.auto_upgrade_spec)
+        self.settings = settings or TrackedSettings.from_cli(self.auto_upgrade_spec)
 
     def __repr__(self):
         return runez.short(self.auto_upgrade_spec)
@@ -392,12 +396,9 @@ class PackageSpec:
 
         return self._canonical_name
 
-    @property
+    @runez.cached_property
     def manifest_path(self):
-        if self._manifest_path is None:
-            self._manifest_path = CFG.manifests / f"{self.canonical_name}.manifest.json"
-
-        return self._manifest_path
+        return CFG.manifests / f"{self.canonical_name}.manifest.json"
 
     @property
     def problem(self):
@@ -417,34 +418,9 @@ class PackageSpec:
         return self._resolved_info
 
     @property
-    def delivery_method_name(self) -> str:
-        return self.settings.delivery or CFG.get_value("delivery", package_name=self.canonical_name)
-
-    @property
     def target_version(self) -> Version:
         """The version of this package that we are targeting for installation"""
         return self.resolved_info.version
-
-    @property
-    def target_installation_folder(self):
-        """Folder that will hold current installation of this package"""
-        if not self.is_uv:
-            return CFG.meta / f"{self.canonical_name}-{self.target_version}"
-
-    def upgrade_reason(self):
-        """Reason this package spec needs an upgrade (if any)"""
-        manifest = self.manifest
-        if manifest:
-            if manifest.version != self.target_version:
-                return "new version available"
-
-            if not self.is_healthily_installed:
-                return "unhealthy"
-
-    @property
-    def is_up_to_date(self) -> bool:
-        manifest = self.manifest
-        return manifest and manifest.version == self.target_version and self.is_healthily_installed
 
     @property
     def manifest(self) -> Optional["TrackedManifest"]:
@@ -464,7 +440,7 @@ class PackageSpec:
         """Is this package optional? (ie: OK if present but not installed by pickley)"""
         return runez.to_boolean(CFG.get_value("facultative", package_name=self.canonical_name))
 
-    @property
+    @runez.cached_property
     def healthcheck_exe(self) -> Path:
         """Executable used to determine whether installation is healthy"""
         if self.is_uv:
@@ -474,9 +450,11 @@ class PackageSpec:
         version = (manifest and manifest.version) or self.target_version
         return CFG.meta / f"{self.canonical_name}-{version}/bin/python"
 
-    @property
+    def delivery_method_name(self) -> str:
+        return self.settings.delivery or CFG.get_value("delivery", package_name=self.canonical_name)
+
     def is_healthily_installed(self) -> bool:
-        """Double-check that current venv is still usable"""
+        """Is the venv for this package spec still usable?"""
         manifest = self.manifest
         entrypoints = (manifest and manifest.entrypoints) or self.resolved_info.entrypoints
         if entrypoints:
@@ -485,6 +463,26 @@ class PackageSpec:
                     return False
 
         return bool(CFG.program_version(self.healthcheck_exe))
+
+    def target_installation_folder(self):
+        """Folder that will hold current installation of this package (does not apply to uv)"""
+        if not self.is_uv:
+            return CFG.meta / f"{self.canonical_name}-{self.target_version}"
+
+    def upgrade_reason(self):
+        """Reason this package spec needs an upgrade (if any)"""
+        manifest = self.manifest
+        if not manifest:
+            return "manifest missing"
+
+        if manifest.version != self.target_version:
+            return "new version available"
+
+        if not manifest.settings or not manifest.settings.auto_upgrade_spec:
+            return "incomplete manifest"
+
+        if not self.is_healthily_installed():
+            return "unhealthy"
 
     @staticmethod
     def _mentions_pickley(path: Path):
@@ -559,14 +557,15 @@ class PackageSpec:
         manifest.settings = self.settings
         manifest.version = self.target_version
         if not self.is_uv:
-            manifest.delivery = self.delivery_method_name
+            manifest.delivery = self.delivery_method_name()
             manifest.package_manager = venv_settings.package_manager
             manifest.python_executable = venv_settings.python_executable
 
         payload = manifest.to_dict()
         runez.save_json(payload, self.manifest_path)
-        if not self.is_uv:
-            runez.save_json(payload, self.target_installation_folder / ".manifest.json")
+        folder = self.target_installation_folder()
+        if folder:
+            runez.save_json(payload, folder / ".manifest.json")
 
         # Touch .cooldown file to let auto-upgrade know we just installed this package
         cooldown_path = CFG.cache / f"{self.canonical_name}.cooldown"
@@ -687,7 +686,7 @@ class PickleyConfig:
     def uv_bootstrap(self):
         if self._uv_bootstrap is None:
             self._uv_bootstrap = bstrap.UvBootstrap(self.base)
-            self._uv_bootstrap.auto_bootstrap(runez.move)
+            self._uv_bootstrap.auto_bootstrap_uv()
 
         return self._uv_bootstrap
 
@@ -1057,7 +1056,7 @@ class TrackedSettings:
 
     auto_upgrade_spec: str = None  # Spec to use for `pickley auto-upgrade`
     delivery: str = None  # Delivery method name
-    package_manager: str  # Desired package manager
+    package_manager: str = None  # Desired package manager
     python: Optional[str] = None  # Desired python
     uv_seed: bool = None  # Long term: CLIs should not assume setuptools is always there... (same problem with py3.12)
 

@@ -156,7 +156,7 @@ class VenvPackager:
 
     @staticmethod
     def delivery_method_for(pspec: PackageSpec) -> DeliveryMethod:
-        return VenvPackager.delivery_method_by_name(pspec.delivery_method_name)
+        return VenvPackager.delivery_method_by_name(pspec.delivery_method_name())
 
     @staticmethod
     def delivery_method_by_name(name: str) -> DeliveryMethod:
@@ -191,7 +191,7 @@ class VenvPackager:
             return manifest
 
         venv_settings = pspec.settings.venv_settings()
-        venv = PythonVenv(pspec.target_installation_folder, venv_settings)
+        venv = PythonVenv(pspec.target_installation_folder(), venv_settings)
         venv.create_venv()
         venv.pip_install(pspec.resolved_info.pip_spec)
         delivery = VenvPackager.delivery_method_for(pspec)

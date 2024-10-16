@@ -23,7 +23,7 @@ assert logged  # Just making fixtures available, with no complaints about unused
 
 
 TEST_UV = bstrap.UvBootstrap(runez.to_path(runez.DEV.project_path("build/test-uv")))
-TEST_UV.auto_bootstrap(runez.move)
+TEST_UV.auto_bootstrap_uv()
 
 
 class TemporaryBase(runez.TempFolder):

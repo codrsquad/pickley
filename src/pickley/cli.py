@@ -137,6 +137,7 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
 
     with SoftLock(pspec.canonical_name):
         started = time.time()
+        upgrade_reason = None
         if CFG.version_check_delay and pspec.manifest:
             # When --force is used `version_check_delay` is zero (we force-install)
             upgrade_reason = pspec.upgrade_reason()
@@ -150,6 +151,9 @@ def perform_install(pspec: PackageSpec, quiet=False, verb="install"):
         manifest = VenvPackager.install(pspec)
         if manifest and not quiet:
             note = f" in {runez.represented_duration(time.time() - started)}"
+            if upgrade_reason:
+                note += f"  (reason: {upgrade_reason})"
+
             action = "%s%sed" % (verb[0].upper(), verb[1:])
             if runez.DRYRUN:
                 action = f"Would state: {action}"
@@ -173,9 +177,9 @@ def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
         if not manifest or not manifest.version:
             runez.abort(f"Can't upgrade '{runez.red(pspec)}': not installed with pickley")
 
+    runez.abort_if(pspec.problem, f"Can't upgrade {runez.red(pspec)}: {runez.red(pspec.problem)}")
     with SoftLock(pspec.canonical_name):
         started = time.time()
-        runez.abort_if(pspec.problem, f"Can't upgrade {runez.red(pspec)}: {runez.red(pspec.problem)}")
         upgrade_reason = pspec.upgrade_reason()
         if not upgrade_reason:
             logger("%s v%s is already up-to-date", pspec.canonical_name, runez.bold(pspec.currently_installed_version))
@@ -190,25 +194,6 @@ def perform_upgrade(pspec: PackageSpec, logger=LOG.info):
             logger("%s %s v%s%s", action, pspec.canonical_name, runez.bold(pspec.target_version), runez.dim(note))
 
         pspec.groom_installation()
-
-
-def perform_auto_upgrade(canonical_name, cooldown, force=False):
-    canonical_name = CFG.required_canonical_name(canonical_name)
-    pspec = PackageSpec(canonical_name)
-    cooldown_path = CFG.cache / f"{canonical_name}.cooldown"
-    if not force and cooldown and runez.file.is_younger(cooldown_path, cooldown):
-        if not pspec.is_uv:
-            LOG.debug("Skipping auto-upgrade, checked recently")
-
-        return
-
-    lock_path = CFG.soft_lock_path(canonical_name)
-    if runez.file.is_younger(lock_path, CFG.install_timeout(canonical_name)):
-        LOG.debug("Lock file '%s' present, another installation is in progress", runez.short(lock_path))
-        return
-
-    runez.touch(cooldown_path)
-    perform_upgrade(pspec, logger=LOG.debug)
 
 
 def _find_base_from_program_path(path: Path):
@@ -271,8 +256,9 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
         trace="TRACE_DEBUG+: ",
     )
     # Don't pollute audit.log with dryrun or non-essential commands
-    essential = ("auto-heal", "auto-upgrade", "bootstrap", "install", "run", "upgrade", "uninstall")
-    CFG.use_audit_log = not runez.DRYRUN and ctx.invoked_subcommand in essential
+    essential = ("auto-heal", "auto-upgrade", "install", "run", "upgrade")
+    special_commands = ("bootstrap", "uninstall")
+    CFG.use_audit_log = not runez.DRYRUN and (ctx.invoked_subcommand in essential or ctx.invoked_subcommand in special_commands)
     Reporter.capture_trace()
     runez.log.trace(runez.log.spec.argv)
     bstrap.clean_env_vars()
@@ -288,11 +274,17 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
         runez.Anchored.add(CFG.base)
 
     bstrap.set_mirror_env_vars(index or CFG.index)
-    if CFG.use_audit_log and "uv" not in sys.argv and ctx.invoked_subcommand not in ("bootstrap", "uninstall"):
+    if ctx.invoked_subcommand in essential and "uv" not in sys.argv and ctx.invoked_subcommand not in ("bootstrap", "uninstall"):
         # `uv` is a special case, it does not need a python venv, it is used to determine what to install for all other packages.
         # We auto-check for new versions of `uv` twice per day, this can be hastened by user running an explicit `pickley upgrade uv`.
-        if (bstrap.USE_UV or package_manager == "uv") and CFG.uv_bootstrap.uv_tmp is None:
-            perform_auto_upgrade("uv", cooldown=12 * runez.date.SECONDS_IN_ONE_HOUR)
+        if (bstrap.USE_UV or package_manager == "uv") and not CFG.uv_bootstrap.freshly_bootstrapped:
+            settings = TrackedSettings()
+            settings.auto_upgrade_spec = "uv"
+            pspec = PackageSpec("uv", settings=settings)
+            cooldown_path = CFG.cache / "uv.cooldown"
+            if not runez.file.is_younger(cooldown_path, 12 * runez.date.SECONDS_IN_ONE_HOUR):
+                runez.touch(cooldown_path)
+                perform_upgrade(pspec, logger=LOG.debug)
 
 
 @main.command()
@@ -308,8 +300,9 @@ def auto_heal():
     total = healed = 0
     for spec in CFG.installed_specs():
         total += 1
-        if spec.is_healthily_installed:
-            print("%s is healthy" % runez.bold(spec))
+        reason = spec.upgrade_reason()
+        if not reason:
+            print("%s is healthy and up-to-date" % runez.bold(spec))
             continue
 
         healed += 1
@@ -323,7 +316,20 @@ def auto_heal():
 @click.argument("package", required=True)
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
-    perform_auto_upgrade(package, cooldown=CFG.version_check_delay, force=force)
+    canonical_name = CFG.required_canonical_name(package)
+    pspec = PackageSpec(canonical_name)
+    cooldown_path = CFG.cache / f"{canonical_name}.cooldown"
+    if not force and runez.file.is_younger(cooldown_path, CFG.version_check_delay):
+        LOG.debug("Skipping auto-upgrade, checked recently")
+        return
+
+    lock_path = CFG.soft_lock_path(canonical_name)
+    if runez.file.is_younger(lock_path, CFG.install_timeout(canonical_name)):
+        LOG.debug("Lock file '%s' present, another installation is in progress", runez.short(lock_path))
+        return
+
+    runez.touch(cooldown_path)
+    perform_upgrade(pspec, logger=LOG.debug)
 
 
 @main.command()
@@ -338,7 +344,7 @@ def base(what):
             all_installed = set(CFG.scan_installed())
             if what in all_installed:
                 pspec = PackageSpec(what)
-                path = pspec.target_installation_folder
+                path = pspec.target_installation_folder()
 
         if not path:
             options = [runez.green(s) for s in sorted(paths)]
@@ -514,10 +520,12 @@ def pip(command, package):
 
     for pspec in CFG.package_specs(package):
         runez.abort_if(pspec.is_uv, f"This command does not apply to {runez.bold(pspec.canonical_name)}")
-        runez.abort_if(not pspec.currently_installed_version, f"{runez.red(pspec.canonical_name)} was not installed with pickley")
+        cv = pspec.currently_installed_version
+        runez.abort_if(not cv, f"{runez.red(pspec.canonical_name)} was not installed with pickley")
         venv_settings = pspec.settings.venv_settings()
-        folder = CFG.meta / f"{pspec.canonical_name}-{pspec.currently_installed_version}"
+        folder = CFG.meta / f"{pspec.canonical_name}-{cv}"
         venv = PythonVenv(folder, venv_settings)
+        runez.log.trace(f"Using venv {venv}")
         venv.run_pip(command, pspec.canonical_name if command == "show" else None, stdout=None, stderr=None)
 
 
