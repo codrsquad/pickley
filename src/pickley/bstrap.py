@@ -92,7 +92,7 @@ class Bootstrap:
     def bootstrap_pickley(self):
         """Run `pickley bootstrap` in a temporary venv"""
         # Venv in .cache/ will be auto-cleaned up after 24 hours, leaving it there as it can be useful for inspection (if bootstrap fails)
-        venv_folder = self.pickley_base / ".cache/pickley-bootstrap-venv"
+        venv_folder = self.pickley_base / DOT_META / ".cache/pickley-bootstrap-venv"
         if self.package_manager == "pip":
             self.bootstrap_pickley_with_pip(venv_folder)
 

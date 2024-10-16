@@ -51,7 +51,7 @@ def test_bootstrap_script(cli, monkeypatch):
     assert not runez.is_executable(uv_path)  # Not seed by conftest.py (it seeds ./uv)
     cli.run("-n", cli.project_folder)
     assert cli.succeeded
-    assert "bin/pickley bootstrap " in cli.logged
+    assert ".local/bin/.pk/.cache/pickley-bootstrap-venv/bin/pickley bootstrap " in cli.logged
     if bstrap.USE_UV:
         assert runez.is_executable(uv_path)  # Seeded by bootstrap command run above
         assert ".local/bin/uv -q pip install -e " in cli.logged
