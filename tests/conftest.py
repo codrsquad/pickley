@@ -8,32 +8,39 @@ from runez.pyenv import PythonDepot
 from pickley import bstrap
 from pickley.cli import CFG, main
 
+cli.default_main = main
+PythonDepot.use_path = False
+bstrap.DEFAULT_BASE = ".local/bin"  # Make sure tests stay away from ~/.local/bin
+assert logged  # Just making fixtures available, with no complaints about unused imports
 
-def mocked_expanduser(path):
-    if path and path.startswith("~/"):
-        path = path[2:]
+
+def dot_meta(relative=None, parent=None):
+    path = bstrap.DOT_META
+    if relative:
+        if relative.endswith("manifest.json"):
+            path = os.path.join(path, ".manifest")
+
+        path = os.path.join(path, relative)
+
+    if parent:
+        path = os.path.join(parent, path)
 
     return path
 
 
-cli.default_main = main
-PythonDepot.use_path = False
-bstrap.expanduser = mocked_expanduser
-assert logged  # Just making fixtures available, with no complaints about unused imports
-
-
-TEST_UV = bstrap.UvBootstrap(runez.to_path(runez.DEV.project_path("build/test-uv")))
-TEST_UV.auto_bootstrap_uv()
-
-
 class TemporaryBase(runez.TempFolder):
     def __enter__(self):
+        if bstrap.USE_UV and not CFG._uv_path:
+            # Ensure `uv` is downloaded once for all tests
+            target = runez.to_path(runez.DEV.project_path("build/uv"))
+            uv_path = target / "bin/uv"
+            if not runez.is_executable(uv_path):  # pragma: no cover
+                bstrap.download_uv(target, target)
+
+            CFG._uv_path = uv_path
+
         super(TemporaryBase, self).__enter__()
         os.environ["PICKLEY_ROOT"] = self.tmp_folder
-        # Provide a `uv` binary out-of-the-box so that tests don't have to bootstrap uv over and over
-        runez.copy(TEST_UV.uv_path, os.path.join(self.tmp_folder, "uv"), logger=None)
-        runez.touch(os.path.join(self.tmp_folder, ".pk/.cache/uv.cooldown"), logger=None)
-
         CFG.reset()
         return self.tmp_folder
 
@@ -48,5 +55,6 @@ cli.context = TemporaryBase
 @pytest.fixture
 def temp_cfg():
     with TemporaryBase() as base:
+        CFG.reset()
         CFG.set_base(base)
         yield CFG
