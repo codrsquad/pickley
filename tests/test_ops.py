@@ -142,7 +142,7 @@ def test_install_pypi(cli):
 
     cli.run("list")
     assert cli.succeeded
-    assert "No packages installed" in cli.logged
+    assert " pickley " in cli.logged
 
     cli.run("list -v")
     assert cli.succeeded
@@ -272,7 +272,6 @@ def test_install_pypi(cli):
 
     cli.run("list")
     assert cli.succeeded
-    assert "No packages installed" in cli.logged
 
 
 def test_invalid(cli):

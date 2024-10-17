@@ -501,20 +501,31 @@ def install(force, packages):
 @click.option("--verbose", "-v", is_flag=True, help="Show more information")
 def cmd_list(border, format, verbose):
     """List installed packages"""
-    packages = CFG.installed_specs(include_pickley=verbose)
+    packages = CFG.installed_specs(include_pickley=True)
     if not packages:
         print("No packages installed")
         sys.exit(0)
 
-    report = TabularReport("Package,Version,PM,Python", additional="Delivery,Track", border=border, verbose=verbose)
+    report = TabularReport("Package,Version,Python", additional="Delivery,PM,Track", border=border, verbose=verbose)
+    default_package_manager = bstrap.default_package_manager()
     for pspec in packages:
         manifest = pspec.manifest
+        name = runez.bold(pspec.canonical_name)
+        if pspec.canonical_name != pspec.auto_upgrade_spec:
+            name += "📌"
+
+        python = runez.dim("-not needed-") if pspec.is_uv else manifest and manifest.python_executable
+        delivery = runez.dim("-") if pspec.is_uv else manifest and manifest.delivery
+        package_manager = manifest and manifest.package_manager
+        if package_manager and package_manager != default_package_manager:
+            name += "👴"
+
         report.add_row(
-            Package=runez.bold(pspec.canonical_name),
+            Package=name,
             Version=manifest and manifest.version,
-            Python=manifest and manifest.python_executable,
-            PM=manifest and manifest.package_manager,
-            Delivery=manifest and manifest.delivery,
+            Python=python,
+            Delivery=delivery,
+            PM=runez.dim("-") if pspec.is_uv else package_manager,
             Track=manifest and manifest.settings and manifest.settings.auto_upgrade_spec,
         )
 
