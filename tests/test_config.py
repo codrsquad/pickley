@@ -1,7 +1,6 @@
-import pytest
 import runez
 
-from pickley import bstrap, CFG, despecced, get_default_index, PackageSpec, pypi_name_problem, specced
+from pickley import bstrap, CFG
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -37,7 +36,6 @@ cli:  # empty
 defaults:
   delivery: wrap
   install_timeout: 1800
-  package_manager: {package_manager}
   version_check_delay: 300
 """
 
@@ -50,67 +48,45 @@ def grab_sample(name):
     assert str(CFG.configs[0]) == "cli (0 values)"
 
 
-def test_bogus_config(temp_cfg, logged):
+def test_bogus_config(temp_cfg):
     grab_sample("bogus-config")
     assert CFG.resolved_bundle("") == []
     assert CFG.resolved_bundle("foo") == ["foo"]
     assert CFG.resolved_bundle("bundle:dev") == ["tox", "mgit"]
     assert CFG.resolved_bundle("bundle:dev2") == ["tox", "mgit", "pipenv"]
+    assert CFG.pip_conf is None
+    assert CFG.pip_conf_index == bstrap.DEFAULT_MIRROR
     actual = CFG.represented().strip()
     expected = SAMPLE_CONFIG.strip().format(
         base=runez.short(CFG.base),
         meta=runez.short(CFG.meta),
-        package_manager=bstrap.default_package_manager(),
     )
     assert actual == expected
 
 
-def test_default_index(temp_cfg, logged):
-    assert get_default_index() == (None, None)
-
-    # Verify that we try 'a' (no such file), then find a configured index in 'b'
-    runez.write("b", "[global]\nindex-url = https://example.com/pypi", logger=False)
-    assert get_default_index("a", "b") == ("b", "https://example.com/pypi")
-
-    # Not logging, since default is pypi, and which index is used can be configured and seen via diagnostics command
-    assert not logged
-
-
-def test_edge_cases():
-    assert "intentionally refuses" in pypi_name_problem("0-0")
-    assert pypi_name_problem("mgit") is None
-
-
-def test_good_config(temp_cfg, monkeypatch):
-    monkeypatch.setattr(CFG, "_uv_path", None)
-    monkeypatch.setattr(runez.DEV, "project_folder", None)
-    with pytest.raises(runez.system.AbortException, match="`uv` is not installed"):
-        CFG.find_uv()
-
-    tmp_uv = CFG.base.full_path("uv")
-    runez.touch(tmp_uv)
-    runez.make_executable(tmp_uv)
-    assert CFG.find_uv() == tmp_uv
-
+def test_good_config(cli):
     grab_sample("good-config")
 
-    assert CFG.resolved_bundle("bundle:dev") == ["tox", "mgit", "poetry", "pipenv"]
+    assert CFG.resolved_bundle("bundle:dev") == ["tox", "poetry", "mgit", "pipenv"]
+    assert CFG.resolved_bundle("bundle:dev3") == ["mgit"]
 
-    mgit = PackageSpec("mgit==1.0.0")
-    pickley = PackageSpec("pickley==1.0.0")
-    assert mgit < pickley  # Ordering based on package name, then version
-    assert str(mgit) == "mgit==1.0.0"
+    cli.run("diagnostics")
+    assert cli.succeeded
+    assert "pip.conf : -missing-" in cli.logged
+
+    cli.run("config")
+    assert cli.succeeded
+    assert "dev2: bundle:dev3 pipenv" in cli.logged
+    assert "mgit: 1.2.1" in cli.logged
+
+    cli.run("-n install bundle:dev3")
+    assert cli.succeeded
+    assert "Would wrap mgit -> .pk/mgit-1.2.1/bin/mgit" in cli.logged
 
 
-def test_speccing():
-    assert specced("mgit", "1.0.0") == "mgit==1.0.0"
-    assert specced(" mgit ", " 1.0.0 ") == "mgit==1.0.0"
-    assert specced("mgit", None) == "mgit"
-    assert specced("mgit", "") == "mgit"
-    assert specced(" mgit ", " ") == "mgit"
-
-    assert despecced("mgit") == ("mgit", None)
-    assert despecced("mgit==1.0.0") == ("mgit", "1.0.0")
-    assert despecced(" mgit == 1.0.0 ") == ("mgit", "1.0.0")
-    assert despecced("mgit==") == ("mgit", None)
-    assert despecced(" mgit == ") == ("mgit", None)
+def test_despecced():
+    assert CFG.despecced("mgit") == ("mgit", None)
+    assert CFG.despecced("mgit==1.0.0") == ("mgit", "1.0.0")
+    assert CFG.despecced(" mgit == 1.0.0 ") == ("mgit", "1.0.0")
+    assert CFG.despecced("mgit==") == ("mgit", None)
+    assert CFG.despecced(" mgit == ") == ("mgit", None)

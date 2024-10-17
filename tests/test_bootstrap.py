@@ -1,216 +1,240 @@
-import logging
+import json
 import os
 import sys
+from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
 import pytest
 import runez
 
-from pickley import __version__, bstrap
+from pickley import bstrap, Reporter
 from pickley.cli import CFG
 
-from .conftest import dot_meta
 
-
-def mocked_expanduser(path):
-    if path and path.startswith("~/"):
-        path = path[2:]
-
-    return path
-
-
-def test_bootstrap(cli, monkeypatch):
-    monkeypatch.setattr(bstrap, "DRYRUN", False)
-    runez.touch(".pickley/config.json", logger=None)
-    cli.run("-n base bootstrap-own-wrapper")
-    assert cli.succeeded
-    assert f"Would move .pickley/config.json -> {dot_meta('config.json')}" in cli.logged
-    assert f"Would save {dot_meta('pickley.manifest.json')}" in cli.logged
-    assert "Would delete .pickley" in cli.logged
-    pickley_path = dot_meta(f"pickley-{__version__}/bin/pickley")
-    assert f"Would run: {pickley_path} auto-heal" in cli.logged
-
-    # Verify that we report base not writeable correctly
-    cli.run("-n --check-path", main=bstrap.main)
+def test_bootstrap_command(cli):
+    cli.run("-n", "bootstrap", ".local/bin", cli.project_folder)
     assert cli.failed
-    assert "Make sure '.local/bin' is writeable" in cli.logged
+    assert "Folder .local/bin does not exist" in cli.logged
 
     runez.ensure_folder(".local/bin", logger=None)
-    cli.run("-n --package-manager foo", main=bstrap.main)
+    cli.run("--no-color", "-vv", "bootstrap", ".local/bin", cli.project_folder)
+    assert cli.succeeded
+    if bstrap.USE_UV:
+        assert "Auto-bootstrapping uv, reason: uv not present" in cli.logged
+        assert CFG.program_version(".local/bin/uv")
+
+    else:
+        assert CFG._uv_bootstrap is None
+
+    assert "Installed pickley v" in cli.logged
+    assert CFG.program_version(".local/bin/pickley")
+
+
+def test_bootstrap_script(cli, monkeypatch):
+    # Ensure changes to bstrap.py globals are restored
+    cli.main = bstrap.main
+    monkeypatch.setattr(bstrap, "DRYRUN", False)  # Protect global variable changes from test runs (avoid polluting other tests)
+    monkeypatch.setattr(bstrap, "Reporter", bstrap._Reporter)
+    monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")
+
+    # Verify that we report base not writeable correctly
+    cli.run("-nvv")
+    assert cli.failed
+    assert "Unsetting env var __PYVENV_LAUNCHER__" in cli.logged.stdout
+    assert "Make sure '~/.local/bin' exists and is writeable" in cli.logged
+    monkeypatch.delenv("__PYVENV_LAUNCHER__")
+
+    runez.ensure_folder(".local/bin", logger=None)
+    # Verify that uv is seeded even in dryrun mode
+    uv_path = CFG.resolved_path(".local/bin/uv")
+    assert not runez.is_executable(uv_path)  # Not seed by conftest.py (it seeds ./uv)
+    cli.run("-n", cli.project_folder)
+    assert cli.succeeded
+    assert ".local/bin/.pk/.cache/pickley-bootstrap-venv/bin/pickley bootstrap " in cli.logged
+    if bstrap.USE_UV:
+        assert runez.is_executable(uv_path)  # Seeded by bootstrap command run above
+        assert ".local/bin/uv -q pip install -e " in cli.logged
+
+    else:
+        assert " -mvenv --clear " in cli.logged
+
+    cli.run("-n --package-manager foo")
     assert cli.failed
     assert "Unsupported package manager 'foo'" in cli.logged
 
+    cli.run("-n -cfoo")
+    assert cli.failed
+    assert "--config must be a serialized json object" in cli.logged
+
+    # Simulate multiple base candidates given, verify that -c triggers PATH env var check
+    cli.run("-n --check-path")
+    assert cli.failed
+    assert " is in your PATH environment variable." in cli.logged
+
+    # Full bootstrap run, with seeding
+    sample_config = '"python-installations": "~/.my-pyenv/version/**"'
+    monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
+    mirror = "https://pypi.org/simple"
+    cli.run("-vv", cli.project_folder, "-m", mirror, "-c", f"{{{sample_config}}}")
+    assert cli.succeeded
+    assert f"Seeding .config/pip/pip.conf with {mirror}" in cli.logged
+    assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", f"index-url = {mirror}"]
+    assert list(runez.readlines(".local/bin/.pk/config.json")) == ["{", f"  {sample_config}", "}"]
+
     if bstrap.USE_UV:
-        runez.touch(".pk/.uv/bin/uv", logger=None)
-        runez.make_executable(".pk/.uv/bin/uv", logger=None)
-        cli.run("-n base bootstrap-own-wrapper")
-        assert cli.succeeded
-        assert "Would move .pk/.uv -> .pk/uv-" in cli.logged
-        assert "Would wrap uv -> .pk/uv-" in cli.logged
-        assert "Would delete .pk/.uv" in cli.logged
-
-        cli.run("-n", main=bstrap.main)
-        assert cli.succeeded
-        assert "uv -q venv " in cli.logged
-
-    else:
-        cli.run("-n", main=bstrap.main)
-        assert cli.succeeded
-        assert " -mvenv --clear " in cli.logged
-        assert "pickley base bootstrap-own-wrapper" in cli.logged
-
-    with patch("pickley.bstrap.os.path.expanduser", side_effect=mocked_expanduser):
-        runez.write(".local/bin/pickley", "#!/bin/sh\necho 0.1", logger=None)  # Pretend we have an old pickley
-        runez.make_executable(".local/bin/pickley", logger=None)
-
-        if bstrap.USE_UV:
-            runez.write(".local/bin/uv", "#!/bin/sh\necho uv 0.0.1", logger=None)  # Pretend we have uv already
-            runez.make_executable(".local/bin/uv", logger=None)
-
-            with patch("pickley.bstrap.http_get", return_value='{"info":{"version":"4.3.0"}}'):
-                cli.run("-n -mhttps://my-company.net/some-path/simple/", main=bstrap.main)
-                assert cli.succeeded
-                assert "Querying https://my-company.net/some-path/pypi/pickley/json" in cli.logged
-                assert "uv -q pip install pickley==4.3.0" in cli.logged
-
-        monkeypatch.setenv("__PYVENV_LAUNCHER__", "foo")  # macOS's oddity
-        cli.run("-n", main=bstrap.main)
-        assert cli.succeeded
-        assert "__PYVENV_LAUNCHER__" not in os.environ
-        assert "Replacing older pickley v0.1" in cli.logged
-
-        cli.run("-n -cfoo", main=bstrap.main)
-        assert cli.failed
-        assert "--config must be a serialized json object" in cli.logged
-
-        # Simulate multiple base candidates given, verify that -c triggers PATH env var check
-        cli.run("-n --check-path", main=bstrap.main)
-        assert cli.failed
-        assert "Make sure '.local/bin' is in your PATH environment variable." in cli.logged
-
-        # Simulate seeding
         uv_config = ".config/uv/uv.toml"
-        sample_config = '"python-installations": "~/.pyenv/version/**"'
-        monkeypatch.setenv("PATH", ".local/bin:%s" % os.environ["PATH"])
-        mirror = "https://pypi.org/simple"
-        cli.run("0.1", "-m", mirror, "-c", f"{{{sample_config}}}", main=bstrap.main)
-        assert "base: .local/bin" in cli.logged
-        assert f"Seeding .local/bin/{dot_meta('config.json')} with " in cli.logged
-        assert f"Seeding .config/pip/pip.conf with {mirror}" in cli.logged
         assert f"Seeding {uv_config} with {mirror}" in cli.logged
-        assert "pickley version 0.1 is already installed" in cli.logged
-        assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", f"index-url = {mirror}"]
         assert list(runez.readlines(uv_config)) == ["[pip]", f'index-url = "{mirror}"']
-        assert list(runez.readlines(f".local/bin/{dot_meta('config.json')}")) == ["{", f"  {sample_config}", "}"]
 
         # Now verify that uv works with the seeded file
         monkeypatch.setenv("UV_CONFIG_FILE", uv_config)
-        uv_path = CFG.find_uv()
-        r = runez.run(uv_path, "venv", ".venv", fatal=False, logger=None)
-        assert r.succeeded
+        r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
+        assert r.succeeded, f"uv venv failed: {r.full_output}"
 
         # Verify that a bogus uv config file fails the run...
-        runez.write(uv_config, "[pip]\nindex-url = http://foo", logger=None)
-        r = runez.run(uv_path, "venv", ".venv", fatal=False, logger=None)
+        runez.write(uv_config, f"[pip]\nindex-url = {bstrap.DEFAULT_MIRROR}", logger=None)  # Missing double quotes
+        r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
         assert r.failed
-        assert "Failed to parse" in r.error
-
-        # Ensure failing to seed uv/pip config files is not fatal
-        runez.delete(".config", logger=None)
-        runez.touch(".config/pip", logger=None)
-        runez.touch(".config/uv", logger=None)
-        cli.run("0.1", "-m", "my-mirror", main=bstrap.main)
-        assert cli.succeeded
-        assert "Seeding ~/.config/pip/pip.conf failed" in cli.logged
-        assert "Seeding ~/.config/uv/uv.toml failed" in cli.logged
-
-        monkeypatch.setattr(bstrap, "DRYRUN", False)
-
-        def mocked_run(program, *args, **__):
-            if args[0] == "--version":
-                return "0.0"
-
-            if "-mvenv" in args:
-                return 1
-
-            logging.info("Running %s %s", program, " ".join(str(x) for x in args))
-
-        with patch("pickley.bstrap.run_program", side_effect=mocked_run):
-            # Verify fallback to virtualenv
-            cli.run("--package-manager=pip 1.0", main=bstrap.main)
-            assert cli.succeeded
-            assert "-mvenv failed, falling back to virtualenv" in cli.logged
-            assert "python .local/bin/.pk/.cache/virtualenv-" in cli.logged
-            assert "pip -q install pickley==1.0" in cli.logged
-            assert "pickley base bootstrap-own-wrapper" in cli.logged
+        assert "Failed to " in r.error
 
 
-def test_edge_cases(temp_cfg, logged):
-    bstrap.DRYRUN = False
-
+def test_edge_cases(temp_cfg, monkeypatch):
     # For coverage
-    with pytest.raises(SystemExit) as exc:
+    monkeypatch.setattr(bstrap, "DRYRUN", False)  # Protect global variable changes from test runs (avoid polluting other tests)
+    monkeypatch.setattr(bstrap, "Reporter", Reporter)
+    monkeypatch.setenv("PATH", "test-programs")
+
+    assert bstrap.run_program(sys.executable, "--version") == 0
+    with pytest.raises(runez.system.AbortException, match=" exited with code"):
         bstrap.run_program(sys.executable, "--no-such-option")
-    assert " exited with code" in str(exc)
-    assert "python --no-such-option" in logged.pop()
 
-    def mocked_run(program, *_, **__):
-        return program
+    runez.touch("test-programs/curl", logger=None)
+    runez.touch("test-programs/wget", logger=None)
+    runez.make_executable("test-programs/curl", logger=None)
+    runez.make_executable("test-programs/wget", logger=None)
 
+    monkeypatch.setattr(bstrap, "run_program", lambda p, *_, **__: str(p))
     with patch("pickley.bstrap.built_in_download", side_effect=Exception):  # urllib fails
-        with patch("pickley.bstrap.Request", side_effect=Exception):
-            with pytest.raises(SystemExit, match="Failed to fetch http://foo"):
-                bstrap.http_get("http://foo")
+        assert bstrap.download(Path("test"), "test") == "test-programs/curl"
 
-        with patch("pickley.bstrap.run_program", side_effect=mocked_run):
-            with patch("pickley.bstrap.which", side_effect=lambda x: "/bin/%s" % x if x in ("curl", "pickley") else None):
-                assert bstrap.download("test", "test") == "/bin/curl"
+        runez.delete("test-programs/curl", logger=None)
+        assert bstrap.download(Path("test"), "test") == "test-programs/wget"
 
-            with patch("pickley.bstrap.which", side_effect=lambda x: x if x == "wget" else None):
-                assert bstrap.download("test", "test") == "wget"
-
-            with patch("pickley.bstrap.which", return_value=None):
-                with pytest.raises(SystemExit) as exc:
-                    bstrap.download("test", "test")
-                assert "No `curl` nor `wget`" in str(exc)
+        runez.delete("test-programs/wget", logger=None)
+        with pytest.raises(runez.system.AbortException, match="No `curl` nor `wget`"):
+            bstrap.download(Path("test"), "test")
 
 
-def test_failure(cli):
+def test_failure(cli, monkeypatch):
+    # Ensure changes to bstrap.py globals are restored
+    cli.main = bstrap.main
+    monkeypatch.setattr(bstrap, "Reporter", bstrap._Reporter)
+
+    runez.ensure_folder(".local/bin", logger=None)
+    with patch("pickley.bstrap.Request", side_effect=Exception):
+        cli.run("")
+        assert cli.failed
+        assert "Failed to fetch https://pypi.org/pypi/pickley/json" in cli.logged
+
     with patch("pickley.bstrap.Request", side_effect=HTTPError("url", 404, "msg", None, None)):
-        cli.run("--base .", main=bstrap.main)
+        cli.run("--base .")
         assert cli.failed
         assert "Failed to determine latest pickley version" in cli.logged
 
     with patch("pickley.bstrap.Request", side_effect=HTTPError("url", 500, "msg", None, None)):
-        cli.run("--base .", main=bstrap.main)
+        cli.run("--base .")
         assert cli.failed
         assert "Failed to fetch https://pypi.org/pypi/pickley/json: HTTP Error 500: msg" in cli.logged
 
     with patch("pickley.bstrap.Request", side_effect=URLError("foo")):
-        cli.run("--base .", main=bstrap.main)
+        cli.run("--base .")
         assert cli.failed
         assert "Failed to fetch https://pypi.org/pypi/pickley/json: <urlopen error foo>" in cli.logged
 
+    def mocked_run(program, *args, **__):
+        if program != "wget":
+            print(f"Running {program} {runez.joined(args)}")
+            return
 
-def test_pip_conf(logged):
-    # Verify non-existing /etc/pip.conf is OK (we just default to pypi.org)
-    assert bstrap.globally_configured_pypi_mirror("/dev/null/pip.conf") == bstrap.DEFAULT_MIRROR
+        with open(args[2], "w") as fh:
+            json.dump({"info": {"version": "1.0"}}, fh)
 
-    with runez.TempFolder():
-        # Simulate an internal pypi mirror
-        mirror = "https://pypi.example.net/simple"
-        runez.write("pip.conf", f"[global]\nindex-url = {mirror}", logger=None)
-        assert bstrap.globally_configured_pypi_mirror("pip.conf") == mirror
+    # Simulate a py3.6 ssl issue, fallback to using curl or wget to figure out latest pickley version
+    with patch("pickley.bstrap.Request", side_effect=URLError("ssl issue")):
+        with patch("pickley.bstrap.which", side_effect=lambda x: x if x == "wget" else None):
+            with patch("pickley.bstrap.run_program", side_effect=mocked_run):
+                cli.run("-n --base .")
+                assert cli.succeeded
+                assert "pip install pickley==1.0"
 
-        # Mirror not configured
-        runez.write("pip.conf", "[foo]\nbar = baz", logger=None)
-        assert bstrap.globally_configured_pypi_mirror("pip.conf") == bstrap.DEFAULT_MIRROR
 
-        # Check that no chatter occurred so far (no stack trace etc.)
-        assert not logged
+def test_legacy(cli):
+    cli.main = bstrap.main
+    cli.run("--base . -mhttp://localhost:12345/simple")
+    assert cli.failed
+    assert "Failed to fetch http://localhost:12345/pypi/pickley/json:" in cli.logged
+    assert runez.to_path(".config/pip/pip.conf").exists()
+    assert "mirror: http://localhost:12345/simple" in cli.logged
+    assert "index-url = http://localhost:12345/simple" in runez.readlines(".config/pip/pip.conf")
+    runez.delete(".config", logger=None)
 
-        # Invalid file gets ignored (we do report error)
-        runez.write("pip.conf", "this is not an ini file", logger=None)
-        assert bstrap.globally_configured_pypi_mirror("pip.conf") == bstrap.DEFAULT_MIRROR
-        assert "Could not read pip.conf: "
+    runez.write("pickley", "#!/bin/sh\necho 1.0", logger=None)
+    runez.make_executable("pickley", logger=None)
+
+    def mocked_run(program, *args, **kwargs):
+        if "-mvenv" in args:
+            return 1
+
+        kwargs.setdefault("dryrun", True)
+        r = runez.run(program, *args, **kwargs)
+        return r.exit_code if kwargs.get("fatal") else r.full_output
+
+    with patch("pickley.bstrap.run_program", side_effect=mocked_run):
+        cli.run("-nvv --base .")
+        assert cli.succeeded
+        if bstrap.USE_UV:
+            assert "virtualenv" not in cli.logged
+
+        else:
+            assert "python .pk/.cache/virtualenv.pyz" in cli.logged
+
+        assert "pickley base bootstrap-own-wrapper" in cli.logged
+        assert "Replacing older pickley v1.0" in cli.logged
+
+
+def test_pip_conf(temp_cfg, logged):
+    assert bstrap.globally_configured_pypi_mirror([]) == (bstrap.DEFAULT_MIRROR, None)
+
+    # Verify that we try reading all stated pip.conf files in order, and user the value from the first valid one
+    runez.write("a", "ouch, this is not a valid config file", logger=None)  # Invalid file
+    runez.write("b", "[global]\nindex-url = /", logger=None)  # Valid, but mirror not actually configured
+    runez.write("c", "[global]\nindex-url = https://example.com/simple//", logger=None)
+    runez.write("d", "[global]\nindex-url = https://example.com/pypi2", logger=None)  # Not needed, previous one wins
+    assert bstrap.globally_configured_pypi_mirror(["no-such-file.conf", "a", "b", "c", "d"]) == ("https://example.com/simple", Path("c"))
+
+    # Keep chatter to a minimum
+    assert "no-such-file.conf" not in logged  # No chatter about non-existing files
+    assert "Could not read 'a'" in logged.pop()
+
+
+@pytest.mark.skipif(not bstrap.USE_UV, reason="Applies to uv only")
+def test_uv_bootstrap(temp_cfg):
+    # initially present, seeded by conftest.py
+    b = bstrap.UvBootstrap(temp_cfg.base)
+    assert b.bootstrap_reason() is None
+
+    # Simulate missing uv
+    runez.delete("uv", logger=None)
+    assert not b.uv_path.exists()
+    assert b.bootstrap_reason() == "uv not present"
+
+    # Simulate symlinked uv
+    runez.write("some-uv", "#!/bin/sh\necho uv 0.0.1", logger=None)
+    runez.make_executable("some-uv", logger=None)
+    runez.symlink("some-uv", "uv", logger=None)
+    assert b.bootstrap_reason() == "invalid uv file"
+
+    # Simulate wrapped uv
+    runez.move("some-uv", "uv", overwrite=True, logger=None)
+    assert b.bootstrap_reason() == "replacing uv wrapper"
