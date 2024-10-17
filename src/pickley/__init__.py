@@ -106,6 +106,37 @@ class Reporter:
 bstrap.Reporter = Reporter
 
 
+class PipMetadata:
+    """Info about a package as extracted from running `pip show`."""
+
+    canonical_name: str = None
+    problem: str = None
+    values: dict = None
+
+    def update_from_pip_show(self, venv, canonical_name):
+        self.canonical_name = canonical_name
+        self.values = {}
+        r = venv.run_pip("show", canonical_name, fatal=False)
+        if r.failed:
+            self.problem = f"Failed to `pip show {canonical_name}`: {r.full_output}"
+            return
+
+        for line in r.output.splitlines():
+            k, _, v = line.partition(":")
+            k = k.lower().strip()
+            v = v.strip()
+            if k and v:
+                self.values[k] = v
+
+    @property
+    def location(self):
+        return self.values.get("location")
+
+    @property
+    def version(self):
+        return self.values.get("version")
+
+
 class ResolvedPackage:
     """
     Resolve a given package spec to a canonical name and version.
@@ -127,6 +158,7 @@ class ResolvedPackage:
     version: Version = None  # Resolved version
 
     logger = runez.log.trace
+    _metadata: PipMetadata = None  # Available only after `resolve()` has been called (not kept in cache)
 
     def __repr__(self):
         return runez.short(self.given_package_spec)
@@ -311,22 +343,12 @@ class ResolvedPackage:
 
         return package_name
 
-    @staticmethod
-    def _get_version_location(venv, canonical_name):
-        version = location = None
-        r = venv.run_pip("show", canonical_name, fatal=False)
-        if r.succeeded:
-            for line in r.output.splitlines():
-                if line.startswith("Version:"):
-                    version = line.partition(":")[2].strip()
-
-                if line.startswith("Location:"):
-                    location = line.partition(":")[2].strip()
-
-                if location and version:
-                    break
-
-        runez.abort_if(not version or not location, f"Could not determine version/location for {canonical_name}: {r.full_output}")
+    def _get_version_location(self, venv, canonical_name):
+        self._metadata = PipMetadata()
+        self._metadata.update_from_pip_show(venv, canonical_name)
+        version = self._metadata.version
+        location = self._metadata.location
+        runez.abort_if(self._metadata.problem)
         return version, location
 
 

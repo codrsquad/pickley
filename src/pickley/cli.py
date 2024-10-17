@@ -436,9 +436,8 @@ def config():
 
 
 @main.command()
-@click.option("--verbose", "-v", is_flag=True, help="Show more information")
 @click.argument("packages", nargs=-1, required=True)
-def describe(verbose, packages):
+def describe(packages):
     """Describe a package spec (version and entrypoints)"""
     problems = 0
     for package_spec in packages:
@@ -452,21 +451,19 @@ def describe(verbose, packages):
         if info.version:
             text += f" version {runez.bold(info.version)}"
 
-        if verbose:
-            text += runez.dim(f" ({info.resolution_reason})")
-
+        text += runez.dim(f" ({info.resolution_reason})")
         print(text)
-        if info.pip_spec:
-            text = runez.bold(runez.joined(info.pip_spec))
-            print(f"  pip spec: {text}")
-
         if info.problem:
             problems += 1
             print(f"  problem: {runez.red(info.problem)}")
 
-        else:
-            ep = runez.joined(info.entrypoints, delimiter=", ") or runez.brown("-no entry points-")
-            print(f"  entry points: {runez.bold(ep)}")
+        ep = runez.joined(info.entrypoints, delimiter=", ") or runez.brown("-no entry points-")
+        print(f"  entry-points: {runez.bold(ep)}")
+        metadata = info._metadata
+        if metadata and metadata.values:
+            for k, v in sorted(metadata.values.items()):
+                if k not in ("location", "name", "version") and not k.startswith("editable"):
+                    print(f"  {k}: {v}")
 
     sys.exit(problems)
 
