@@ -112,10 +112,13 @@ class Bootstrap:
 
         run_program(venv_folder / f"bin/{PICKLEY}", *args)
 
-    def bootstrap_pickley_with_uv(self, venv_folder: Path):
-        uv_bootstrap = UvBootstrap(self.pickley_base)
-        uv_bootstrap.auto_bootstrap_uv()
-        run_program(uv_bootstrap.uv_path, "venv", "-p", sys.executable, venv_folder)
+    def bootstrap_pickley_with_uv(self, venv_folder: Path, uv_path=None):
+        if uv_path is None:
+            uv_bootstrap = UvBootstrap(self.pickley_base)
+            uv_bootstrap.auto_bootstrap_uv()
+            uv_path = uv_bootstrap.uv_path
+
+        run_program(uv_path, "venv", "-p", sys.executable, venv_folder)
         env = dict(os.environ)
         env["VIRTUAL_ENV"] = venv_folder
         args = []
@@ -124,7 +127,7 @@ class Bootstrap:
             args.append("-e")
 
         args.append(self.pickley_spec or PICKLEY)
-        run_program(uv_bootstrap.uv_path, "-q", "pip", "install", *args, env=env)
+        run_program(uv_path, "-q", "pip", "install", *args, env=env)
 
     def bootstrap_pickley_with_pip(self, venv_folder: Path):
         pip = venv_folder / "bin/pip"
@@ -489,7 +492,14 @@ def main(args=None):
         bstrap.bootstrap_pickley_with_pip(pickley_venv)
 
     else:
-        bstrap.bootstrap_pickley_with_uv(pickley_venv)
+        # pickley 4.3 doesn't like when something else got uv for it, stash our bootstrap uv into a temp folder
+        uv_path = None
+        if not DRYRUN:
+            tmp_bootstrap = UvBootstrap(bstrap.pickley_base / DOT_META / ".cache/legacy-bootstrap")
+            tmp_bootstrap.auto_bootstrap_uv()
+            uv_path = tmp_bootstrap.uv_path
+
+        bstrap.bootstrap_pickley_with_uv(pickley_venv, uv_path=uv_path)
 
     run_program(pickley_venv / f"bin/{PICKLEY}", "base", "bootstrap-own-wrapper")
 
