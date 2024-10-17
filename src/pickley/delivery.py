@@ -1,9 +1,9 @@
 import logging
-import os
+from pathlib import Path
 
 import runez
 
-from pickley import abort, PICKLEY
+from pickley import bstrap, CFG, PackageSpec, TrackedManifest
 
 LOG = logging.getLogger(__name__)
 
@@ -64,69 +64,38 @@ class DeliveryMethod:
 
     action = "Delivered"
     short_name = "deliver"
-    ping = True  # Touch .ping file when done?
 
-    @classmethod
-    def delivery_method_by_name(cls, name):
-        """
-        Args:
-            name (str): Name of delivery method
-
-        Returns:
-            (DeliveryMethod): Associated delivery method
-        """
-        if name == "wrap":
-            return DeliveryMethodWrap()
-
-        if name == "symlink":
-            return DeliveryMethodSymlink()
-
-        return abort(f"Unknown delivery method '{runez.red(name)}'")
-
-    def install(self, venv, entry_points):
-        """
-        Args:
-            venv (pickley.package.PythonVenv): Virtual env where executables reside (DOT_META/<package>/...)
-            entry_points (dict | list | tuple): Full path of executable to deliver (<base>/<entry_point>)
-        """
-        if not venv.pspec.is_clear_for_installation():
-            abort(f"{runez.short(venv.pspec.exe_path(venv.pspec.dashed))} exists and was not installed by pickley")
-
+    def install(self, pspec: PackageSpec) -> TrackedManifest:
         try:
-            prev_manifest = venv.pspec.manifest
-            for name in entry_points:
-                src = os.path.join(venv.folder, "bin", name)
-                dest = venv.pspec.exe_path(name)
-                ssrc = runez.short(src)
-                sdest = runez.short(dest)
+            folder = pspec.target_installation_folder()
+            prev_manifest = pspec.manifest
+            for name in pspec.resolved_info.entrypoints:
+                src = folder / "bin" / name
+                dest = CFG.base / name
+                short_src = runez.short(src)
+                short_dest = runez.short(dest)
                 if runez.DRYRUN:
-                    print(f"Would {self.short_name} {sdest} -> {ssrc}")
+                    print(f"Would {self.short_name} {short_dest} -> {short_src}")
                     continue
 
-                if not os.path.exists(src):
-                    abort(f"Can't {self.short_name} {sdest} -> {runez.red(ssrc)}: source does not exist")
+                runez.abort_if(not src.exists(), f"Can't {self.short_name} {short_dest} -> {runez.red(short_src)}: source does not exist")
+                LOG.debug("%s %s -> %s", self.action, short_dest, short_src)
+                self._install(pspec, dest, src)
 
-                LOG.debug("%s %s -> %s", self.action, sdest, ssrc)
-                self._install(venv.pspec, dest, src)
-
-            manifest = venv.pspec.save_manifest(entry_points)
+            manifest = pspec.save_manifest()
             if not runez.DRYRUN and prev_manifest and prev_manifest.entrypoints:
                 for old_ep in prev_manifest.entrypoints:
-                    if old_ep and old_ep not in entry_points:
-                        # Remove old entry points that are not in new manifest any more
-                        runez.delete(venv.pspec.exe_path(old_ep))
-
-            if self.ping:
-                # Touch the .ping file since this is a fresh install (no need to check for upgrades right away)
-                runez.touch(venv.pspec.ping_path)
+                    if old_ep and old_ep not in manifest.entrypoints:
+                        # Remove old entry points that are not in new manifest anymore
+                        runez.delete(CFG.base / old_ep)
 
             return manifest
 
         except Exception as e:
-            abort(f"Failed to {self.short_name} {venv.pspec}: {runez.red(e)}")
+            runez.abort(f"Failed to {self.short_name} {pspec}: {runez.red(e)}")
 
-    def _install(self, pspec, target, source):
-        raise NotImplementedError(f"{self.__class__.__name__} is not implemented")
+    def _install(self, pspec, target: Path, source: Path):
+        """Descendant-specific implementation"""
 
 
 class DeliveryMethodSymlink(DeliveryMethod):
@@ -137,15 +106,8 @@ class DeliveryMethodSymlink(DeliveryMethod):
     action = "Symlinked"
     short_name = "symlink"
 
-    def _install(self, pspec, target, source):
-        runez.delete(target, logger=False)
-        if os.path.isabs(source) and os.path.isabs(target):
-            parent = runez.parent_folder(target)
-            if runez.parent_folder(source).startswith(parent):
-                # Use relative path if source is under target
-                source = os.path.relpath(source, parent)
-
-        os.symlink(source, target)
+    def _install(self, pspec, target: Path, source: Path):
+        runez.symlink(source, target, overwrite=True, logger=None)
 
 
 class DeliveryMethodWrap(DeliveryMethod):
@@ -160,16 +122,16 @@ class DeliveryMethodWrap(DeliveryMethod):
     hook = ""
     bg = " &> /dev/null &"
 
-    def _install(self, pspec, target, source):
-        pickley = pspec.cfg.base.full_path(PICKLEY)
-        wrapper = PICKLEY_WRAPPER if pspec.dashed == PICKLEY else GENERIC_WRAPPER
+    def _install(self, pspec, target: Path, source: Path):
+        pickley = CFG.base / bstrap.PICKLEY
+        wrapper = PICKLEY_WRAPPER if pspec.canonical_name == bstrap.PICKLEY else GENERIC_WRAPPER
         contents = wrapper.lstrip().format(
             hook=self.hook,
             bg=self.bg,
-            name=runez.quoted(pspec.dashed, adapter=None),
+            name=runez.quoted(pspec.canonical_name, adapter=None),
             pickley=runez.quoted(pickley, adapter=None),
-            source=runez.quoted(source, adapter=None),
+            source=runez.quoted(str(source), adapter=None),
         )
-        runez.delete(target, logger=False)
-        runez.write(target, contents, logger=False)
-        runez.make_executable(target, logger=False)
+        runez.delete(target, logger=None)
+        runez.write(target, contents, logger=None)
+        runez.make_executable(target, logger=None)
