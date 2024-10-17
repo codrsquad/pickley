@@ -1,70 +1,52 @@
-import os
-from unittest.mock import MagicMock
-
-import pytest
-import runez
-
-from pickley import __version__, PackageSpec, PICKLEY
-from pickley.delivery import DeliveryMethod
-from pickley.package import PythonVenv
-
-BREW_INSTALL = "/brew/install/bin"
-BREW = os.path.join(BREW_INSTALL, "brew")
-BREW_CELLAR = "/brew/install/Cellar"
-BREW_INSTALLED = ["tox", "twine"]
+from pickley import bstrap, CFG, LOG
 
 
-def test_edge_cases(temp_cfg, logged):
-    pspec = PackageSpec(temp_cfg, "mgit==1.0.0")
-    venv = MagicMock(folder=pspec.venv_path(pspec.given_version), pspec=pspec)
-    entry_points = {"some-source": ""}
-    d = DeliveryMethod()
-    with pytest.raises(SystemExit):
-        d.install(venv, entry_points)
-    assert "Can't deliver some-source -> .pk/mgit-1.0.0/bin/some-source: source does not exist" in logged.pop()
-
-    runez.touch(".pk/mgit-1.0.0/bin/some-source")
-    with pytest.raises(SystemExit):
-        d.install(venv, entry_points)
-    assert "Failed to deliver" in logged.pop()
-
-
-class SimulatedInstallation:
-    def __init__(self, cfg, name, version):
-        self.cfg = cfg
-        self.name = name
-        self.version = version
-        self.entry_points = {name: name}
-        self.pspec = PackageSpec(cfg, f"{name}=={version}")
-        self.pspec.save_manifest(self.entry_points)
-        folder = self.cfg.meta.full_path(f"{name}-{version}")
-        self.venv = PythonVenv(folder, self.pspec)
-        venv_exe = os.path.join(folder, "bin", name)
-        runez.write(venv_exe, f"#!/bin/bash\n\necho {version}\n")
-        runez.symlink(folder, self.pspec.venv_path(version))
-        runez.make_executable(venv_exe)
-
-    def check_wrap(self, wrap_method):
-        impl = DeliveryMethod.delivery_method_by_name(wrap_method)
-        impl.install(self.venv, self.entry_points)
-        exe = runez.resolved_path(self.name)
-        r = runez.run(exe, "--version", fatal=False)
-        assert r.succeeded
-        assert r.output == self.version
-
-    def check_alternating(self, logged):
-        self.check_wrap("wrap")
-        assert f"Wrapped {self.name} -> " in logged.pop()
-        self.check_wrap("symlink")
-        assert f"Symlinked {self.name} -> " in logged.pop()
-        self.check_wrap("wrap")
-        assert f"Wrapped {self.name} -> " in logged.pop()
-
-
-def test_wrapper(temp_cfg, logged):
+def test_alternate_wrapper(cli):
     """Check that flip-flopping between symlink/wrapper works"""
-    mgit = SimulatedInstallation(temp_cfg, "mgit", "1.0")
-    mgit.check_alternating(logged)
+    cli.run("-d foo install mgit")
+    assert cli.failed
+    assert "Unknown delivery method 'foo'" in cli.logged
 
-    pickley = SimulatedInstallation(temp_cfg, PICKLEY, __version__)
-    pickley.check_alternating(logged)
+    mgit_path = CFG.resolved_path("mgit")
+    cli.run("-v install mgit")
+    assert cli.succeeded
+    assert "Wrapped mgit -> .pk/mgit-" in cli.logged
+    assert CFG.program_version("./mgit", logger=LOG.info)
+    assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
+    assert CFG.symlinked_canonical(mgit_path) is None
+
+    cli.run("install mgit")
+    assert cli.succeeded
+    assert "is already installed" in cli.logged
+    assert CFG.program_version("./mgit", logger=LOG.info)
+    assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
+    assert CFG.symlinked_canonical(mgit_path) is None
+
+    if bstrap.USE_UV:
+        cli.run("--no-color -vv install uv")
+        assert cli.succeeded
+        assert "Manifest .pk/.manifest/uv.manifest.json is not present" in cli.logged
+        assert "Move .pk/.cache/uv-" in cli.logged
+        assert "Touched .pk/.cache/uv.cooldown" in cli.logged
+        assert "Installed uv v" in cli.logged
+
+    cli.run("-d symlink install mgit")
+    assert cli.succeeded
+    assert "is already installed" in cli.logged
+    assert CFG.program_version("./mgit", logger=LOG.info)
+    assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
+    assert CFG.symlinked_canonical(mgit_path) is None
+
+    cli.run("-v -d symlink install -f mgit")
+    assert cli.succeeded
+    assert "Symlinked mgit -> .pk/mgit-" in cli.logged
+    assert CFG.program_version("./mgit", logger=LOG.info)
+    assert CFG.wrapped_canonical_name(mgit_path) is None
+    assert CFG.symlinked_canonical(CFG.resolved_path(mgit_path)) == "mgit"
+
+    cli.run("-v -d wrap install -f mgit")
+    assert cli.succeeded
+    assert "Wrapped mgit -> .pk/mgit-" in cli.logged
+    assert CFG.program_version("./mgit", logger=LOG.info)
+    assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
+    assert CFG.symlinked_canonical(mgit_path) is None
