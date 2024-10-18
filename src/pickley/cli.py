@@ -14,7 +14,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import bstrap, CFG, PackageSpec, Reporter, ResolvedPackage, TrackedSettings
+from pickley import bstrap, CFG, PackageSpec, Reporter, ResolvedPackage, TrackedInstallInfo, TrackedSettings
 from pickley.package import VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -197,8 +197,8 @@ def perform_upgrade(pspec: PackageSpec, fatal=True, logger=LOG.debug, verb="auto
         if runez.DRYRUN:
             outcome = "Would state: "
 
-        elif not manifest:
-            # We failed to upgrade, in non-fatal mode
+        elif not manifest:  # pragma: no cover, for auto-heal output
+            # We failed to upgrade, in non-fatal mode (auto-heal)
             logger = LOG.error
             outcome = f"{runez.red('Failed')} to "
             action = verb.lower()
@@ -217,7 +217,7 @@ def _find_base_from_program_path(path: Path):
         return path.parent  # We're running from an installed pickley
 
     if path.name == ".venv":
-        return path / "root"  # Convenience for development
+        return path / "dev_mode"  # Convenience for development
 
     return _find_base_from_program_path(path.parent)
 
@@ -291,13 +291,25 @@ def main(ctx, verbose, config, index, python, delivery, package_manager):
         # `uv` is a special case, it does not need a python venv, it is used to determine what to install for all other packages.
         # We auto-check for new versions of `uv` twice per day, this can be hastened by user running an explicit `pickley upgrade uv`.
         if (bstrap.USE_UV or package_manager == "uv") and not CFG.uv_bootstrap.freshly_bootstrapped:
-            settings = TrackedSettings()
-            settings.auto_upgrade_spec = "uv"
-            pspec = PackageSpec("uv", settings=settings)
-            cooldown_path = CFG.cache / "uv.cooldown"
-            if not runez.file.is_younger(cooldown_path, 12 * runez.date.SECONDS_IN_ONE_HOUR):
-                runez.touch(cooldown_path)
-                perform_upgrade(pspec)
+            auto_upgrade_uv()
+
+
+def auto_upgrade_uv(cooldown_hours=12):
+    """
+    Automatic periodic upgrade of `uv`.
+
+    Parameters
+    ----------
+    cooldown_hours : int
+        Cooldown period in hours, auto-upgrade won't be attempted any more frequently than that.
+    """
+    cooldown_path = CFG.cache / "uv.cooldown"
+    if not cooldown_hours or not runez.file.is_younger(cooldown_path, cooldown_hours * runez.date.SECONDS_IN_ONE_HOUR):
+        runez.touch(cooldown_path)
+        settings = TrackedSettings()
+        settings.auto_upgrade_spec = "uv"
+        pspec = PackageSpec("uv", settings=settings)
+        perform_upgrade(pspec)
 
 
 @main.command()
@@ -310,6 +322,7 @@ def auto_heal():
     - Base python used to install the packages' venv is not available anymore
     - The pickley-generated wrapper points to files that have now been deleted
     """
+    CFG.require_bootstrap()
     total = healed = 0
     for spec in CFG.installed_specs():
         total += 1
@@ -329,6 +342,7 @@ def auto_heal():
 @click.argument("package", required=True)
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
+    CFG.require_bootstrap()
     canonical_name = CFG.required_canonical_name(package)
     pspec = PackageSpec(canonical_name)
     cooldown_path = CFG.cache / f"{canonical_name}.cooldown"
@@ -383,8 +397,19 @@ def bootstrap(base_folder, pickley_spec):
     CFG.set_base(base_folder)
     runez.Anchored.add(CFG.base)
     setup_audit_log()
+    if bstrap.USE_UV:
+        auto_upgrade_uv(cooldown_hours=0)
+
+    bootstrap_marker = CFG.manifests / ".bootstrap.json"
+    if not bootstrap_marker.exists():
+        # Some older pickley versions get confused by `uv` not being a wrapper anymore, clean things up first
+        runez.delete(CFG.base / bstrap.PICKLEY)
+        runez.delete(CFG.base / ".pickley")  # Clean up very old pickley `DOT_META` folder (in case one is still out there)
+        CFG.version_check_delay = 0  # Implies a --force install
+
     pspec = PackageSpec(pickley_spec or bstrap.PICKLEY, authoritative=bool(pickley_spec))
     perform_install(pspec)
+    runez.save_json(TrackedInstallInfo.current(), bootstrap_marker)
 
 
 @main.command()
@@ -392,6 +417,7 @@ def bootstrap(base_folder, pickley_spec):
 @click.argument("packages", nargs=-1, required=False)
 def check(force, packages):
     """Check whether specified packages need an upgrade"""
+    CFG.require_bootstrap()
     if force:
         CFG.version_check_delay = 0
 
@@ -409,8 +435,14 @@ def check(force, packages):
 
         elif not pspec.currently_installed_version:
             msg = runez.dim(f"(v{dv} available)")
-            msg = f"present, but not installed by pickley {msg}"
-            code = 1
+            if pspec.is_healthily_installed(entrypoints_only=True):
+                msg = f"present, but not installed by pickley {msg}"
+
+            else:
+                msg = f"not installed {msg}"
+
+            if not pspec.is_facultative:
+                code = 1
 
         else:
             msg = f"v{runez.bold(dv)}"
@@ -486,6 +518,7 @@ def diagnostics():
 @click.argument("packages", nargs=-1, required=True)
 def install(force, packages):
     """Install a package from pypi"""
+    CFG.require_bootstrap()
     if force:
         CFG.version_check_delay = 0
 
@@ -501,14 +534,10 @@ def install(force, packages):
 @click.option("--verbose", "-v", is_flag=True, help="Show more information")
 def cmd_list(border, format, verbose):
     """List installed packages"""
-    packages = CFG.installed_specs(include_pickley=True)
-    if not packages:
-        print("No packages installed")
-        sys.exit(0)
-
+    CFG.require_bootstrap()
     report = TabularReport("Package,Version,Python", additional="Delivery,PM,Track", border=border, verbose=verbose)
     default_package_manager = bstrap.default_package_manager()
-    for pspec in packages:
+    for pspec in CFG.installed_specs(include_pickley=True):
         manifest = pspec.manifest
         name = runez.bold(pspec.canonical_name)
         if pspec.canonical_name != pspec.auto_upgrade_spec:
@@ -517,7 +546,7 @@ def cmd_list(border, format, verbose):
         python = runez.dim("-not needed-") if pspec.is_uv else manifest and manifest.python_executable
         delivery = runez.dim("-") if pspec.is_uv else manifest and manifest.delivery
         package_manager = manifest and manifest.package_manager
-        if package_manager and package_manager != default_package_manager:
+        if package_manager and package_manager != default_package_manager:  # pragma: no cover, uncommon
             name += "👴"
 
         report.add_row(
@@ -539,6 +568,7 @@ def pip(command, package):
     """Run a diagnostics `pip` command in specified package"""
     from pickley.package import PythonVenv
 
+    CFG.require_bootstrap()
     for pspec in CFG.package_specs(package):
         runez.abort_if(pspec.is_uv, f"This command does not apply to {runez.bold(pspec.canonical_name)}")
         cv = pspec.currently_installed_version
@@ -563,6 +593,7 @@ def run(command, args):
          pickley run pip-compile
          pickley run flake8 src/
     """
+    CFG.require_bootstrap()
     if command == "--help":
         click.echo(click.get_current_context().get_help())
         return
@@ -575,6 +606,7 @@ def run(command, args):
 @click.argument("packages", nargs=-1, required=False)
 def uninstall(all, packages):
     """Uninstall packages"""
+    CFG.require_bootstrap()
     runez.abort_if(packages and all, f"Either specify packages to uninstall, or --all (but {runez.bold('not both')})")
     runez.abort_if(not packages and not all, f"Specify {runez.bold('packages to uninstall')}, or {runez.bold('--all')}")
     packages = CFG.package_specs(packages) or CFG.installed_specs()
@@ -607,6 +639,7 @@ def uninstall(all, packages):
 @click.argument("packages", nargs=-1, required=False)
 def upgrade(packages):
     """Upgrade an installed package"""
+    CFG.require_bootstrap()
     setup_audit_log()
     for pspec in CFG.package_specs(packages):
         perform_upgrade(pspec, logger=LOG.info, verb="upgrade")
@@ -854,7 +887,7 @@ class PackageFinalizer:
                     r = runez.run(exe, self.sanity_check, fatal=False)
                     overview = runez.short(runez.first_line(r.full_output) or "-no-output-")
                     msg += f", {self.sanity_check}: {overview}"
-                    if r.failed:
+                    if r.failed:  # pragma: no cover, --sanity-check is seldom used, will retire entire `package` command in the future
                         problem = problem or overview
                         overview = overview.lower()
                         if "usage:" in overview or "unrecognized" in overview:
