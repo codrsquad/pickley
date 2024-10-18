@@ -668,13 +668,16 @@ class PickleyConfig:
 
     @staticmethod
     def installed_sibling_folders(canonical_name):
-        """Sibling installations of the form '<canonical_name>-<version>'."""
-        regex = re.compile(r"^(.+)-(\d+[.\d+]+)$")
+        """
+        Sibling installations of the form '<canonical_name>-[<version>]'.
+        Intent of this is to find and clean older installations (to liberate disk space).
+        """
         for item in runez.ls_dir(CFG.meta):
-            if item.is_dir():
-                m = regex.match(item.name)
-                if m and m.group(1) == canonical_name:
-                    yield item, m.group(2)
+            if item.is_dir() and item.name.startswith(f"{canonical_name}-"):
+                version_part = item.name[len(canonical_name) + 1 :]
+                if not version_part or version_part[0].isdigit():
+                    # Edge case: bug in previous versions of pickley that yielded a "uv-" folder for example (seen in the wild)
+                    yield item, version_part
 
     @staticmethod
     def resolved_path(path, base=None) -> Path:

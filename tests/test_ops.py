@@ -179,13 +179,17 @@ def test_install_pypi(cli):
     assert "mgit was not installed with pickley" in cli.logged
 
     # Simulate a few older versions to exercise grooming
+    runez.touch(".pk/mgit-/bin/mgit", logger=None)  # Simulate a buggy old installation
+    runez.touch(".pk/mgit-0.9rc5+local/bin/mgit", logger=None)
     runez.touch(".pk/mgit-1.0/bin/mgit", logger=None)
     time.sleep(0.1)
     runez.touch(".pk/mgit-1.1/bin/mgit", logger=None)
     cli.run("--no-color -vv install mgit<1.3.0")
     assert cli.succeeded
     assert "Installed mgit v1.2.1" in cli.logged
-    assert "Deleted .pk/mgit-1.0" in cli.logged
+    assert "Deleted .pk/mgit-\n" in cli.logged
+    assert "Deleted .pk/mgit-0.9rc5+local\n" in cli.logged
+    assert "Deleted .pk/mgit-1.0\n" in cli.logged
     assert "Deleted .pk/mgit-1.1" not in cli.logged
     assert not os.path.exists(".pk/mgit-1.0")  # Groomed away
     assert os.path.exists(".pk/mgit-1.1")  # Still there (version N-1 kept for 7 days) .pk/config
