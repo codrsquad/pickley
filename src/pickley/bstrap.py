@@ -13,7 +13,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 expanduser = os.path.expanduser  # Overridden in conftest.py, to ensure tests never look at `~`
@@ -135,7 +134,7 @@ class Bootstrap:
         if not needs_virtualenv and not DRYRUN:
             needs_virtualenv = not is_executable(pip)
 
-        if needs_virtualenv:
+        if needs_virtualenv:  # pragma: no cover, not testing py3.6 fallback anymore
             Reporter.inform("-mvenv failed, falling back to virtualenv")
             pv = ".".join(str(x) for x in CURRENT_PYTHON_MM)
             zipapp = venv_folder.parent / ".cache/virtualenv.pyz"
@@ -147,19 +146,6 @@ class Bootstrap:
 
         run_program(pip, "-q", "install", "-U", *pip_auto_upgrade())
         run_program(pip, "-q", "install", self.pickley_spec or PICKLEY)
-
-    def get_latest_pickley_version(self):
-        # Legacy implementation, it can only use latest pickley version published
-        url = os.path.dirname(self.mirror)
-        url = f"{url}/pypi/{PICKLEY}/json"
-        data = http_get(url)
-        version = None
-        if data:
-            data = json.loads(data)
-            version = data["info"]["version"]
-            Reporter.trace(f"Latest {PICKLEY} version: {version}")
-
-        return version
 
 
 def default_package_manager(*parts):
@@ -217,40 +203,6 @@ class UvBootstrap:
         env.setdefault("HOME", str(uv_tmp))  # uv's installer assumes HOME is always defined (it is not on some CI systems)
         run_program("/bin/sh", script, env=env, dryrun=dryrun)
         return uv_tmp
-
-
-def http_get(url, timeout=10):
-    Reporter.trace(f"Querying {url}")
-    try:
-        request = Request(url)
-        with urlopen(request, timeout=timeout) as response:
-            data = response.read()
-
-    except HTTPError as e:
-        if e.code == 404:
-            return None
-
-        Reporter.abort(f"Failed to fetch {url}: {e}")
-
-    except URLError as e:  # py3.6 ssl error
-        if "ssl" not in str(e).lower():
-            Reporter.abort(f"Failed to fetch {url}: {e}")
-
-        import tempfile
-
-        with tempfile.NamedTemporaryFile() as tmpf:
-            tmpf.close()
-            curl_download(tmpf.name, url, dryrun=False)
-            with open(tmpf.name, "rb") as fh:
-                data = fh.read()
-
-    except Exception as e:
-        Reporter.abort(f"Failed to fetch {url}: {e}")
-
-    if data:
-        data = data.decode("utf-8").strip()
-
-    return data
 
 
 def built_in_download(target, url):
@@ -466,42 +418,7 @@ def main(args=None):
         if cfg and isinstance(cfg, dict):
             bstrap.seed_pickley_config(cfg)
 
-    if args.pickley_spec:
-        return bstrap.bootstrap_pickley()
-
-    pickley_version = bstrap.get_latest_pickley_version()
-    if not pickley_version:
-        Reporter.abort(f"Failed to determine latest {PICKLEY} version")
-
-    if pickley_version >= "4.4":
-        return bstrap.bootstrap_pickley()
-
-    # Legacy bootstrap, will be retired as soon as v4.4+ is released
-    pickley_exe = bstrap.pickley_base / PICKLEY
-    if not args.force and is_executable(pickley_exe):
-        v = run_program(pickley_exe, "--version", dryrun=False, fatal=False)
-        if v == pickley_version:
-            Reporter.inform(f"{short(pickley_exe)} version {v} is already installed")
-            sys.exit(0)
-
-        if v and len(v) < 16:  # If long output -> old pickley is busted (stacktrace)
-            Reporter.inform(f"Replacing older {PICKLEY} v{v}")
-
-    pickley_venv = bstrap.pickley_base / DOT_META / f"{PICKLEY}-{pickley_version}"
-    if bstrap.package_manager == "pip":
-        bstrap.bootstrap_pickley_with_pip(pickley_venv)
-
-    else:
-        # pickley 4.3 doesn't like when something else got uv for it, stash our bootstrap uv into a temp folder
-        uv_path = None
-        if not DRYRUN:
-            tmp_bootstrap = UvBootstrap(bstrap.pickley_base / DOT_META / ".cache/legacy-bootstrap")
-            tmp_bootstrap.auto_bootstrap_uv()
-            uv_path = tmp_bootstrap.uv_path
-
-        bstrap.bootstrap_pickley_with_uv(pickley_venv, uv_path=uv_path)
-
-    run_program(pickley_venv / f"bin/{PICKLEY}", "base", "bootstrap-own-wrapper")
+    bstrap.bootstrap_pickley()
 
 
 if __name__ == "__main__":
