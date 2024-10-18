@@ -558,7 +558,9 @@ class PackageSpec:
         current_age = None
         for candidate, version in CFG.installed_sibling_folders(self.canonical_name):
             age = now - os.path.getmtime(candidate)
-            if version == manifest.version:
+            if version == str(manifest.version):
+                # We want current version to not be a candidate for deletion,
+                # but use its age to determine whether it's OK to delete previous version N-1
                 current_age = age
 
             else:
