@@ -212,8 +212,13 @@ def built_in_download(target, url):
         fh.write(response.read())
 
 
-def clean_env_vars(keys=("__PYVENV_LAUNCHER__", "PYTHONPATH")):
-    """See https://github.com/python/cpython/pull/9516"""
+def clean_env_vars(keys=("__PYVENV_LAUNCHER__", "CLICOLOR_FORCE", "PYTHONPATH")):
+    """
+    Clean up any problematic env vars.
+
+    For __PYVENV_LAUNCHER__: see https://github.com/python/cpython/pull/9516
+    CLICOLOR_FORCE: it forces `uv` to do colored output, which is problematic when parsing output of `uv pip show` for example
+    """
     for key in keys:
         if key in os.environ:
             Reporter.trace(f"Unsetting env var {key}")
