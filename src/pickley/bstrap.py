@@ -182,8 +182,8 @@ class UvBootstrap:
         if self.freshly_bootstrapped:
             Reporter.trace(f"Auto-bootstrapping uv, reason: {self.freshly_bootstrapped}")
             uv_tmp = self.download_uv()
-            shutil.move(uv_tmp / "bin/uv", self.pickley_base / "uv")
-            shutil.move(uv_tmp / "bin/uvx", self.pickley_base / "uvx")
+            shutil.move(uv_tmp / "uv", self.pickley_base / "uv")
+            shutil.move(uv_tmp / "uvx", self.pickley_base / "uvx")
             shutil.rmtree(uv_tmp, ignore_errors=True)
 
     def bootstrap_reason(self):
@@ -214,6 +214,7 @@ class UvBootstrap:
         env["CARGO_DIST_FORCE_INSTALL_DIR"] = str(uv_tmp)
         env["INSTALLER_NO_MODIFY_PATH"] = "1"
         env["INSTALLER_PRINT_QUIET"] = "1"
+        env["UV_UNMANAGED_INSTALL"] = str(uv_tmp)  # Seehttps://github.com/astral-sh/uv/issues/6965#issuecomment-2448300149
         env.setdefault("HOME", str(uv_tmp))  # uv's installer assumes HOME is always defined (it is not on some CI systems)
         run_program("/bin/sh", script, env=env, dryrun=dryrun)
         return uv_tmp
