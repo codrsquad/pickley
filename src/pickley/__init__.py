@@ -558,7 +558,7 @@ class PackageSpec:
         current_age = None
         for candidate, version in CFG.installed_sibling_folders(self.canonical_name):
             age = now - os.path.getmtime(candidate)
-            if version == str(manifest.version):
+            if manifest and version == str(manifest.version):
                 # We want current version to not be a candidate for deletion,
                 # but use its age to determine whether it's OK to delete previous version N-1
                 current_age = age
@@ -1098,10 +1098,10 @@ class VenvSettings:
         if not package_manager:
             package_manager = CFG.get_value("package_manager", package_name=canonical_name)
 
-        if not package_manager:
+        if not package_manager and self.python_installation.mm:
             package_manager = bstrap.default_package_manager(self.python_installation.mm.major, self.python_installation.mm.minor)
 
-        self.package_manager = package_manager
+        self.package_manager = package_manager or bstrap.default_package_manager()
         self.python_executable = self.python_installation.executable
         self.uv_seed = uv_seed
 

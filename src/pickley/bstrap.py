@@ -149,6 +149,7 @@ class Bootstrap:
 
 
 def default_package_manager(*parts):
+    """Decide which package manager to use by default"""
     if not parts:
         parts = CURRENT_PYTHON_MM
 

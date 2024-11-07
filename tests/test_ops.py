@@ -58,7 +58,6 @@ def test_edge_cases(temp_cfg, logged):
 
 
 def test_facultative(cli):
-    CFG.set_base(".")
     cli.run("-n check virtualenv")
     assert cli.failed
     assert "not installed" in cli.logged
@@ -289,6 +288,10 @@ def test_install_pypi(cli):
 
 
 def test_invalid(cli):
+    cli.run("-P10.1 check six")
+    assert cli.failed
+    assert "Invalid python: 10.1 [not available]"
+
     cli.run("check six")
     assert cli.failed
     assert "not a CLI" in cli.logged
