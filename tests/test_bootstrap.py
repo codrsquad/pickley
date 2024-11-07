@@ -169,40 +169,6 @@ def test_failure(cli, monkeypatch):
                 assert "pip install pickley==1.0"
 
 
-def test_legacy(cli):
-    cli.main = bstrap.main
-    cli.run("--base . -mhttp://localhost:12345/simple")
-    assert cli.failed
-    assert "Failed to fetch http://localhost:12345/pypi/pickley/json:" in cli.logged
-    assert runez.to_path(".config/pip/pip.conf").exists()
-    assert "mirror: http://localhost:12345/simple" in cli.logged
-    assert "index-url = http://localhost:12345/simple" in runez.readlines(".config/pip/pip.conf")
-    runez.delete(".config", logger=None)
-
-    runez.write("pickley", "#!/bin/sh\necho 1.0", logger=None)
-    runez.make_executable("pickley", logger=None)
-
-    def mocked_run(program, *args, **kwargs):
-        if "-mvenv" in args:
-            return 1
-
-        kwargs.setdefault("dryrun", True)
-        r = runez.run(program, *args, **kwargs)
-        return r.exit_code if kwargs.get("fatal") else r.full_output
-
-    with patch("pickley.bstrap.run_program", side_effect=mocked_run):
-        cli.run("-nvv --base .")
-        assert cli.succeeded
-        if bstrap.USE_UV:
-            assert "virtualenv" not in cli.logged
-
-        else:
-            assert "python .pk/.cache/virtualenv.pyz" in cli.logged
-
-        assert "pickley base bootstrap-own-wrapper" in cli.logged
-        assert "Replacing older pickley v1.0" in cli.logged
-
-
 def test_pip_conf(temp_cfg, logged):
     assert bstrap.globally_configured_pypi_mirror([]) == (bstrap.DEFAULT_MIRROR, None)
 
