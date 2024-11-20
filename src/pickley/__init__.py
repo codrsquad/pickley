@@ -41,7 +41,7 @@ class Reporter:
 
     @staticmethod
     def abort(message):
-        """Allows to reuse `runez.abort()` from `bstrap` module (when not running in boostrap mode)"""
+        """Allows to reuse `runez.abort()` from `bstrap` module (when not running in bootstrap mode)"""
         runez.abort(message)
 
     @staticmethod
@@ -117,7 +117,7 @@ class PipMetadata:
         self.canonical_name = canonical_name
         self.values = {}
         r = venv.run_pip("show", canonical_name, fatal=False)
-        if r.failed:
+        if r.failed:  # pragma: no cover, hard to trigger without excessive mocking
             self.problem = f"Failed to `pip show {canonical_name}`: {r.full_output}"
             return
 
@@ -291,9 +291,9 @@ class ResolvedPackage:
             if not self.entrypoints:
                 self.problem = runez.red("not a CLI")
 
-            if os.getenv("PICKLEY_DEV") == "1" and self.given_package_spec == runez.DEV.project_folder:
-                # Dev mode: install pickley from source in editable mode (typically in .venv/root/ development base)
-                self.pip_spec = ["-e", self.given_package_spec]
+            if CFG.is_dev_mode and self.given_package_spec in (bstrap.PICKLEY, runez.DEV.project_folder):
+                # Dev mode: install pickley from source in editable mode
+                self.pip_spec = ["-e", runez.DEV.project_folder]
 
     def _get_entry_points(self, venv, canonical_name, version, location):
         # Use `uv pip show` to get location on disk and version of package
@@ -410,9 +410,6 @@ class PackageSpec:
     def __repr__(self):
         return runez.short(self.auto_upgrade_spec)
 
-    def __lt__(self, other):
-        return str(self) < str(other)
-
     @property
     def canonical_name(self) -> str:
         if self._canonical_name is None:
@@ -458,6 +455,10 @@ class PackageSpec:
 
     @property
     def currently_installed_version(self):
+        if self.is_uv:
+            # For `uv`, no need to trust the manifest, we can just dynamically ask what's its version
+            return CFG.program_version(self.healthcheck_exe)
+
         manifest = self.manifest
         return manifest and manifest.version
 
@@ -479,7 +480,7 @@ class PackageSpec:
     def delivery_method_name(self) -> str:
         return self.settings.delivery or CFG.get_value("delivery", package_name=self.canonical_name)
 
-    def is_healthily_installed(self) -> bool:
+    def is_healthily_installed(self, entrypoints_only=False) -> bool:
         """Is the venv for this package spec still usable?"""
         manifest = self.manifest
         entrypoints = (manifest and manifest.entrypoints) or self.resolved_info.entrypoints
@@ -488,7 +489,7 @@ class PackageSpec:
                 if not runez.is_executable(CFG.base / name):
                     return False
 
-        return bool(CFG.program_version(self.healthcheck_exe))
+        return entrypoints_only or bool(CFG.program_version(self.healthcheck_exe))
 
     def target_installation_folder(self):
         """Folder that will hold current installation of this package (does not apply to uv)"""
@@ -497,12 +498,12 @@ class PackageSpec:
 
     def upgrade_reason(self):
         """Reason this package spec needs an upgrade (if any)"""
+        if self.currently_installed_version != self.target_version:
+            return "new version available"
+
         manifest = self.manifest
         if not manifest:
             return "manifest missing"
-
-        if manifest.version != self.target_version:
-            return "new version available"
 
         if not manifest.settings or not manifest.settings.auto_upgrade_spec:
             return "incomplete manifest"
@@ -533,21 +534,19 @@ class PackageSpec:
     def uninstall_all_files(self):
         """Uninstall all files related to this package spec"""
         runez.delete(self.manifest_path, fatal=False, logger=runez.log.trace)
-        for candidate, _ in self.installed_sibling_folders():
+        for candidate, _ in CFG.installed_sibling_folders(self.canonical_name):
             runez.delete(candidate, fatal=False, logger=runez.log.trace)
-
-    def installed_sibling_folders(self):
-        """Sibling installations of the form '<canonical_name>-<version>'."""
-        regex = re.compile(r"^(.+)-(\d+[.\d+]+)$")
-        for item in runez.ls_dir(CFG.meta):
-            if item.is_dir():
-                m = regex.match(item.name)
-                if m and m.group(1) == self.canonical_name:
-                    yield item, m.group(2)
 
     def groom_installation(self):
         """Groom installation folder, keeping only the latest version, and prev versions a day."""
         CFG.groom_cache()
+        if self.is_uv:
+            for candidate, _ in CFG.installed_sibling_folders("uv"):
+                # Old pickley versions used to wrap 'uv', we don't do that anymore, cleanup leftovers
+                runez.delete(candidate, fatal=False)
+
+            return
+
         # Minimum time in days for how long to keep the previous latest version, not officially configured, but config used by tests
         age_cutoff = runez.to_int(CFG.get_value("installation_retention", package_name=self.canonical_name))
         if age_cutoff is None:
@@ -557,9 +556,11 @@ class PackageSpec:
         manifest = self.manifest
         now = time.time()
         current_age = None
-        for candidate, version in self.installed_sibling_folders():
+        for candidate, version in CFG.installed_sibling_folders(self.canonical_name):
             age = now - os.path.getmtime(candidate)
-            if version == manifest.version:
+            if manifest and version == str(manifest.version):
+                # We want current version to not be a candidate for deletion,
+                # but use its age to determine whether it's OK to delete previous version N-1
                 current_age = age
 
             else:
@@ -610,6 +611,7 @@ class PickleyConfig:
     configs: List["RawConfig"]
     version_check_delay: int = DEFAULT_VERSION_CHECK_DELAY
 
+    is_dev_mode = False
     pickley_version = runez.get_version(bstrap.PICKLEY)
     use_audit_log = False  # If True, capture log in .pk/audit.log
     verbosity = 0
@@ -629,6 +631,7 @@ class PickleyConfig:
         self.cli_config = None
         self.configs = []
         self.config_path = None
+        self.is_dev_mode = False
         self._pip_conf = runez.UNSET
         self._pip_conf_index = runez.UNSET
         self._uv_bootstrap = None
@@ -664,6 +667,19 @@ class PickleyConfig:
             r = runez.run(path, "--version", dryrun=False, fatal=False, logger=logger)
             if r.succeeded:
                 return PickleyConfig.parsed_version(r.output or r.error)
+
+    @staticmethod
+    def installed_sibling_folders(canonical_name):
+        """
+        Sibling installations of the form '<canonical_name>-[<version>]'.
+        Intent of this is to find and clean older installations (to liberate disk space).
+        """
+        for item in runez.ls_dir(CFG.meta):
+            if item.is_dir() and item.name.startswith(f"{canonical_name}-"):
+                version_part = item.name[len(canonical_name) + 1 :]
+                if not version_part or version_part[0].isdigit():
+                    # Edge case: bug in previous versions of pickley that yielded a "uv-" folder for example (seen in the wild)
+                    yield item, version_part
 
     @staticmethod
     def resolved_path(path, base=None) -> Path:
@@ -727,6 +743,20 @@ class PickleyConfig:
 
         return KNOWN_ENTRYPOINTS.get(canonical_name)
 
+    def require_bootstrap(self):
+        """
+        Require that we are running in a bootstrapped pickley environment.
+        This allows to verify that one is not running `pickley install` from a temporary environment,
+        such as one created by `uvx pickley ...` for example.
+        """
+        bootstrap_info_path = CFG.manifests / ".bootstrap.json"
+        contents = runez.read_json(bootstrap_info_path)
+        if not contents and self.is_dev_mode:
+            contents = {"vpickley": self.pickley_version}
+
+        info = TrackedInstallInfo.from_dict(contents)
+        runez.abort_if(not info or not info.vpickley, "This command applies only to bootstrapped pickley installations")
+
     def set_base(self, base_path):
         """
         Parameters
@@ -736,6 +766,7 @@ class PickleyConfig:
         """
         self.configs = []
         self.base = self.resolved_path(base_path)
+        self.is_dev_mode = self.base.name == "dev_mode"
         self.meta = self.base / bstrap.DOT_META
         self.cache = self.meta / ".cache"
         self.manifests = self.meta / ".manifest"
@@ -1067,10 +1098,10 @@ class VenvSettings:
         if not package_manager:
             package_manager = CFG.get_value("package_manager", package_name=canonical_name)
 
-        if not package_manager:
+        if not package_manager and self.python_installation.mm:
             package_manager = bstrap.default_package_manager(self.python_installation.mm.major, self.python_installation.mm.minor)
 
-        self.package_manager = package_manager
+        self.package_manager = package_manager or bstrap.default_package_manager()
         self.python_executable = self.python_installation.executable
         self.uv_seed = uv_seed
 

@@ -41,8 +41,10 @@ defaults:
 
 
 def grab_sample(name):
-    path = runez.DEV.tests_path("samples", name)
-    runez.copy(path, bstrap.DOT_META)
+    path = runez.to_path(runez.DEV.tests_path("samples", name))
+    for item in path.iterdir():
+        runez.copy(item, f"{bstrap.DOT_META}/{item.name}")
+
     CFG.set_cli("config.json", None, None, None, None)
     CFG.set_base(".")
     assert str(CFG.configs[0]) == "cli (0 values)"
