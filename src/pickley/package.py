@@ -187,8 +187,8 @@ class VenvPackager:
             # Special case for uv: it does not need a venv and lives at the root of the base, without a wrapper
             if pspec.currently_installed_version != pspec.target_version:
                 uv_tmp = CFG.uv_bootstrap.download_uv(version=pspec.target_version, dryrun=runez.DRYRUN)
-                runez.move(uv_tmp / "bin/uv", CFG.base / "uv")
-                runez.move(uv_tmp / "bin/uvx", CFG.base / "uvx")
+                runez.move(uv_tmp / "uv", CFG.base / "uv")
+                runez.move(uv_tmp / "uvx", CFG.base / "uvx")
                 runez.delete(uv_tmp)
 
             manifest = pspec.save_manifest()
