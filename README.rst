@@ -153,6 +153,11 @@ Installation
 Install latest version in `~/.local/bin`
 ----------------------------------------
 
+If you have uv_, you can use it to bootstrap **pickley**, for example in ``~/.local/bin``::
+
+    $ uvx pickley bootstrap ~/.local/bin
+
+
 Handy one-line using ``bash``::
 
     $ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/codrsquad/pickley/main/get-pickley)"
