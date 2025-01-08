@@ -13,6 +13,7 @@ import runez
 from runez.pyenv import PypiStd, PythonDepot, Version
 
 from pickley import bstrap
+from pickley.bstrap import PICKLEY
 
 LOG = logging.getLogger(__name__)
 DEFAULT_VERSION_CHECK_DELAY = 300
@@ -587,6 +588,9 @@ class PackageSpec:
             manifest.delivery = self.delivery_method_name()
             manifest.package_manager = venv_settings.package_manager
             manifest.python_executable = venv_settings.python_executable
+
+        if self.canonical_name == PICKLEY:
+            runez.save_json(manifest.install_info, CFG.manifests / ".bootstrap.json")
 
         payload = manifest.to_dict()
         runez.save_json(payload, self.manifest_path)
