@@ -14,7 +14,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import bstrap, CFG, PackageSpec, Reporter, ResolvedPackage, TrackedSettings
+from pickley import bstrap, CFG, PackageSpec, PICKLEY, Reporter, ResolvedPackage, TrackedSettings
 from pickley.package import VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -342,7 +342,10 @@ def auto_heal():
 @click.argument("package", required=True)
 def auto_upgrade(force, package):
     """Background auto-upgrade command (called by wrapper)"""
-    CFG.require_bootstrap()
+    if package != PICKLEY:
+        # Auto-upgrade of pickley will mark current installation as bootstrapped
+        CFG.require_bootstrap()
+
     canonical_name = CFG.required_canonical_name(package)
     pspec = PackageSpec(canonical_name)
     cooldown_path = CFG.cache / f"{canonical_name}.cooldown"
