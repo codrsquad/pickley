@@ -14,7 +14,7 @@ import runez
 from runez.pyenv import Version
 from runez.render import PrettyTable
 
-from pickley import bstrap, CFG, PackageSpec, Reporter, ResolvedPackage, TrackedInstallInfo, TrackedSettings
+from pickley import bstrap, CFG, PackageSpec, Reporter, ResolvedPackage, TrackedSettings
 from pickley.package import VenvPackager
 
 LOG = logging.getLogger(__name__)
@@ -409,7 +409,6 @@ def bootstrap(base_folder, pickley_spec):
 
     pspec = PackageSpec(pickley_spec or bstrap.PICKLEY, authoritative=bool(pickley_spec))
     perform_install(pspec)
-    runez.save_json(TrackedInstallInfo.current(), bootstrap_marker)
 
 
 @main.command()
