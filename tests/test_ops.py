@@ -25,7 +25,7 @@ def test_base(cli, monkeypatch):
     assert "Can't find 'foo', try:" in cli.logged.stdout
 
     monkeypatch.delenv("PICKLEY_ROOT")
-    assert find_base("/foo/.venv/bin/pickley") == CFG.resolved_path("/foo/.venv/root")
+    assert find_base("/foo/.venv/bin/pickley") == CFG.resolved_path("/foo/.venv/dev_mode")
     assert find_base(CFG.base / "foo/.pk/pickley-0.0.0/bin/pickley") == CFG.resolved_path("foo")
     assert find_base("foo/bar/baz") == CFG.resolved_path("foo/bar")
 
@@ -38,7 +38,8 @@ def test_base(cli, monkeypatch):
 
 
 def test_dev_mode(cli, monkeypatch):
-    monkeypatch.setenv("PICKLEY_DEV", "1")
+    runez.ensure_folder("dev_mode", logger=None)
+    monkeypatch.setenv("PICKLEY_ROOT", "dev_mode")
     cli.run("-nv", "install", runez.DEV.project_folder)
     assert cli.succeeded
     assert "install -e " in cli.logged
@@ -57,7 +58,10 @@ def test_edge_cases(temp_cfg, logged):
 
 
 def test_facultative(cli):
-    CFG.set_base(".")
+    cli.run("-n check virtualenv")
+    assert cli.failed
+    assert "not installed" in cli.logged
+
     config_path = CFG.meta / "config.json"
     runez.save_json({"pinned": {"virtualenv": {"facultative": True}}}, config_path, logger=None)
 
@@ -66,7 +70,7 @@ def test_facultative(cli):
     assert "'virtualenv>10000' is not a canonical pypi package name" in cli.logged
 
     cli.run("-n check virtualenv")
-    assert cli.failed
+    assert cli.succeeded
     assert "not installed" in cli.logged
 
     cli.run("--no-color", "-vv", f"-p{sys.executable}", "install", " virtualenv")
@@ -92,9 +96,17 @@ def test_facultative(cli):
     assert "Would state: Installed virtualenv" in cli.logged
 
     # Simulate a bogus symlink
-    runez.touch("virtualenv-foo", logger=None)
-    runez.symlink("virtualenv-foo", "virtualenv", logger=None)
+    runez.write("some-folder/virtualenv", "#!/bin/sh\nexit 1", logger=None)
+    runez.make_executable("some-folder/virtualenv", logger=None)
+    runez.symlink("some-folder/virtualenv", "virtualenv", logger=None)
     cli.run("-n check virtualenv")
+    assert cli.succeeded
+    assert "present, but not installed by pickley"
+
+    cli.run("-nvv install virtualenv")
+    assert cli.succeeded
+    assert "Symlink virtualenv -> some-folder/virtualenv does not belong to pickley" in cli.logged
+    assert "Skipping facultative installation 'virtualenv', not installed by pickley" in cli.logged
 
     # Simulate a symlink to an older version
     runez.touch(".pk/virtualenv-1.0/bin/virtualenv", logger=None)
@@ -123,10 +135,6 @@ def test_facultative(cli):
     cli.run("-n install virtualenv")
     assert cli.succeeded
     assert "Skipping facultative installation 'virtualenv', not installed by pickley" in cli.logged
-
-    cli.run("-n check virtualenv")
-    assert cli.failed
-    cli.match("virtualenv: present, but not installed by pickley (v... available)")
 
     # Fail when not facultative
     runez.delete(config_path, logger=None)
@@ -170,13 +178,17 @@ def test_install_pypi(cli):
     assert "mgit was not installed with pickley" in cli.logged
 
     # Simulate a few older versions to exercise grooming
+    runez.touch(".pk/mgit-/bin/mgit", logger=None)  # Simulate a buggy old installation
+    runez.touch(".pk/mgit-0.9rc5+local/bin/mgit", logger=None)
     runez.touch(".pk/mgit-1.0/bin/mgit", logger=None)
     time.sleep(0.1)
     runez.touch(".pk/mgit-1.1/bin/mgit", logger=None)
     cli.run("--no-color -vv install mgit<1.3.0")
     assert cli.succeeded
     assert "Installed mgit v1.2.1" in cli.logged
-    assert "Deleted .pk/mgit-1.0" in cli.logged
+    assert "Deleted .pk/mgit-\n" in cli.logged
+    assert "Deleted .pk/mgit-0.9rc5+local\n" in cli.logged
+    assert "Deleted .pk/mgit-1.0\n" in cli.logged
     assert "Deleted .pk/mgit-1.1" not in cli.logged
     assert not os.path.exists(".pk/mgit-1.0")  # Groomed away
     assert os.path.exists(".pk/mgit-1.1")  # Still there (version N-1 kept for 7 days) .pk/config
@@ -271,10 +283,15 @@ def test_install_pypi(cli):
     assert "Uninstalled pickley and 1 package: mgit<1.4" in cli.logged
 
     cli.run("list")
-    assert cli.succeeded
+    assert cli.failed
+    assert "This command applies only to bootstrapped pickley installations" in cli.logged
 
 
 def test_invalid(cli):
+    cli.run("-P10.1 check six")
+    assert cli.failed
+    assert "Invalid python: 10.1 [not available]"
+
     cli.run("check six")
     assert cli.failed
     assert "not a CLI" in cli.logged
