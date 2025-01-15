@@ -222,7 +222,6 @@ class ResolvedPackage:
         pip_spec = self.given_package_spec
         canonical_name, version = CFG.despecced(self.given_package_spec)
         if version:
-            pip_spec = f"{canonical_name}=={version}"
             self.resolution_reason = "pinned"
             if canonical_name == bstrap.PICKLEY:
                 self._set_canonical(canonical_name, version)
@@ -276,7 +275,9 @@ class ResolvedPackage:
             line = lines[0]
             canonical_name, version = CFG.despecced(line)
             if version:
-                self.pip_spec = [f"{canonical_name}=={version}"]
+                if canonical_name == self.given_package_spec:
+                    self.pip_spec = [f"{canonical_name}=={version}"]
+
                 if not self.resolution_reason:
                     self.resolution_reason = "package spec"
 
