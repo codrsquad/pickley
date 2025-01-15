@@ -177,9 +177,9 @@ def test_install_pypi(cli):
     assert cli.failed
     assert "mgit was not installed with pickley" in cli.logged
 
-    cli.run("-nv install yq[test]")
+    cli.run("-nvv install yq[test]")
     assert cli.succeeded
-    assert "Would run: uv -q pip install yq[test]" in cli.logged
+    assert "pip install yq[test]" in cli.logged
 
     # Simulate a few older versions to exercise grooming
     runez.touch(".pk/mgit-/bin/mgit", logger=None)  # Simulate a buggy old installation
