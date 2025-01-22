@@ -385,7 +385,7 @@ class PackageSpec:
             self.auto_upgrade_spec = given_package_spec
             runez.log.trace(f"Authoritative auto-upgrade spec '{self.auto_upgrade_spec}'")
 
-        else:
+        elif self._canonical_name:
             # Non-authoritative specs are necessarily canonical names (since only authoritative specs can refer to git urls, etc.)
             manifest = self.manifest
             if manifest and manifest.settings and manifest.settings.auto_upgrade_spec:
@@ -397,6 +397,10 @@ class PackageSpec:
                 # Manifest was produced by an older pickley prior to v4.4
                 runez.log.trace(f"Assuming auto-upgrade spec '{self._canonical_name}'")
                 self.auto_upgrade_spec = self._canonical_name
+
+        else:
+            # Should not be reachable, unless we are given a non-authoritative spec that is not a canonical name
+            self.auto_upgrade_spec = given_package_spec
 
         cache_file_name = self.auto_upgrade_spec
         if PypiStd.std_package_name(cache_file_name) != cache_file_name:
@@ -501,7 +505,7 @@ class PackageSpec:
     def upgrade_reason(self):
         """Reason this package spec needs an upgrade (if any)"""
         if self.currently_installed_version != self.target_version:
-            return "new version available"
+            return f"new version available, current version is {self.currently_installed_version}"
 
         manifest = self.manifest
         if not manifest:

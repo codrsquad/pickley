@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from typing import List, TYPE_CHECKING
@@ -10,6 +11,8 @@ from pickley.delivery import DeliveryMethod, DeliveryMethodSymlink, DeliveryMeth
 
 if TYPE_CHECKING:
     from pickley.cli import Requirements
+
+LOG = logging.getLogger(__name__)
 
 
 class PythonVenv:
@@ -138,13 +141,19 @@ def find_symbolic_invoker() -> str:
     """Symbolic major/minor symlink to invoker, when applicable"""
     invoker = runez.SYS_INFO.invoker_python
     folder = invoker.real_exe.parent.parent
+    LOG.info("Invoker python: %s", invoker)
     v = Version.extracted_from_text(folder.name)
     found = invoker.executable
     if v and v.given_components_count == 3:
         # For setups that provide a <folder>/pythonM.m -> <folder>/pythonM.m.p symlink, prefer the major/minor variant
-        candidates = [folder.parent / folder.name.replace(v.text, v.mm), folder.parent / f"python{v.mm}"]
+        candidates = []
+        for candidate in (folder.name.replace(v.text, v.mm), f"python{v.mm}"):
+            candidates.append(folder.parent / candidate)
+            candidates.append(folder.parent / candidate / "bin" / f"python{v.mm}")
+
         for path in candidates:
             if runez.is_executable(path):
+                LOG.info("Found symbolic invoker: %s", path)
                 found = path
                 break
 
