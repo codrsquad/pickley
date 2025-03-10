@@ -309,7 +309,9 @@ def auto_upgrade_uv(cooldown_hours=12):
         settings = TrackedSettings()
         settings.auto_upgrade_spec = "uv"
         pspec = PackageSpec("uv", settings=settings)
-        perform_upgrade(pspec)
+
+        # Automatic background upgrade of `uv` is not treated as fatal, for more resilience
+        perform_upgrade(pspec, fatal=False)
 
 
 @main.command()
@@ -401,7 +403,7 @@ def bootstrap(base_folder, pickley_spec):
     runez.Anchored.add(CFG.base)
     setup_audit_log()
     if bstrap.USE_UV:
-        auto_upgrade_uv(cooldown_hours=0)
+        auto_upgrade_uv()
 
     bootstrap_marker = CFG.manifests / ".bootstrap.json"
     if not bootstrap_marker.exists():

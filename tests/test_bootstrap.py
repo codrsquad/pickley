@@ -23,7 +23,7 @@ def test_bootstrap_command(cli):
         assert CFG._uv_bootstrap.freshly_bootstrapped == "uv not present"
         assert "Deleted .pk/uv-0.0.1" in cli.logged
         assert "Auto-bootstrapping uv, reason: uv not present" in cli.logged
-        assert "Saved .pk/.manifest/uv.manifest.json" in cli.logged
+        assert "[bootstrap] Saved .pk/.manifest/uv.manifest.json" in cli.logged
         assert CFG.program_version(".local/bin/uv")
 
     else:
@@ -54,7 +54,7 @@ def test_bootstrap_script(cli, monkeypatch):
 
     # Verify that uv is seeded even in dryrun mode
     uv_path = CFG.resolved_path(".local/bin/uv")
-    assert not runez.is_executable(uv_path)  # Not seed by conftest.py (it seeds ./uv)
+    assert not runez.is_executable(uv_path)  # Not seeded by conftest.py (it seeds ./uv)
 
     # Simulate bogus mirror, verify that we fail bootstrap in that case
     cli.run("-nvv", cli.project_folder, "-mhttp://localhost:12345")
