@@ -181,7 +181,7 @@ class UvBootstrap:
             cooldown_path.write_text("")
             Reporter.debug(f"[bootstrap] Touched {cooldown_relative_path}")
 
-            # Create a manifest file to let pickley know uv is installed .cooldown
+            # Let pickley know which version of uv is installed
             uv_version = run_program(self.uv_path, "--version", fatal=False, dryrun=False)
             if uv_version:
                 m = re.search(r"(\d+\.\d+\.\d+)", uv_version)
