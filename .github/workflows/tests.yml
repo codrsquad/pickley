@@ -22,6 +22,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - uses: astral-sh/setup-uv@v5
+    - run: uv venv
     - run: uv pip install -U tox-uv
     - run: tox -e py
     - uses: codecov/codecov-action@v4
