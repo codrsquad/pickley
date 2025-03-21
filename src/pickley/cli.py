@@ -303,15 +303,16 @@ def auto_upgrade_uv(cooldown_hours=12):
     cooldown_hours : int
         Cooldown period in hours, auto-upgrade won't be attempted any more frequently than that.
     """
-    cooldown_path = CFG.cache / "uv.cooldown"
-    if not cooldown_hours or not runez.file.is_younger(cooldown_path, cooldown_hours * runez.date.SECONDS_IN_ONE_HOUR):
-        runez.touch(cooldown_path)
-        settings = TrackedSettings()
-        settings.auto_upgrade_spec = "uv"
-        pspec = PackageSpec("uv", settings=settings)
+    if not CFG.uv_bootstrap.freshly_bootstrapped:
+        cooldown_path = CFG.cache / "uv.cooldown"
+        if not cooldown_hours or not runez.file.is_younger(cooldown_path, cooldown_hours * runez.date.SECONDS_IN_ONE_HOUR):
+            runez.touch(cooldown_path)
+            settings = TrackedSettings()
+            settings.auto_upgrade_spec = "uv"
+            pspec = PackageSpec("uv", settings=settings)
 
-        # Automatic background upgrade of `uv` is not treated as fatal, for more resilience
-        perform_upgrade(pspec, fatal=False)
+            # Automatic background upgrade of `uv` is not treated as fatal, for more resilience
+            perform_upgrade(pspec, fatal=False)
 
 
 @main.command()
