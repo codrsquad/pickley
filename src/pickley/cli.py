@@ -529,6 +529,7 @@ def install(force, packages):
 
     setup_audit_log()
     specs = CFG.package_specs(packages, authoritative=True)
+    runez.abort_if(not specs, f"Can't install '{runez.joined(packages)}', not configured")
     for pspec in specs:
         perform_install(pspec)
 
