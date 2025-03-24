@@ -9,30 +9,34 @@ from pickley import bstrap, Reporter
 from pickley.cli import CFG
 
 
-def test_bootstrap_command(cli):
+def test_bootstrap_command(cli, monkeypatch):
     cli.run("-n", "bootstrap", ".local/bin", cli.project_folder)
     assert cli.failed
     assert "Folder .local/bin does not exist" in cli.logged
 
-    # Simulate an old uv semi-venv present
-    runez.touch(".local/bin/.pk/uv-0.0.1/bin/uv", logger=None)
+    runez.ensure_folder(".local/bin", logger=None)
     cli.run("--no-color", "-vv", "bootstrap", ".local/bin", cli.project_folder)
     assert cli.succeeded
     assert "Saved .pk/.manifest/.bootstrap.json" in cli.logged
+    assert "Installed pickley v" in cli.logged
+    assert CFG.program_version(".local/bin/pickley")
     if bstrap.USE_UV:
         assert CFG._uv_bootstrap.freshly_bootstrapped == "uv not present"
-        assert "Deleted .pk/uv-0.0.1" in cli.logged
         assert "Auto-bootstrapping uv, reason: uv not present" in cli.logged
-        assert "Saved .pk/.manifest/uv.manifest.json" in cli.logged
+        assert "[bootstrap] Saved .pk/.manifest/uv.manifest.json" in cli.logged
         assert CFG.program_version(".local/bin/uv")
+
+        # Simulate an old uv semi-venv present
+        runez.touch(".local/bin/.pk/uv-0.0.1/bin/uv", logger=None)
+        monkeypatch.setenv("PICKLEY_ROOT", ".local/bin")
+        cli.run("-vv", "install", "-f", "uv")
+        assert cli.succeeded
+        assert "Deleted .pk/uv-0.0.1" in cli.logged
 
     else:
         # Verify that no uv bootstrap took place
         assert "/uv" not in cli.logged
         assert CFG._uv_bootstrap is None
-
-    assert "Installed pickley v" in cli.logged
-    assert CFG.program_version(".local/bin/pickley")
 
 
 def test_bootstrap_script(cli, monkeypatch):
@@ -54,7 +58,7 @@ def test_bootstrap_script(cli, monkeypatch):
 
     # Verify that uv is seeded even in dryrun mode
     uv_path = CFG.resolved_path(".local/bin/uv")
-    assert not runez.is_executable(uv_path)  # Not seed by conftest.py (it seeds ./uv)
+    assert not runez.is_executable(uv_path)  # Not seeded by conftest.py (it seeds ./uv)
 
     # Simulate bogus mirror, verify that we fail bootstrap in that case
     cli.run("-nvv", cli.project_folder, "-mhttp://localhost:12345")

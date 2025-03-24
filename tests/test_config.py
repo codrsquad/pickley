@@ -85,6 +85,10 @@ def test_good_config(cli):
     assert cli.succeeded
     assert "Would wrap mgit -> .pk/mgit-1.2.1/bin/mgit" in cli.logged
 
+    cli.run("-n install bundle:foo")
+    assert cli.failed
+    assert "Can't install 'bundle:foo', not configured" in cli.logged
+
 
 def test_despecced():
     assert CFG.despecced("mgit") == ("mgit", None)

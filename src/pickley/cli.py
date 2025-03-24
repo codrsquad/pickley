@@ -303,13 +303,16 @@ def auto_upgrade_uv(cooldown_hours=12):
     cooldown_hours : int
         Cooldown period in hours, auto-upgrade won't be attempted any more frequently than that.
     """
-    cooldown_path = CFG.cache / "uv.cooldown"
-    if not cooldown_hours or not runez.file.is_younger(cooldown_path, cooldown_hours * runez.date.SECONDS_IN_ONE_HOUR):
-        runez.touch(cooldown_path)
-        settings = TrackedSettings()
-        settings.auto_upgrade_spec = "uv"
-        pspec = PackageSpec("uv", settings=settings)
-        perform_upgrade(pspec)
+    if not CFG.uv_bootstrap.freshly_bootstrapped:
+        cooldown_path = CFG.cache / "uv.cooldown"
+        if not cooldown_hours or not runez.file.is_younger(cooldown_path, cooldown_hours * runez.date.SECONDS_IN_ONE_HOUR):
+            runez.touch(cooldown_path)
+            settings = TrackedSettings()
+            settings.auto_upgrade_spec = "uv"
+            pspec = PackageSpec("uv", settings=settings)
+
+            # Automatic background upgrade of `uv` is not treated as fatal, for more resilience
+            perform_upgrade(pspec, fatal=False)
 
 
 @main.command()
@@ -401,7 +404,7 @@ def bootstrap(base_folder, pickley_spec):
     runez.Anchored.add(CFG.base)
     setup_audit_log()
     if bstrap.USE_UV:
-        auto_upgrade_uv(cooldown_hours=0)
+        auto_upgrade_uv()
 
     bootstrap_marker = CFG.manifests / ".bootstrap.json"
     if not bootstrap_marker.exists():
@@ -526,6 +529,7 @@ def install(force, packages):
 
     setup_audit_log()
     specs = CFG.package_specs(packages, authoritative=True)
+    runez.abort_if(not specs, f"Can't install '{runez.joined(packages)}', not configured")
     for pspec in specs:
         perform_install(pspec)
 

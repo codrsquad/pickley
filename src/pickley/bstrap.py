@@ -8,6 +8,7 @@ Usage example:
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,7 @@ DEFAULT_MIRROR = "https://pypi.org/simple"
 CURRENT_PYTHON_MM = sys.version_info[:2]
 UV_CUTOFF = (3, 8)
 USE_UV = CURRENT_PYTHON_MM >= UV_CUTOFF  # Default to `uv` for python versions >= this
+KNOWN_ENTRYPOINTS = {PICKLEY: (PICKLEY,), "tox": ("tox",), "uv": ("uv", "uvx")}
 
 
 class _Reporter:
@@ -84,9 +86,8 @@ class Bootstrap:
             if not hdry(f"Would seed {msg}"):
                 Reporter.inform(f"Seeding {msg}")
                 ensure_folder(pickley_config.parent)
-                with open(pickley_config, "wt") as fh:
-                    json.dump(desired_cfg, fh, sort_keys=True, indent=2)
-                    fh.write("\n")
+                payload = json.dumps(desired_cfg, sort_keys=True, indent=2)
+                pickley_config.write_text(f"{payload}\n")
 
     def bootstrap_pickley(self):
         """Run `pickley bootstrap` in a temporary venv"""
@@ -167,11 +168,35 @@ class UvBootstrap:
     def auto_bootstrap_uv(self):
         self.freshly_bootstrapped = self.bootstrap_reason()
         if self.freshly_bootstrapped:
-            Reporter.trace(f"Auto-bootstrapping uv, reason: {self.freshly_bootstrapped}")
+            Reporter.inform(f"Auto-bootstrapping uv, reason: {self.freshly_bootstrapped}")
             uv_tmp = self.download_uv()
             shutil.move(uv_tmp / "uv", self.pickley_base / "uv")
             shutil.move(uv_tmp / "uvx", self.pickley_base / "uvx")
             shutil.rmtree(uv_tmp, ignore_errors=True)
+
+            # Touch cooldown file to let pickley know no need to check for uv upgrade for a while
+            cooldown_relative_path = f"{DOT_META}/.cache/uv.cooldown"
+            cooldown_path = self.pickley_base / cooldown_relative_path
+            ensure_folder(cooldown_path.parent, dryrun=False)
+            cooldown_path.write_text("")
+            Reporter.debug(f"[bootstrap] Touched {cooldown_relative_path}")
+
+            # Let pickley know which version of uv is installed
+            uv_version = run_program(self.uv_path, "--version", fatal=False, dryrun=False)
+            if uv_version:
+                m = re.search(r"(\d+\.\d+\.\d+)", uv_version)
+                if m:
+                    uv_version = m.group(1)
+                    manifest_relative_path = f"{DOT_META}/.manifest/uv.manifest.json"
+                    manifest_path = self.pickley_base / manifest_relative_path
+                    manifest = {
+                        "entrypoints": KNOWN_ENTRYPOINTS["uv"],
+                        "tracked_settings": {"auto_upgrade_spec": "uv"},
+                        "version": uv_version,
+                    }
+                    ensure_folder(manifest_path.parent, dryrun=False)
+                    manifest_path.write_text(json.dumps(manifest))
+                    Reporter.debug(f"[bootstrap] Saved {manifest_relative_path}")
 
     def bootstrap_reason(self):
         if not self.uv_path.exists():
@@ -210,8 +235,7 @@ class UvBootstrap:
 def built_in_download(target, url):
     request = Request(url)
     response = urlopen(request, timeout=10)
-    with open(target, "wb") as fh:
-        fh.write(response.read())
+    target.write_bytes(response.read())
 
 
 def clean_env_vars(keys=("__PYVENV_LAUNCHER__", "CLICOLOR_FORCE", "PYTHONPATH")):
@@ -320,9 +344,9 @@ def run_program(program, *args, **kwargs):
     description = " ".join(short(x) for x in args)
     description = f"{short(program)} {description}"
     if not hdry(f"Would run: {description}", dryrun=kwargs.pop("dryrun", None)):
+        Reporter.inform(f"Running: {description}")
         if fatal:
             stdout = stderr = None
-            Reporter.debug(f"Running: {description}")
 
         else:
             stdout = stderr = subprocess.PIPE
@@ -350,13 +374,12 @@ def seed_mirror(mirror, path, section):
             msg = f"{short(config_path)} with {mirror}"
             if not hdry(f"Would seed {msg}"):
                 Reporter.inform(f"Seeding {msg}")
-                with open(config_path, "wt") as fh:
-                    if section == "pip" and not mirror.startswith('"'):
-                        # This assumes user passed a reasonable URL as --mirror, no further validation is done
-                        # We only ensure the URL is quoted, as uv.toml requires it
-                        mirror = f'"{mirror}"'
+                if section == "pip" and not mirror.startswith('"'):
+                    # This assumes user passed a reasonable URL as --mirror, no further validation is done
+                    # We only ensure the URL is quoted, as uv.toml requires it
+                    mirror = f'"{mirror}"'
 
-                    fh.write(f"[{section}]\nindex-url = {mirror}\n")
+                config_path.write_text(f"[{section}]\nindex-url = {mirror}\n")
 
     except Exception as e:
         Reporter.inform(f"Seeding {path} failed: {e}")

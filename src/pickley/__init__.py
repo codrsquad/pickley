@@ -30,7 +30,6 @@ K_LEAVES = {
     "version",
     "version_check_delay",
 }
-KNOWN_ENTRYPOINTS = {bstrap.PICKLEY: (bstrap.PICKLEY,), "tox": ("tox",), "uv": ("uv", "uvx")}
 PLATFORM = platform.system().lower()
 
 
@@ -750,7 +749,7 @@ class PickleyConfig:
             if value:
                 return value
 
-        return KNOWN_ENTRYPOINTS.get(canonical_name)
+        return bstrap.KNOWN_ENTRYPOINTS.get(canonical_name)
 
     def require_bootstrap(self):
         """
