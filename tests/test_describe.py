@@ -3,7 +3,8 @@ import sys
 import runez
 
 
-def test_describe(cli):
+def test_describe(cli, monkeypatch):
+    monkeypatch.setenv("UV_VENV_SEED", "1")
     cli.run("describe pickley==1.0")
     assert cli.succeeded
     assert "pickley: version 1.0 (pinned)\n" in cli.logged.stdout

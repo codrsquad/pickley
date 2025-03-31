@@ -240,14 +240,16 @@ class ResolvedPackage:
             venv.logger = self.logger
             venv.create_venv()
             bake_time = runez.to_int(CFG.get_value("bake_time", package_name=canonical_name))
+            env = None
             if bake_time:
                 # uv allows to exclude newer packages, but pip does not
                 # This can fail if project is new (bake time did not elapse yet since project release)
                 LOG.debug("Applying bake_time of %s", runez.represented_duration(bake_time))
                 ago = time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(time.time() - bake_time))
-                os.environ["UV_EXCLUDE_NEWER"] = ago
+                env = dict(os.environ)
+                env["UV_EXCLUDE_NEWER"] = ago
 
-            r = venv.pip_install(pip_spec, no_deps=True, quiet=True, fatal=False)
+            r = venv.pip_install(pip_spec, no_deps=True, quiet=True, fatal=False, env=env)
             if r.failed:
                 lines = r.full_output.strip().splitlines()
                 if lines:

@@ -50,7 +50,9 @@ class PythonVenv:
     def create_venv_with_uv(self):
         uv_path = CFG.uv_bootstrap.uv_path
         seed = "--seed" if self.settings.uv_seed else None
-        r = runez.run(uv_path, "-q", "venv", seed, "-p", self.settings.python_executable, self.folder, logger=self.logger)
+        env = dict(os.environ)
+        env.pop("UV_VENV_SEED", None)  # We explicitly state `--seed` if/when needed
+        r = runez.run(uv_path, "-q", "venv", seed, "-p", self.settings.python_executable, self.folder, logger=self.logger, env=env)
         if self.groom_uv_venv:
             venv_python = self.folder / "bin/python"
             if venv_python.is_symlink():
@@ -74,7 +76,7 @@ class PythonVenv:
         runez.run(self.settings.python_executable, "-mvenv", self.folder, logger=self.logger)
         return self._run_py_pip("install", "-U", *bstrap.pip_auto_upgrade())
 
-    def pip_install(self, *args, fatal=True, no_deps=False, quiet=None):
+    def pip_install(self, *args, fatal=True, no_deps=False, quiet=None, env=None):
         """`pip install` into target venv`"""
         cmd = list(self._auto_quiet_args("install", no_deps and "--no-deps", quiet=quiet))
         if quiet is True:
@@ -84,9 +86,9 @@ class PythonVenv:
             passthrough = quiet is False or "-q" not in cmd
 
         if self.use_pip:
-            return self._run_py_pip(*cmd, *args, fatal=fatal, passthrough=passthrough)
+            return self._run_py_pip(*cmd, *args, fatal=fatal, passthrough=passthrough, env=env)
 
-        return self._run_uv(*cmd, *args, fatal=fatal, passthrough=passthrough)
+        return self._run_uv(*cmd, *args, fatal=fatal, passthrough=passthrough, env=env)
 
     def run_pip(self, command, *args, **kwargs):
         """Run `pip` command, this only works for commands that are common between `pip` and `uv`"""
