@@ -1103,7 +1103,10 @@ class VenvSettings:
     """Allows to define in one place how package_manager and python installation are to be resolved"""
 
     def __init__(self, canonical_name, python_spec, package_manager, uv_seed=None):
-        self.python_spec = python_spec or CFG.get_value("python", package_name=canonical_name)
+        if not python_spec:
+            python_spec = CFG.get_value("python", package_name=canonical_name)
+
+        self.python_spec = python_spec
         self.python_installation = CFG.available_pythons.find_python(python_spec)
         if not package_manager:
             package_manager = CFG.get_value("package_manager", package_name=canonical_name)

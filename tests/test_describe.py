@@ -10,13 +10,17 @@ def test_describe(cli, monkeypatch):
     assert "pickley: version 1.0 (pinned)\n" in cli.logged.stdout
     assert "entry-points: pickley\n" in cli.logged.stdout
 
-    runez.write(".pk/config.json", '{"bake_time": 300}', logger=None)
+    runez.write(".pk/config.json", '{"bake_time": 300, "pinned": {"cowsay": {"python": "3.999"}}}', logger=None)
     cli.run("-vv describe mgit==1.3.0")
     assert cli.succeeded
     assert " -vv describe " in cli.logged.stdout
     assert "pip show mgit" in cli.logged.stdout
     assert "mgit: version 1.3.0" in cli.logged.stdout
     assert "Applying bake_time of 5 minutes" in cli.logged.stdout
+
+    cli.run("-vv describe cowsay")
+    assert cli.failed
+    assert "Invalid python: 3.999 [not available]" in cli.logged
 
     runez.delete(".pk/config.json", logger=None)
     if sys.version_info[:2] >= (3, 10):
