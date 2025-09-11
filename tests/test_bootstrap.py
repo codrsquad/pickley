@@ -65,12 +65,14 @@ def test_bootstrap_script(cli, monkeypatch):
     assert cli.succeeded
     assert "Would seed .config/pip/pip.conf with http://localhost:12345" in cli.logged
     assert "Setting PIP_INDEX_URL and UV_INDEX_URL to http://localhost:12345" in cli.logged
+    assert "uv venv --clear -p " in cli.logged
     assert cli.match("Would run: .../.local/bin/.pk/.cache/pickley-bootstrap-venv/bin/pickley -vv bootstrap")
 
     cli.run("-n", cli.project_folder)
     assert cli.succeeded
     assert ".local/bin/.pk/.cache/pickley-bootstrap-venv/bin/pickley bootstrap " in cli.logged
     if bstrap.USE_UV:
+        assert "uv venv --clear -p " in cli.logged
         assert runez.is_executable(uv_path)  # Seeded by bootstrap command run above
         assert ".local/bin/uv -q pip install -e " in cli.logged
 
