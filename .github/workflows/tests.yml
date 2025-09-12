@@ -16,37 +16,15 @@ jobs:
         python-version: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
+    - uses: actions/checkout@v5
+    - uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
-
-    - uses: astral-sh/setup-uv@v5
+    - uses: astral-sh/setup-uv@v6
     - run: uv venv
     - run: uv pip install -U tox-uv
     - run: .venv/bin/tox -e py
-    - uses: codecov/codecov-action@v4
-      with:
-        files: .tox/test-reports/coverage.xml
-
-  test-eol:
-    # EOL-ed versions of python are exercised on older linux distros for a while longer
-    # Testing against these versions will eventually be retired
-    runs-on: ubuntu-20.04
-
-    strategy:
-      matrix:
-        python-version: ['3.6', '3.7', '3.8', '3.9']
-
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-
-    - run: pip install -U pip tox
-    - run: tox -e py
-    - uses: codecov/codecov-action@v4
+    - uses: codecov/codecov-action@v5
       with:
         files: .tox/test-reports/coverage.xml
 
@@ -55,10 +33,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
+    - uses: actions/checkout@v5
+    - uses: actions/setup-python@v6
       with:
-        python-version: '3.11'
-
-    - run: pip install -U pip tox
-    - run: tox -e docs,style
+        python-version: '3.13'
+    - uses: astral-sh/setup-uv@v6
+    - run: uv venv
+    - run: uv pip install -U tox-uv
+    - run: .venv/bin/tox -e docs,style
