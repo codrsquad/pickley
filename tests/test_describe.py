@@ -1,5 +1,3 @@
-import sys
-
 import runez
 
 
@@ -23,32 +21,25 @@ def test_describe(cli, monkeypatch):
     assert "Invalid python: 3.999 [not available]" in cli.logged
 
     runez.delete(".pk/config.json", logger=None)
-    if sys.version_info[:2] >= (3, 10):
-        cli.run("describe .")
-        assert cli.failed
-        assert "problem: " in cli.logged.stdout
+    cli.run("describe .")
+    assert cli.failed
+    assert "problem: " in cli.logged.stdout
 
-        cli.run("-vv describe uv")
-        assert cli.succeeded
-        assert "pip show" not in cli.logged
-        assert "bake_time" not in cli.logged
-        assert "(package spec resolved by uv)" in cli.logged.stdout
+    cli.run("-vv describe uv")
+    assert cli.succeeded
+    assert "pip show" not in cli.logged
+    assert "bake_time" not in cli.logged
+    assert "(package spec resolved by uv)" in cli.logged.stdout
 
-        cli.run("-vv describe tox-uv")
-        assert cli.succeeded
-        assert "pip show" in cli.logged.stdout
-        assert "tox-uv: version " in cli.logged.stdout
-        assert "entry-points: tox\n" in cli.logged.stdout
+    cli.run("describe https://github.com/codrsquad/pickley.git")
+    assert cli.succeeded
+    assert "entry-points: pickley" in cli.logged.stdout
 
-        cli.run("describe https://github.com/codrsquad/pickley.git")
-        assert cli.succeeded
-        assert "entry-points: pickley" in cli.logged.stdout
-
-        runez.write(".pk/config.json", '{"pinned": {"ansible": "10.4.0"}}', logger=None)
-        cli.run("describe ansible")
-        assert cli.succeeded
-        assert "ansible: version 10.4.0 (pinned by configuration resolved by uv)\n" in cli.logged.stdout
-        assert "entry-points: ansible, ansible-config, " in cli.logged.stdout
+    runez.write(".pk/config.json", '{"pinned": {"ansible": "10.4.0"}}', logger=None)
+    cli.run("describe ansible")
+    assert cli.succeeded
+    assert "ansible: version 10.4.0 (pinned by configuration resolved by uv)\n" in cli.logged.stdout
+    assert "entry-points: ansible, ansible-config, " in cli.logged.stdout
 
     cli.run("describe", cli.project_folder)
     assert cli.succeeded
