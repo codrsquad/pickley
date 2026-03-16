@@ -68,6 +68,9 @@ class Reporter:
             Reporter._original_tracer = tracer.trace
             tracer.trace = Reporter._captured_trace
 
+        else:
+            Reporter._original_tracer = None
+
         if CFG.use_audit_log:
             if not runez.log.tracer:
                 # Tracing is not active on stderr because user did not use `-vv`, we still want to capture all messages in 'audit.log'
