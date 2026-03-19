@@ -2,7 +2,7 @@ import os
 
 import pytest
 import runez
-from runez.conftest import cli, logged
+from runez.conftest import cli, ClickRunner, logged  # noqa: F401, fixtures
 from runez.pyenv import PythonDepot
 
 from pickley import bstrap
@@ -16,10 +16,9 @@ def mocked_expanduser(path):
     return path
 
 
-cli.default_main = main
+ClickRunner.default_main = main
 PythonDepot.use_path = False
 bstrap.expanduser = mocked_expanduser
-assert logged  # Just making fixtures available, with no complaints about unused imports
 
 TEST_UV = bstrap.UvBootstrap(runez.to_path(runez.DEV.project_path("build/test-uv")))
 TEST_UV.auto_bootstrap_uv()
@@ -41,7 +40,7 @@ class TemporaryBase(runez.TempFolder):
         del os.environ["PICKLEY_ROOT"]
 
 
-cli.context = TemporaryBase
+ClickRunner.context_wrapper = TemporaryBase
 
 
 @pytest.fixture
