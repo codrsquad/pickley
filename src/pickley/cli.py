@@ -36,7 +36,7 @@ def setup_audit_log():
         runez.ensure_folder(CFG.meta)
         runez.log.setup(
             # PID number to distinguish parallel runs, inlined because some trace records are emitted in a custom way
-            file_format=f"%(asctime)s %(timezone)s [{os.getpid()}] %(levelname)s - %(message)s",
+            file_format=f"%(asctime)s [{os.getpid()}] %(levelname)s - %(message)s",
             file_location=str(log_path),
             rotate="size:500k",
             rotate_count=4,
