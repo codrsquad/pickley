@@ -8,7 +8,7 @@ line-length = 140
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-extend-select = [
+select = [
 #    "A",   # flake8-builtins
 #    "ARG", # flake8-unused-arguments
     "B",   # flake8-bugbear
