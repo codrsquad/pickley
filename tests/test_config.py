@@ -1,6 +1,7 @@
+import pytest
 import runez
 
-from pickley import bstrap, CFG
+from pickley import bstrap, CFG, PickleyConfig
 
 SAMPLE_CONFIG = """
 base: {base}
@@ -48,6 +49,13 @@ def grab_sample(name):
     CFG.set_cli("config.json", None, None, None, None)
     CFG.set_base(".")
     assert str(CFG.configs[0]) == "cli (0 values)"
+
+
+def test_base_not_configured():
+    cfg = PickleyConfig()
+    assert str(cfg) == "<not-configured>"
+    with pytest.raises(ValueError, match="not configured"):
+        _ = cfg.cache
 
 
 def test_bogus_config(temp_cfg):

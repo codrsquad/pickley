@@ -14,9 +14,13 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Callable, Type, TYPE_CHECKING
 from urllib.request import Request, urlopen
 
-expanduser = os.path.expanduser  # Overridden in conftest.py, to ensure tests never look at `~`
+if TYPE_CHECKING:
+    from typing import NoReturn  # Not imported at runtime: only available from python 3.6.2
+
+expanduser: Callable[[str], str] = os.path.expanduser  # Overridden in conftest.py, to ensure tests never look at `~`
 DEFAULT_BASE = "~/.local/bin"
 DOT_META = ".pk"
 DRYRUN = False
@@ -33,7 +37,7 @@ KNOWN_ENTRYPOINTS = {PICKLEY: (PICKLEY,), "tox": ("tox",), "tox-uv": ("tox",), "
 
 class _Reporter:
     @staticmethod
-    def abort(message):
+    def abort(message) -> "NoReturn":
         sys.exit(f"--------\n\n{message}\n\n--------")
 
     @staticmethod
@@ -51,7 +55,7 @@ class _Reporter:
         print(message)
 
 
-Reporter = _Reporter
+Reporter: Type[_Reporter] = _Reporter  # Replaced by `pickley.Reporter` when not running in bootstrap mode
 
 
 def set_mirror_env_vars(mirror):
@@ -105,7 +109,7 @@ class Bootstrap:
             args.append(f"-{vv}")
 
         args.append("bootstrap")
-        args.append(self.pickley_base)
+        args.append(str(self.pickley_base))
         if self.pickley_spec:
             # Not explicitly stating pickley spec to use makes bootstrap use previous authoritative spec
             args.append(self.pickley_spec)
@@ -120,7 +124,7 @@ class Bootstrap:
 
         run_program(uv_path, "venv", "--clear", "-p", sys.executable, venv_folder)
         env = dict(os.environ)
-        env["VIRTUAL_ENV"] = venv_folder
+        env["VIRTUAL_ENV"] = str(venv_folder)
         args = []
         if self.pickley_spec and self.pickley_spec.startswith("/"):
             # Testing or troubleshooting: bootstrapping pickley from a local folder checkout
@@ -131,11 +135,8 @@ class Bootstrap:
 
     def bootstrap_pickley_with_pip(self, venv_folder: Path):
         pip = venv_folder / "bin/pip"
-        needs_virtualenv = run_program(sys.executable, "-mvenv", "--clear", venv_folder, fatal=False)
-        if not needs_virtualenv and not DRYRUN:
-            needs_virtualenv = not is_executable(pip)
-
-        if needs_virtualenv:  # pragma: no cover, not testing py3.6 fallback anymore
+        run_program(sys.executable, "-mvenv", "--clear", venv_folder, fatal=False)
+        if not DRYRUN and not is_executable(pip):  # pragma: no cover, not testing py3.6 fallback anymore
             Reporter.inform("-mvenv failed, falling back to virtualenv")
             pv = ".".join(str(x) for x in CURRENT_PYTHON_MM)
             zipapp = venv_folder.parent / ".cache/virtualenv.pyz"
@@ -357,7 +358,7 @@ def run_program(program, *args, **kwargs):
             if p.returncode:
                 Reporter.abort(f"'{short(program)}' exited with code {p.returncode}")
 
-            return p.returncode
+            return None
 
         output, _ = p.communicate()
         if output is not None:
@@ -399,7 +400,7 @@ def which(program):
 
 
 def pip_auto_upgrade():
-    if CURRENT_PYTHON_MM == (3, 6):
+    if CURRENT_PYTHON_MM == (3, 6):  # pragma: no cover, not testing py3.6 anymore
         # Some ancient pip versions fail to upgrade themselves properly, use last known good version explicitly
         return "pip==21.3.1", "setuptools==59.6.0"
 

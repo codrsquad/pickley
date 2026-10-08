@@ -3,6 +3,7 @@
 \#*#
 .\#*
 .*cache
+.coverage*
 .DS_Store*
 *.lock
 .*version
