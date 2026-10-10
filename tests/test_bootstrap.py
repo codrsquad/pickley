@@ -20,23 +20,17 @@ def test_bootstrap_command(cli, monkeypatch):
     assert "Saved .pk/.manifest/.bootstrap.json" in cli.logged
     assert "Installed pickley v" in cli.logged
     assert CFG.program_version(".local/bin/pickley")
-    if bstrap.USE_UV:
-        assert CFG._uv_bootstrap.freshly_bootstrapped == "uv not present"
-        assert "Auto-bootstrapping uv, reason: uv not present" in cli.logged
-        assert "[bootstrap] Saved .pk/.manifest/uv.manifest.json" in cli.logged
-        assert CFG.program_version(".local/bin/uv")
+    assert CFG.uv_bootstrap.freshly_bootstrapped == "uv not present"
+    assert "Auto-bootstrapping uv, reason: uv not present" in cli.logged
+    assert "[bootstrap] Saved .pk/.manifest/uv.manifest.json" in cli.logged
+    assert CFG.program_version(".local/bin/uv")
 
-        # Simulate an old uv semi-venv present
-        runez.touch(".local/bin/.pk/uv-0.0.1/bin/uv", logger=None)
-        monkeypatch.setenv("PICKLEY_ROOT", ".local/bin")
-        cli.run("-vv", "install", "-f", "uv")
-        assert cli.succeeded
-        assert "Deleted .pk/uv-0.0.1" in cli.logged
-
-    else:
-        # Verify that no uv bootstrap took place
-        assert "/uv" not in cli.logged
-        assert CFG._uv_bootstrap is None
+    # Simulate an old uv semi-venv present
+    runez.touch(".local/bin/.pk/uv-0.0.1/bin/uv", logger=None)
+    monkeypatch.setenv("PICKLEY_ROOT", ".local/bin")
+    cli.run("-vv", "install", "-f", "uv")
+    assert cli.succeeded
+    assert "Deleted .pk/uv-0.0.1" in cli.logged
 
 
 def test_bootstrap_script(cli, monkeypatch):
@@ -71,13 +65,14 @@ def test_bootstrap_script(cli, monkeypatch):
     cli.run("-n", cli.project_folder)
     assert cli.succeeded
     assert ".local/bin/.pk/.cache/pickley-bootstrap-venv/bin/pickley bootstrap " in cli.logged
-    if bstrap.USE_UV:
-        assert "uv venv --clear -p " in cli.logged
-        assert runez.is_executable(uv_path)  # Seeded by bootstrap command run above
-        assert ".local/bin/uv -q pip install -e " in cli.logged
+    assert "uv venv --clear -p " in cli.logged
+    assert runez.is_executable(uv_path)  # Seeded by bootstrap command run above
+    assert ".local/bin/uv -q pip install -e " in cli.logged
 
-    else:
-        assert " -mvenv --clear " in cli.logged
+    cli.run("-n", "--package-manager=pip", cli.project_folder)
+    assert cli.succeeded
+    assert " -mvenv --clear " in cli.logged
+    assert cli.match("Would run: .../pickley-bootstrap-venv/bin/pip -q install -U pip")
 
     cli.run("-n --package-manager foo")
     assert cli.failed
@@ -115,21 +110,20 @@ def test_bootstrap_script(cli, monkeypatch):
     assert list(runez.readlines(".config/pip/pip.conf")) == ["[global]", f"index-url = {mirror}"]
     assert list(runez.readlines(".local/bin/.pk/config.json")) == ["{", f"  {sample_config}", "}"]
 
-    if bstrap.USE_UV:
-        uv_config = ".config/uv/uv.toml"
-        assert f"Seeding {uv_config} with {mirror}" in cli.logged
-        assert list(runez.readlines(uv_config)) == ["[pip]", f'index-url = "{mirror}"']
+    uv_config = ".config/uv/uv.toml"
+    assert f"Seeding {uv_config} with {mirror}" in cli.logged
+    assert list(runez.readlines(uv_config)) == ["[pip]", f'index-url = "{mirror}"']
 
-        # Now verify that uv works with the seeded file
-        monkeypatch.setenv("UV_CONFIG_FILE", uv_config)
-        r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
-        assert r.succeeded, f"uv venv failed: {r.full_output}"
+    # Now verify that uv works with the seeded file
+    monkeypatch.setenv("UV_CONFIG_FILE", uv_config)
+    r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
+    assert r.succeeded, f"uv venv failed: {r.full_output}"
 
-        # Verify that a bogus uv config file fails the run...
-        runez.write(uv_config, f"[pip]\nindex-url = {bstrap.DEFAULT_MIRROR}", logger=None)  # Missing double quotes
-        r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
-        assert r.failed
-        assert "Failed to " in r.error
+    # Verify that a bogus uv config file fails the run...
+    runez.write(uv_config, f"[pip]\nindex-url = {bstrap.DEFAULT_MIRROR}", logger=None)  # Missing double quotes
+    r = runez.run(uv_path, "venv", "exercise-venv", fatal=False, logger=None)
+    assert r.failed
+    assert "Failed to " in r.error
 
 
 def test_edge_cases(temp_cfg, monkeypatch):
@@ -140,7 +134,7 @@ def test_edge_cases(temp_cfg, monkeypatch):
 
     assert "/1.0/" in bstrap.UvBootstrap.uv_url("1.0")
 
-    assert bstrap.run_program(sys.executable, "--version") == 0
+    assert bstrap.run_program(sys.executable, "--version") is None
     with pytest.raises(runez.system.AbortException, match=" exited with code"):
         bstrap.run_program(sys.executable, "--no-such-option")
 
@@ -176,7 +170,6 @@ def test_pip_conf(temp_cfg, logged):
     assert "Could not read 'a'" in logged.pop()
 
 
-@pytest.mark.skipif(not bstrap.USE_UV, reason="Applies to uv only")
 def test_uv_bootstrap(temp_cfg):
     # initially present, seeded by conftest.py
     b = bstrap.UvBootstrap(temp_cfg.base)

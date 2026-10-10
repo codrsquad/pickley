@@ -56,3 +56,13 @@ def test_describe(cli, monkeypatch):
     cli.run("describe six")
     assert cli.succeeded
     assert "entry-points: six" in cli.logged.stdout
+
+    # tox plugins don't have console scripts, their entry point is `tox`
+    cli.run("describe tox-gh-actions")
+    assert cli.succeeded
+    assert "entry-points: tox\n" in cli.logged.stdout
+
+    cli.run("--package-manager=pip describe mgit==0.0.0")
+    assert cli.failed
+    assert "mgit==0.0.0: (pinned)\n" in cli.logged.stdout
+    assert "problem: ERROR: Could not find a version that satisfies the requirement mgit==0.0.0" in cli.logged.stdout

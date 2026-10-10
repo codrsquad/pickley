@@ -1,4 +1,3 @@
-from pickley import bstrap
 from pickley.cli import RunSetup
 
 
@@ -12,16 +11,15 @@ def test_run(cli):
     assert "install mgit==1.3.0" in cli.logged
     assert "mgit -f" in cli.logged
 
-    if bstrap.USE_UV:
-        cli.run("-nv run pip-compile==6.14.0 foo")
-        assert cli.succeeded
-        assert "install pip-tools==6.14.0" in cli.logged
-        assert "pip-compile foo" in cli.logged
+    cli.run("-nv run pip-compile==6.14.0 foo")
+    assert cli.succeeded
+    assert "install pip-tools==6.14.0" in cli.logged
+    assert "pip-compile foo" in cli.logged
 
-        cli.run("-nv run aws==1.31.13 foo -bar")
-        assert cli.succeeded
-        assert "install awscli==1.31.13" in cli.logged
-        assert "aws foo -bar" in cli.logged
+    cli.run("-nv run aws==1.31.13 foo -bar")
+    assert cli.succeeded
+    assert "install awscli==1.31.13" in cli.logged
+    assert "aws foo -bar" in cli.logged
 
 
 def test_run_setup():
