@@ -9,6 +9,6 @@ workflows do nothing but call into them.
 
 ## Sections
 
-- [Type checking in v4.7.0](./typecheck-v4.7.0.md) — what introducing the type checkers found and
+- [Type checker findings](./typecheck-findings.md) — what introducing the type checkers found and
   fixed.
 - [Changelog](../CHANGELOG.md) — release notes.

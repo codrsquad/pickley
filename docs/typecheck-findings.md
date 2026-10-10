@@ -1,8 +1,8 @@
-# Type checking: v4.6.1 → v4.7.0
+# Type checking: v4.6.1 → v4.7
 
-What v4.7.0 changed in response to type checker findings on v4.6.1.
+What v4.7 changed in response to type checker findings on v4.6.1.
 
-| Checker | Version | v4.6.1 | v4.7.0 | Actionable | Bugs | Design | Minor |
+| Checker | Version | v4.6.1 | v4.7 | Actionable | Bugs | Design | Minor |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | ty | 0.0.85 | 88 | 0 | 88 | 0 | 6 | 5 |
 | pyrefly | 1.3.2 | 111 | 0 | 111 | 1 | 8 | 8 |
@@ -11,16 +11,16 @@ What v4.7.0 changed in response to type checker findings on v4.6.1.
 | basedpyright | 1.40.2 | 2,740 | 2,384 | 449 | 2 | 8 | 10 |
 | zuban | 0.10.0 | 72 | 0 | 72 | 2 | 8 | 8 |
 
-- **v4.6.1**, **v4.7.0**: findings on that release's `src/`, `tests/` and `setup.py`, both checked
-  with v4.7.0's settings (`tox.ini`, `pyproject.toml`).
-- **Actionable**: v4.6.1 findings resolved by a change in v4.7.0.
+- **v4.6.1**, **v4.7**: findings on that release's `src/`, `tests/` and `setup.py`, both checked
+  with v4.7's settings (`tox.ini`, `pyproject.toml`).
+- **Actionable**: v4.6.1 findings resolved by a change in v4.7.
 - **Bugs**, **Design**, **Minor**: how many of the changes listed under [Bug fixes](#bug-fixes),
   [Design](#design) and [Minor](#minor) the checker spotted.
 - basedpyright counts include its warnings: 131 errors + 2,609 warnings on v4.6.1, 8 + 2,376 on
-  v4.7.0.
-- v4.7.0's zeros need runez 5.10.1, which fixed some annotations pickley tripped on (see
+  v4.7.
+- v4.7's zeros need runez 5.10.1, which fixed some annotations pickley tripped on (see
   [Fixed in runez](#fixed-in-runez)).
-- v4.6.1 had one `# type: PackageSpec` comment (on a `None` value), v4.7.0 has none.
+- v4.6.1 had one `# type: PackageSpec` comment (on a `None` value), v4.7 has none.
 
 ## Bug fixes
 

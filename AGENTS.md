@@ -17,8 +17,7 @@ The repo docs live in [`docs/`](./docs/index.md).
 - `src/pickley/bstrap.py` is also run standalone, by whatever system python is available (like
   macOS's `/usr/bin/python3`, which is older than 3.10). It must not use anything newer than that,
   nor import anything outside of the stdlib.
-- Each type checker has a tox env named after it (`tox -e ty`, `tox -e pyright`, ...). ty, pyrefly,
-  pyright, mypy and zuban run in CI and are kept at zero, basedpyright is a stricter second opinion
-  (not in CI). No `# type: ignore` markers of any dialect: fix the code or the signature, or turn off
+- Each type checker has a tox env named after it (`tox -e <typechecker>`). The ones CI runs are kept
+  at zero, the others are a stricter second opinion. No `# type: ignore` markers of any dialect: fix the code or the signature, or turn off
   a whole class of findings in config (scoped as narrowly as possible, with a comment saying why).
 - ruff uses `select` so new ruff releases don't silently enable new rules.
