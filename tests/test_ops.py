@@ -338,6 +338,15 @@ def test_invalid(cli):
     assert cli.failed
     assert "Could not determine package name: " in cli.logged
 
+    # A project that can't be built: only the first (most relevant) lines of pip's output are shown
+    pyproject = '[project]\nname = "bogus"\nversion = "1.0"\n\n[build-system]\nrequires = []\nbuild-backend = "no_such_backend"\n'
+    runez.write("bogus/pyproject.toml", pyproject, logger=None)
+    cli.run("install", os.path.abspath("bogus"))
+    assert cli.failed
+    assert "Can't install bogus: " in cli.logged
+    assert "cause: The build backend returned an error" in cli.logged
+    assert "ModuleNotFoundError" not in cli.logged  # Further down in pip's output, truncated
+
 
 def test_lock(temp_cfg, monkeypatch):
     lock_path = CFG.meta / "foo.lock"

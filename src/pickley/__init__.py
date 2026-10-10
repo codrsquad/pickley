@@ -274,7 +274,7 @@ class ResolvedPackage:
                 lines = r.full_output.strip().splitlines()
                 if lines:
                     lines[0] = runez.red(lines[0])
-                    if len(lines) > 4:  # pragma: no cover, hard to trigger, happens when a wheel can't be built for example
+                    if len(lines) > 4:  # Happens when a wheel can't be built for example
                         # Truncate pip's output to the first 4 lines (in `uv`, they're the most relevant)
                         runez.log.trace(f"Full output of 'pip install {pip_spec}':\n{r.full_output}")
                         lines = lines[:4]
