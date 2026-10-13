@@ -2,10 +2,44 @@
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+[tool.pyright]  # also read by basedpyright (it refuses a pyproject that has both sections)
+pythonVersion = "3.10"
+include = ["src", "tests", "setup.py"]
+
+[tool.mypy]  # also read by zuban
+python_version = "3.10"
+files = ["src", "tests", "setup.py"]
+# "Missing return statement": falling off the end to return None is fine
+# "annotation-unchecked": a note, repeated for every annotated function mypy doesn't check (unannotated ones)
+disable_error_code = ["return", "annotation-unchecked"]
+
+[[tool.mypy.overrides]]
+# Tests check state, call something, and check again (also: assert that a None-returning call returns None)
+module = ["tests.*"]
+warn_unreachable = false
+disable_error_code = ["func-returns-value"]
+
+[tool.pyrefly]  # without this section, pyrefly adopts [tool.pyright] (or [tool.mypy])
+python-version = "3.10"
+project-includes = ["src", "tests", "setup.py"]
+
+[tool.ty.environment]
+python-version = "3.10"  # ty reads it from [project] requires-python otherwise, which this setup.py-based project doesn't have
+
+[[tool.ty.overrides]]
+# Tests check state, call something, and check again: ty assumes a call leaves attributes as they were
+include = ["tests/**"]
+rules = { redundant-condition = "ignore" }
+
 [tool.ruff]
 cache-dir = ".tox/.ruff_cache"
 line-length = 140
 src = ["src", "tests"]
+target-version = "py310"
+
+[tool.ruff.per-file-target-version]
+# Standalone bootstrap script, must keep running on whatever old python a machine has
+"src/pickley/bstrap.py" = "py37"
 
 [tool.ruff.lint]
 select = [
@@ -40,6 +74,7 @@ select = [
     "TCH", # flake8-type-checking
 #    "TD", # flake8-todos
 #    "TRY", # tryceratops
+    "UP",  # pyupgrade
     "W",   # pycodestyle warnings
 ]
 

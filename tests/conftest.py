@@ -3,13 +3,12 @@ import os
 import pytest
 import runez
 from runez.conftest import cli, ClickRunner, logged  # noqa: F401, fixtures
-from runez.pyenv import PythonDepot
 
 from pickley import bstrap
 from pickley.cli import CFG, main
 
 
-def mocked_expanduser(path):
+def mocked_expanduser(path: str) -> str:
     if path and path.startswith("~/"):
         path = path[2:]
 
@@ -17,7 +16,6 @@ def mocked_expanduser(path):
 
 
 ClickRunner.default_main = main
-PythonDepot.use_path = False
 bstrap.expanduser = mocked_expanduser
 
 TEST_UV = bstrap.UvBootstrap(runez.to_path(runez.DEV.project_path("build/test-uv")))
@@ -26,17 +24,17 @@ TEST_UV.auto_bootstrap_uv()
 
 class TemporaryBase(runez.TempFolder):
     def __enter__(self):
-        super(TemporaryBase, self).__enter__()
-        os.environ["PICKLEY_ROOT"] = self.tmp_folder
+        tmp_folder = super().__enter__()
+        os.environ["PICKLEY_ROOT"] = tmp_folder
         # Provide a `uv` binary out-of-the-box so that tests don't have to bootstrap uv over and over
-        runez.copy(TEST_UV.uv_path, os.path.join(self.tmp_folder, "uv"), logger=None)
-        runez.touch(os.path.join(self.tmp_folder, ".pk/.cache/uv.cooldown"), logger=None)
+        runez.copy(TEST_UV.uv_path, os.path.join(tmp_folder, "uv"), logger=None)
+        runez.touch(os.path.join(tmp_folder, ".pk/.cache/uv.cooldown"), logger=None)
         runez.save_json({"vpickley": "0.0.0"}, ".pk/.manifest/.bootstrap.json", logger=None)
         CFG.reset()
-        return self.tmp_folder
+        return tmp_folder
 
     def __exit__(self, *_):
-        super(TemporaryBase, self).__exit__(*_)
+        super().__exit__(*_)
         del os.environ["PICKLEY_ROOT"]
 
 

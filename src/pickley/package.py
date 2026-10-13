@@ -1,7 +1,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import List, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import runez
 from runez.pyenv import Version
@@ -10,9 +10,20 @@ from pickley import bstrap, CFG, PackageSpec, TrackedManifest, VenvSettings
 from pickley.delivery import DeliveryMethod, DeliveryMethodSymlink, DeliveryMethodWrap
 
 if TYPE_CHECKING:
+    from runez.system import LoggerSpec
+
     from pickley.cli import Requirements
 
 LOG = logging.getLogger(__name__)
+
+
+def _without_pip_chatter(text):
+    """`text` without pip's lines that are not relevant to a failure (such as "You are using pip ...")"""
+    if text:
+        ignored = ("You are using pip", "You should consider upgrading", "Ignored the following yanked")
+        text = runez.joined(line for line in text.splitlines() if not any(x in line for x in ignored))
+
+    return text
 
 
 class PythonVenv:
@@ -32,7 +43,7 @@ class PythonVenv:
         self.folder = folder
         self.settings = settings
         self.groom_uv_venv = groom_uv_venv
-        self.logger = runez.UNSET
+        self.logger: LoggerSpec = runez.UNSET
         self.use_pip = settings.package_manager == "pip"
 
     def __repr__(self):
@@ -105,12 +116,8 @@ class PythonVenv:
     def _run_py_pip(self, *args, **kwargs):
         r = self.run_python("-mpip", *args, **kwargs)
         if r.failed:
-            ignored = ("You are using pip", "You should consider upgrading", "Ignored the following yanked")
-            if r.error:
-                r.error = runez.joined(line for line in r.error.splitlines() if not any(x in line for x in ignored))
-
-            if r.output:
-                r.output = runez.joined(line for line in r.output.splitlines() if not any(x in line for x in ignored))
+            r.error = _without_pip_chatter(r.error)
+            r.output = _without_pip_chatter(r.output)
 
         return r
 
@@ -159,7 +166,7 @@ def find_symbolic_invoker() -> str:
                 found = path
                 break
 
-    return found and str(found)
+    return str(found)
 
 
 class VenvPackager:
@@ -180,7 +187,7 @@ class VenvPackager:
         return runez.abort(f"Unknown delivery method '{runez.red(name)}'")
 
     @staticmethod
-    def install(pspec: PackageSpec, fatal=True) -> TrackedManifest:
+    def install(pspec: PackageSpec, fatal=True) -> TrackedManifest | None:
         """
         Parameters
         ----------
@@ -191,8 +198,8 @@ class VenvPackager:
 
         Returns
         -------
-        TrackedManifest
-            Installed package manifest
+        TrackedManifest | None
+            Installed package manifest, `None` if installation failed (and `fatal` is False)
         """
         if pspec.is_uv:
             # Special case for uv: it does not need a venv and lives at the root of the base, without a wrapper
@@ -213,8 +220,10 @@ class VenvPackager:
             delivery = VenvPackager.delivery_method_for(pspec)
             return delivery.install(pspec)
 
+        return None
+
     @staticmethod
-    def package(pspec: PackageSpec, dist_folder: Path, requirements: "Requirements", run_compile_all: bool) -> List[Path]:
+    def package(pspec: PackageSpec, dist_folder: Path, requirements: "Requirements", run_compile_all: bool) -> list[Path]:
         """
         Package `pspec` and `requirements` into a virtual env in `dist_folder`.
 
@@ -257,7 +266,7 @@ class VenvPackager:
                 print(output)
                 runez.abort(f"Failed to run `python -mcompileall` on {runez.red(dist_folder)}")
 
-        return [venv.folder / "bin" / name for name in pspec.resolved_info.entrypoints]
+        return [venv.folder / "bin" / name for name in pspec.entrypoints]
 
 
 def simplified_compileall(text):

@@ -1,6 +1,9 @@
+import os
+
 import runez
 
-from pickley import bstrap, CFG, LOG, PackageSpec
+from pickley import CFG, LOG, PackageSpec
+from pickley.delivery import DeliveryMethodWrap
 
 
 def test_alternate_wrapper(cli):
@@ -24,20 +27,22 @@ def test_alternate_wrapper(cli):
     assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
     assert CFG.symlinked_canonical(mgit_path) is None
 
-    if bstrap.USE_UV:
-        cli.run("--no-color -vv install uv")
-        assert cli.succeeded
-        assert "Manifest .pk/.manifest/uv.manifest.json is not present" in cli.logged
-        assert "Touched .pk/.cache/uv.cooldown" in cli.logged
-        assert "Installed uv v" in cli.logged
-
-    # Simulate an incomplete manifest
-    mgit = PackageSpec("mgit")
-    mgit.settings.auto_upgrade_spec = None
-    mgit.save_manifest()
-    cli.run("-n install mgit")
+    cli.run("--no-color -vv install uv")
     assert cli.succeeded
-    assert "reason: incomplete manifest" in cli.logged
+    assert "Manifest .pk/.manifest/uv.manifest.json is not present" in cli.logged
+    assert "Touched .pk/.cache/uv.cooldown" in cli.logged
+    assert "Installed uv v" in cli.logged
+
+    # Simulate a manifest produced by pickley prior to v4.4 (no `auto_upgrade_spec`)
+    mgit = PackageSpec("mgit")
+    mgit.save_manifest()
+    manifest = runez.read_json(mgit.manifest_path)
+    del manifest["tracked_settings"]["auto_upgrade_spec"]
+    runez.save_json(manifest, mgit.manifest_path)
+    cli.run("-n -vv install mgit")
+    assert cli.succeeded
+    assert "Manifest .pk/.manifest/mgit.manifest.json is invalid" in cli.logged
+    assert "Would wrap mgit -> .pk/mgit-" in cli.logged
     assert CFG.program_version("./mgit", logger=LOG.info)
     assert CFG.wrapped_canonical_name(mgit_path) == "mgit"
     assert CFG.symlinked_canonical(mgit_path) is None
@@ -49,9 +54,23 @@ def test_alternate_wrapper(cli):
     assert cli.succeeded
     assert "reason: new version available" in cli.logged
 
+    cli.run("-n install mgit")
+    assert cli.succeeded
+    assert "Would state: Installed mgit v" in cli.logged
+    assert "Would state: Would state" not in cli.logged
+    assert "(reason: new version available, current version is 10.0)" in cli.logged
+
+    # Simulate an entry point that the package does not provide anymore, it should get cleaned up on next installation
+    manifest = runez.read_json(mgit.manifest_path)
+    manifest["entrypoints"].append("mgit-old")
+    runez.save_json(manifest, mgit.manifest_path, logger=None)
+    runez.touch("mgit-old", logger=None)
+
     cli.run("-v -d symlink install -f mgit")
     assert cli.succeeded
     assert "Symlinked mgit -> .pk/mgit-" in cli.logged
+    assert "Deleted mgit-old" in cli.logged
+    assert not os.path.exists("mgit-old")
     assert CFG.program_version("./mgit", logger=LOG.info)
     assert CFG.wrapped_canonical_name(mgit_path) is None
     assert CFG.symlinked_canonical(CFG.resolved_path(mgit_path)) == "mgit"
@@ -78,3 +97,13 @@ def test_auto_upgrade(cli):
     cli.run("-n auto-upgrade mgit")
     assert cli.succeeded
     assert "another installation is in progress" in cli.logged
+
+
+def test_delivery_failure(cli, monkeypatch):
+    def simulated_failure(*_):
+        raise OSError("simulated failure")
+
+    monkeypatch.setattr(DeliveryMethodWrap, "_install", simulated_failure)
+    cli.run("install mgit")
+    assert cli.failed
+    assert "Failed to wrap mgit: simulated failure" in cli.logged

@@ -5,17 +5,22 @@ import platform
 import re
 import sys
 import time
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import NoReturn, TypeVar
 
 import runez
+from runez.logsetup import Traceable
 from runez.pyenv import PypiStd, PythonDepot, Version
+from runez.system import LoggerSpec
 
 from pickley import bstrap
 from pickley.bstrap import PICKLEY
 
 LOG = logging.getLogger(__name__)
+DEFAULT_DELIVERY = "wrap"
+DEFAULT_INSTALL_TIMEOUT = 1800
 DEFAULT_VERSION_CHECK_DELAY = 300
 K_CLI = {"delivery", "index", "python"}
 K_DIRECTIVES = {"include"}
@@ -31,16 +36,25 @@ K_LEAVES = {
     "version_check_delay",
 }
 PLATFORM = platform.system().lower()
+_T = TypeVar("_T")
 
 
-class Reporter:
+def required_value(value: _T | None, reason: str, empty_ok=False) -> _T:
+    """Like an `assert`: abort with a nice error message (instead of a stack trace) if `value` is unexpectedly None (or empty)"""
+    if value is None or (not empty_ok and not value):
+        runez.abort(reason)
+
+    return value
+
+
+class Reporter(bstrap._Reporter):
     """Allows to nicely capture logging from `bstrap` module (which is limited to std lib only otherwise)"""
 
-    _original_tracer = None  # `runez.log.trace()` original tracer function
-    _pending_records = None  # Holds records to be emitted to `audit.log` later (when applicable)
+    _original_tracer: Traceable | None = None  # `runez.log.trace()` original tracer
+    _pending_records: list[logging.LogRecord] | None = None  # Holds records to be emitted to `audit.log` later (when applicable)
 
     @staticmethod
-    def abort(message):
+    def abort(message) -> NoReturn:
         """Allows to reuse `runez.abort()` from `bstrap` module (when not running in bootstrap mode)"""
         runez.abort(message)
 
@@ -65,8 +79,8 @@ class Reporter:
         tracer = runez.log.tracer
         if tracer:
             # Tracing is already active (for commands `install`, `upgrade`, etc.), let's capture it.
-            Reporter._original_tracer = tracer.trace
-            tracer.trace = Reporter._captured_trace
+            Reporter._original_tracer = tracer
+            runez.log.tracer = Reporter
 
         else:
             Reporter._original_tracer = None
@@ -83,9 +97,10 @@ class Reporter:
     @staticmethod
     def flush_pending_records():
         """'audit.log' was just activated, emit all pending records to it."""
-        if Reporter._pending_records:
+        file_handler = runez.log.file_handler
+        if file_handler is not None and Reporter._pending_records:
             for pending in Reporter._pending_records:
-                runez.log.file_handler.emit(pending)
+                file_handler.emit(pending)
 
             Reporter._pending_records = None
 
@@ -93,7 +108,7 @@ class Reporter:
     def _captured_trace(message):
         if Reporter._original_tracer:
             # Pass through to original tracer (which will show trace messages on stderr)
-            Reporter._original_tracer(message)
+            Reporter._original_tracer.trace(message)
 
         if CFG.use_audit_log:
             record = LOG.makeRecord(bstrap.PICKLEY, logging.DEBUG, "unknown file", 0, message, (), None)
@@ -112,9 +127,11 @@ bstrap.Reporter = Reporter
 class PipMetadata:
     """Info about a package as extracted from running `pip show`."""
 
-    canonical_name: str = None
-    problem: str = None
-    values: dict = None
+    canonical_name: str | None = None
+    problem: str | None = None
+
+    def __init__(self):
+        self.values: dict[str, str] = {}
 
     def update_from_pip_show(self, venv, canonical_name):
         self.canonical_name = canonical_name
@@ -153,15 +170,15 @@ class ResolvedPackage:
     """
 
     given_package_spec: str
-    canonical_name: str = None  # Canonical pypi package name
-    entrypoints: Optional[Sequence[str]] = None  # Entry points, if any
-    pip_spec: List[str] = None  # One of: `<name>==<version>`, or `<url>`, or `-e <path>`
-    problem: Optional[str] = None  # Problem with package spec, if any
-    resolution_reason: Optional[str] = None  # How version to use was resolved
-    version: Version = None  # Resolved version
+    canonical_name: str | None = None  # Canonical pypi package name
+    entrypoints: Sequence[str] | None = None  # Entry points, if any
+    pip_spec: list[str] | None = None  # One of: `<name>==<version>`, or `<url>`, or `-e <path>`
+    problem: str | None = None  # Problem with package spec, if any
+    resolution_reason: str | None = None  # How version to use was resolved
+    version: Version | None = None  # Resolved version
 
-    logger = runez.log.trace
-    _metadata: PipMetadata = None  # Available only after `resolve()` has been called (not kept in cache)
+    logger: LoggerSpec = runez.log.trace
+    _metadata: PipMetadata | None = None  # Available only after `resolve()` has been called (not kept in cache)
 
     def __repr__(self):
         return runez.short(self.given_package_spec)
@@ -257,7 +274,7 @@ class ResolvedPackage:
                 lines = r.full_output.strip().splitlines()
                 if lines:
                     lines[0] = runez.red(lines[0])
-                    if len(lines) > 4:  # pragma: no cover, hard to trigger, happens when a wheel can't be built for example
+                    if len(lines) > 4:  # Happens when a wheel can't be built for example
                         # Truncate pip's output to the first 4 lines (in `uv`, they're the most relevant)
                         runez.log.trace(f"Full output of 'pip install {pip_spec}':\n{r.full_output}")
                         lines = lines[:4]
@@ -297,9 +314,10 @@ class ResolvedPackage:
             if not self.entrypoints:
                 self.problem = runez.red("not a CLI")
 
-            if CFG.is_dev_mode and self.given_package_spec in (bstrap.PICKLEY, runez.DEV.project_folder):
+            project_folder = runez.DEV.project_folder
+            if CFG.is_dev_mode and project_folder and self.given_package_spec in (bstrap.PICKLEY, project_folder):
                 # Dev mode: install pickley from source in editable mode
-                self.pip_spec = ["-e", runez.DEV.project_folder]
+                self.pip_spec = ["-e", project_folder]
 
     def _get_entry_points(self, venv, canonical_name, version, location):
         # Use `uv pip show` to get location on disk and version of package
@@ -349,13 +367,11 @@ class ResolvedPackage:
 
         return package_name
 
-    def _get_version_location(self, venv, canonical_name):
-        self._metadata = PipMetadata()
-        self._metadata.update_from_pip_show(venv, canonical_name)
-        version = self._metadata.version
-        location = self._metadata.location
-        runez.abort_if(self._metadata.problem)
-        return version, location
+    def _get_version_location(self, venv, canonical_name) -> tuple[str | None, str]:
+        self._metadata = metadata = PipMetadata()
+        metadata.update_from_pip_show(venv, canonical_name)
+        location = required_value(metadata.location, metadata.problem or f"`pip show {canonical_name}` did not report a location")
+        return metadata.version, location
 
 
 class PackageSpec:
@@ -364,10 +380,10 @@ class PackageSpec:
     """
 
     auto_upgrade_spec: str
-    _manifest: "TrackedManifest" = runez.UNSET
-    _resolved_info: ResolvedPackage = None
+    _manifest: "TrackedManifest | None" = runez.UNSET
+    _resolved_info: ResolvedPackage | None = None
 
-    def __init__(self, given_package_spec: str, authoritative=False, settings=None):
+    def __init__(self, given_package_spec: str, authoritative=False, settings: "TrackedSettings | None" = None):
         """
         Parameters
         ----------
@@ -392,13 +408,12 @@ class PackageSpec:
         elif self._canonical_name:
             # Non-authoritative specs are necessarily canonical names (since only authoritative specs can refer to git urls, etc.)
             manifest = self.manifest
-            if manifest and manifest.settings and manifest.settings.auto_upgrade_spec:
+            if manifest:
                 # Use previously saved authoritative auto-upgrade spec
                 runez.log.trace(f"Using previous authoritative auto-upgrade spec '{manifest.settings.auto_upgrade_spec}'")
                 self.auto_upgrade_spec = manifest.settings.auto_upgrade_spec
 
             else:
-                # Manifest was produced by an older pickley prior to v4.4
                 runez.log.trace(f"Assuming auto-upgrade spec '{self._canonical_name}'")
                 self.auto_upgrade_spec = self._canonical_name
 
@@ -424,7 +439,8 @@ class PackageSpec:
     def canonical_name(self) -> str:
         if self._canonical_name is None:
             # Full resolution is needed because we have been given an authoritative spec (example `git+https://...`)
-            self._canonical_name = self.resolved_info.canonical_name
+            info = self.resolved_info
+            self._canonical_name = required_value(info.canonical_name, f"Could not determine package name: {info.problem}")
             self.is_uv = self._canonical_name == "uv"
 
         return self._canonical_name
@@ -453,10 +469,17 @@ class PackageSpec:
     @property
     def target_version(self) -> Version:
         """The version of this package that we are targeting for installation"""
-        return self.resolved_info.version
+        info = self.resolved_info
+        return required_value(info.version, f"Could not determine target version of {runez.red(self)}: {info.problem}")
 
     @property
-    def manifest(self) -> Optional["TrackedManifest"]:
+    def entrypoints(self) -> Sequence[str]:
+        """Entry points of the package we are targeting for installation (a CLI necessarily has at least one)"""
+        info = self.resolved_info
+        return required_value(info.entrypoints, f"Could not determine entry points of {runez.red(self)}: {info.problem}")
+
+    @property
+    def manifest(self) -> "TrackedManifest | None":
         """Manifest of the current installation of this package, if any"""
         if self._manifest is runez.UNSET:
             self._manifest = TrackedManifest.from_file(self.manifest_path)
@@ -488,35 +511,34 @@ class PackageSpec:
         return CFG.meta / f"{self.canonical_name}-{version}/bin/python"
 
     def delivery_method_name(self) -> str:
-        return self.settings.delivery or CFG.get_value("delivery", package_name=self.canonical_name)
+        return self.settings.delivery or CFG.get_value("delivery", package_name=self.canonical_name) or DEFAULT_DELIVERY
 
     def is_healthily_installed(self, entrypoints_only=False) -> bool:
         """Is the venv for this package spec still usable?"""
         manifest = self.manifest
-        entrypoints = (manifest and manifest.entrypoints) or self.resolved_info.entrypoints
-        if entrypoints:
-            for name in entrypoints:
-                if not runez.is_executable(CFG.base / name):
-                    return False
+        entrypoints = manifest.entrypoints if manifest else self.entrypoints
+        for name in entrypoints:
+            if not runez.is_executable(CFG.base / name):
+                return False
 
         return entrypoints_only or bool(CFG.program_version(self.healthcheck_exe))
 
-    def target_installation_folder(self):
+    def target_installation_folder(self) -> Path:
         """Folder that will hold current installation of this package (does not apply to uv)"""
-        if not self.is_uv:
-            return CFG.meta / f"{self.canonical_name}-{self.target_version}"
+        return CFG.meta / f"{self.canonical_name}-{self.target_version}"
 
     def upgrade_reason(self):
         """Reason this package spec needs an upgrade (if any)"""
+        if self.problem:
+            # Target version can't be determined, `perform_upgrade()` will report the problem
+            return self.problem
+
         if self.currently_installed_version != self.target_version:
             return f"new version available, current version is {self.currently_installed_version}"
 
         manifest = self.manifest
         if not manifest:
             return "manifest missing"
-
-        if not manifest.settings or not manifest.settings.auto_upgrade_spec:
-            return "incomplete manifest"
 
         if not self.is_healthily_installed():
             return "unhealthy"
@@ -532,12 +554,11 @@ class PackageSpec:
         if self.is_uv:
             return True
 
-        if self.resolved_info.entrypoints:
-            for ep in self.resolved_info.entrypoints:
-                path = CFG.base / ep
-                if path.exists() and os.path.getsize(path) > 0 and (path.is_symlink() or runez.is_executable(path)):
-                    if not CFG.symlinked_canonical(path) and not self._mentions_pickley(path):
-                        return False
+        for ep in self.entrypoints:
+            path = CFG.base / ep
+            if path.exists() and os.path.getsize(path) > 0 and (path.is_symlink() or runez.is_executable(path)):
+                if not CFG.symlinked_canonical(path) and not self._mentions_pickley(path):
+                    return False
 
         return True
 
@@ -585,13 +606,11 @@ class PackageSpec:
                 # Clean previous installation (N-1) if it is older than `age_cutoff`
                 runez.delete(candidates[0][1], fatal=False, logger=runez.log.trace)
 
-    def save_manifest(self):
-        manifest = TrackedManifest()
+    def save_manifest(self) -> "TrackedManifest":
+        manifest = TrackedManifest(self.settings, self.entrypoints)
         self._manifest = manifest
         venv_settings = self.settings.venv_settings()
-        manifest.entrypoints = self.resolved_info.entrypoints
         manifest.install_info = TrackedInstallInfo.current()
-        manifest.settings = self.settings
         manifest.version = self.target_version
         if not self.is_uv:
             manifest.delivery = self.delivery_method_name()
@@ -603,9 +622,8 @@ class PackageSpec:
 
         payload = manifest.to_dict()
         runez.save_json(payload, self.manifest_path)
-        folder = self.target_installation_folder()
-        if folder:
-            runez.save_json(payload, folder / ".manifest.json")
+        if not self.is_uv:
+            runez.save_json(payload, self.target_installation_folder() / ".manifest.json")
 
         # Touch .cooldown file to let auto-upgrade know we just installed this package
         cooldown_path = CFG.cache / f"{self.canonical_name}.cooldown"
@@ -616,12 +634,9 @@ class PackageSpec:
 class PickleyConfig:
     """Pickley configuration"""
 
-    base: Optional[Path] = None  # Installation folder
-    meta: Optional[Path] = None  # DOT_META subfolder
-    cache: Optional[Path] = None  # DOT_META/.cache subfolder
-    manifests: Optional[Path] = None
-    cli_config: Optional[dict] = None  # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
-    configs: List["RawConfig"]
+    _base: Path | None = None  # Installation folder, see set_base()
+    cli_config: dict | None = None  # Tracks any custom CLI cfg flags given, such as --index, --python or --delivery
+    configs: list["RawConfig"]
     version_check_delay: int = DEFAULT_VERSION_CHECK_DELAY
 
     is_dev_mode = False
@@ -630,7 +645,7 @@ class PickleyConfig:
     verbosity = 0
     _pip_conf = runez.UNSET
     _pip_conf_index = runez.UNSET
-    _uv_bootstrap: Optional[bstrap.UvBootstrap] = None  # Computed once, overridden during tests
+    _uv_bootstrap: bstrap.UvBootstrap | None = None  # Computed once, overridden during tests
 
     def __init__(self):
         self.configs = []
@@ -638,9 +653,7 @@ class PickleyConfig:
 
     def reset(self):
         """Used for testing"""
-        self.base = None
-        self.meta = None
-        self.cache = None
+        self._base = None
         self.cli_config = None
         self.configs = []
         self.config_path = None
@@ -650,7 +663,30 @@ class PickleyConfig:
         self._uv_bootstrap = None
 
     def __repr__(self):
-        return "<not-configured>" if self.base is None else runez.short(self.base)
+        return "<not-configured>" if self._base is None else runez.short(self._base)
+
+    @property
+    def base(self) -> Path:
+        """Installation folder"""
+        if self._base is None:
+            raise ValueError("pickley base folder is not configured (set_base() was not called)")
+
+        return self._base
+
+    @property
+    def meta(self) -> Path:
+        """DOT_META subfolder"""
+        return self.base / bstrap.DOT_META
+
+    @property
+    def cache(self) -> Path:
+        """DOT_META/.cache subfolder"""
+        return self.meta / ".cache"
+
+    @property
+    def manifests(self) -> Path:
+        """DOT_META/.manifest subfolder"""
+        return self.meta / ".manifest"
 
     @staticmethod
     def absolute_package_spec(given_package_spec: str) -> str:
@@ -703,10 +739,9 @@ class PickleyConfig:
         return runez.to_path(runez.resolved_path(path, base=base))
 
     @staticmethod
-    def required_canonical_name(text):
+    def required_canonical_name(text) -> str:
         canonical_name = PypiStd.std_package_name(text)
-        runez.abort_if(not canonical_name, f"'{runez.red(text)}' is not a canonical pypi package name")
-        return canonical_name
+        return required_value(canonical_name, f"'{runez.red(text)}' is not a canonical pypi package name")
 
     @runez.cached_property
     def available_pythons(self):
@@ -738,14 +773,14 @@ class PickleyConfig:
         return self._pip_conf_index
 
     @property
-    def uv_bootstrap(self):
+    def uv_bootstrap(self) -> bstrap.UvBootstrap:
         if self._uv_bootstrap is None:
             self._uv_bootstrap = bstrap.UvBootstrap(self.base)
             self._uv_bootstrap.auto_bootstrap_uv()
 
         return self._uv_bootstrap
 
-    def configured_entrypoints(self, canonical_name) -> Optional[list]:
+    def configured_entrypoints(self, canonical_name) -> Sequence[str] | None:
         """Configured entrypoints, if any"""
         eps = self.get_value("entrypoints")
         if isinstance(eps, dict):
@@ -778,19 +813,16 @@ class PickleyConfig:
             Path to pickley base installation
         """
         self.configs = []
-        self.base = self.resolved_path(base_path)
-        self.is_dev_mode = self.base.name == "dev_mode"
-        self.meta = self.base / bstrap.DOT_META
-        self.cache = self.meta / ".cache"
-        self.manifests = self.meta / ".manifest"
+        self._base = self.resolved_path(base_path)
+        self.is_dev_mode = self._base.name == "dev_mode"
         if self.cli_config is not None:
             self.configs.append(RawConfig(self, "cli", self.cli_config))
 
         self._add_config_file(self.config_path)
         self._add_config_file(self.meta / "config.json")
         defaults = {
-            "delivery": "wrap",
-            "install_timeout": 1800,
+            "delivery": DEFAULT_DELIVERY,
+            "install_timeout": DEFAULT_INSTALL_TIMEOUT,
             "version_check_delay": DEFAULT_VERSION_CHECK_DELAY,
         }
         self.configs.append(RawConfig(self, "defaults", defaults))
@@ -840,7 +872,7 @@ class PickleyConfig:
             for name in runez.flattened(names, split=" "):
                 self._expand_bundle(result, seen, name)
 
-    def symlinked_canonical(self, path: Path) -> Optional[str]:
+    def symlinked_canonical(self, path: Path) -> str | None:
         """Canonical name of pickley-installed package, if installed via symlink"""
         if path and self.meta and os.path.islink(path):
             actual_path = path.resolve()
@@ -942,7 +974,7 @@ class PickleyConfig:
         """Pypi index (mirror) to use."""
         return self.get_value("index") or self.default_index
 
-    def install_timeout(self, package_name):
+    def install_timeout(self, package_name) -> int:
         """
         Args:
             package_name (str | None): Use specific value for stated `package_name` when available
@@ -950,7 +982,8 @@ class PickleyConfig:
         Returns:
             (int): How many seconds to give an installation to complete before assuming it failed
         """
-        return self.get_value("install_timeout", package_name=package_name, validator=runez.to_int)
+        timeout = self.get_value("install_timeout", package_name=package_name, validator=runez.to_int)
+        return runez.to_int(timeout, default=DEFAULT_INSTALL_TIMEOUT)
 
     def resolved_bundle(self, name):
         """
@@ -1026,13 +1059,15 @@ CFG = PickleyConfig()
 class TrackedManifest:
     """Info stored in .manifest.json for each installation"""
 
-    entrypoints: Sequence[str] = None  # Entry points seen when package was installed
-    delivery: str = None  # Delivery method used when package was installed
-    install_info: "TrackedInstallInfo" = None  # Info on which pickley run performed the installation
-    package_manager: str = None  # Package manager used when package was installed
-    python_executable: str = None  # Python interpreter used when package was installed
-    settings: "TrackedSettings" = None  # Resolved settings used when package was installed
-    version: Version = None  # Version of package installed
+    delivery: str | None = None  # Delivery method used when package was installed
+    install_info: "TrackedInstallInfo | None" = None  # Info on which pickley run performed the installation
+    package_manager: str | None = None  # Package manager used when package was installed
+    python_executable: str | None = None  # Python interpreter used when package was installed
+    version: Version | None = None  # Version of package installed
+
+    def __init__(self, settings: "TrackedSettings", entrypoints: Sequence[str]):
+        self.settings = settings  # Resolved settings used when package was installed
+        self.entrypoints = entrypoints  # Entry points seen when package was installed
 
     def __repr__(self):
         return repr(self.settings)
@@ -1040,17 +1075,21 @@ class TrackedManifest:
     @classmethod
     def from_file(cls, path):
         if path.exists():
-            data = runez.read_json(path, logger=None)
-            if data:
-                manifest = cls()
-                manifest.entrypoints = data.get("entrypoints")
-                manifest.delivery = data.get("delivery")
-                manifest.install_info = TrackedInstallInfo.from_dict(data.get("install_info"))
-                manifest.package_manager = data.get("package_manager")
-                manifest.python_executable = data.get("python")
-                manifest.settings = TrackedSettings.from_dict(data.get("tracked_settings"))
-                manifest.version = Version(data.get("version"))
-                return manifest
+            data = runez.read_json(path, logger=None) or {}
+            settings = TrackedSettings.from_dict(data.get("tracked_settings"))
+            entrypoints = data.get("entrypoints")
+            if not settings or not entrypoints:
+                # Manifests produced by pickley prior to v4.4 are considered invalid (package will simply be re-installed)
+                runez.log.trace(f"Manifest {runez.short(path)} is invalid")
+                return None
+
+            manifest = cls(settings, entrypoints)
+            manifest.delivery = data.get("delivery")
+            manifest.install_info = TrackedInstallInfo.from_dict(data.get("install_info"))
+            manifest.package_manager = data.get("package_manager")
+            manifest.python_executable = data.get("python")
+            manifest.version = Version(data.get("version"))
+            return manifest
 
         runez.log.trace(f"Manifest {runez.short(path)} is not present")
 
@@ -1058,7 +1097,7 @@ class TrackedManifest:
         return {
             "entrypoints": self.entrypoints,
             "delivery": self.delivery,
-            "install_info": self.install_info.to_dict(),
+            "install_info": self.install_info and self.install_info.to_dict(),
             "package_manager": self.package_manager,
             "python": self.python_executable,
             "tracked_settings": self.settings.to_dict(),
@@ -1069,10 +1108,10 @@ class TrackedManifest:
 class TrackedInstallInfo:
     """Info on which pickley run performed the installation"""
 
-    args: str = None  # CLI args with which pickley was invoked
-    index: str = None  # Index (mirror) used for installation
-    timestamp: datetime = None
-    vpickley: str = None  # Version of pickley that performed the installation
+    args: str | None = None  # CLI args with which pickley was invoked
+    index: str | None = None  # Index (mirror) used for installation
+    timestamp: datetime | None = None
+    vpickley: str | None = None  # Version of pickley that performed the installation
 
     @classmethod
     def current(cls):
@@ -1097,7 +1136,7 @@ class TrackedInstallInfo:
         return {
             "args": self.args,
             "index": self.index,
-            "timestamp": self.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": self.timestamp and self.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
             "vpickley": self.vpickley,
         }
 
@@ -1127,11 +1166,13 @@ class TrackedSettings:
     Resolved config settings to use when installing a package.
     """
 
-    auto_upgrade_spec: str = None  # Spec to use for `pickley auto-upgrade`
-    delivery: str = None  # Delivery method name
-    package_manager: str = None  # Desired package manager
-    python: Optional[str] = None  # Desired python
-    uv_seed: bool = None  # Long term: CLIs should not assume setuptools is always there... (same problem with py3.12)
+    delivery: str | None = None  # Delivery method name
+    package_manager: str | None = None  # Desired package manager
+    python: str | None = None  # Desired python
+    uv_seed: bool | None = None  # Long term: CLIs should not assume setuptools is always there... (same problem with py3.12)
+
+    def __init__(self, auto_upgrade_spec: str):
+        self.auto_upgrade_spec = auto_upgrade_spec  # Spec to use for `pickley auto-upgrade`
 
     def __repr__(self):
         return self.auto_upgrade_spec
@@ -1143,20 +1184,20 @@ class TrackedSettings:
 
     @classmethod
     def from_cli(cls, auto_upgrade_spec: str):
-        settings = cls()
         canonical_name = PypiStd.std_package_name(auto_upgrade_spec)
-        settings.auto_upgrade_spec = canonical_name or auto_upgrade_spec
-        settings.delivery = CFG.cli_config.get("delivery")
-        settings.package_manager = CFG.cli_config.get("package_manager")
-        settings.python = CFG.cli_config.get("python")
-        settings.uv_seed = CFG.cli_config.get("uv_seed")
+        settings = cls(canonical_name or auto_upgrade_spec)
+        cli_config = CFG.cli_config or {}
+        settings.delivery = cli_config.get("delivery")
+        settings.package_manager = cli_config.get("package_manager")
+        settings.python = cli_config.get("python")
+        settings.uv_seed = cli_config.get("uv_seed")
         return settings
 
     @classmethod
     def from_dict(cls, data):
-        if data:
-            settings = cls()
-            settings.auto_upgrade_spec = data.get("auto_upgrade_spec")
+        auto_upgrade_spec = data and data.get("auto_upgrade_spec")
+        if auto_upgrade_spec:
+            settings = cls(auto_upgrade_spec)
             settings.delivery = data.get("delivery")
             settings.package_manager = data.get("package_manager")
             settings.python = data.get("python")

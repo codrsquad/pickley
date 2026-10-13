@@ -1,2 +1,2 @@
-click~=8.3.3
-runez~=5.9.1
+click~=8.5.0
+runez~=5.10.1
