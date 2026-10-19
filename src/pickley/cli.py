@@ -88,6 +88,9 @@ class SoftLock:
                 if not runez.check_pid(pid):
                     return None  # PID is no longer active
 
+            if pid is not None:
+                return "-no args-"  # Holder is alive, but was invoked without CLI args (so there's no 2nd line)
+
     def __enter__(self):
         """Acquire lock"""
         if self.lock_path:

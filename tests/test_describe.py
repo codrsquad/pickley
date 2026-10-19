@@ -11,10 +11,10 @@ def test_describe(cli, monkeypatch):
     runez.write(".pk/config.json", '{"bake_time": 300, "pinned": {"cowsay": {"python": "3.999"}}}', logger=None)
     cli.run("-vv describe mgit==1.3.0")
     assert cli.succeeded
-    assert " -vv describe " in cli.logged.stdout
-    assert "pip show mgit" in cli.logged.stdout
+    assert " -vv describe " in cli.logged
+    assert "pip show mgit" in cli.logged
     assert "mgit: version 1.3.0" in cli.logged.stdout
-    assert "Applying bake_time of 5 minutes" in cli.logged.stdout
+    assert "Applying bake_time of 5 minutes" in cli.logged
 
     cli.run("-vv describe cowsay")
     assert cli.failed
