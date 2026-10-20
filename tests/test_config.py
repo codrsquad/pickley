@@ -1,5 +1,6 @@
 import pytest
 import runez
+from runez.conftest import ClickRunner
 
 from pickley import bstrap, CFG, PickleyConfig
 
@@ -42,7 +43,7 @@ defaults:
 
 
 def grab_sample(name):
-    path = runez.to_path(runez.DEV.tests_path("samples", name))
+    path = runez.to_path(ClickRunner.tests_path("samples", name))
     for item in path.iterdir():
         runez.copy(item, f"{bstrap.DOT_META}/{item.name}")
 
