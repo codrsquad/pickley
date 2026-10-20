@@ -22,7 +22,7 @@ def test_base(cli, monkeypatch):
 
     cli.run("-n base foo")
     assert cli.failed
-    assert "Can't find 'foo', try:" in cli.logged.stdout
+    assert "Can't find 'foo', try:" in cli.logged
 
     monkeypatch.delenv("PICKLEY_ROOT")
     assert find_base("/foo/.venv/bin/pickley") == CFG.resolved_path("/foo/.venv/dev_mode")
@@ -365,13 +365,16 @@ def test_lock(temp_cfg, monkeypatch):
         with pytest.raises(SystemExit):
             runez.abort("oops")
 
-    with SoftLock("foo", give_up=600) as lock:
-        assert str(lock) == "lock foo"
-        assert os.path.exists(lock_path)
-        with pytest.raises(SoftLockException, match="giving up"):
-            # Try to grab same lock a seconds time, give up after 1 second
-            with SoftLock("foo", give_up=1, invalid=600):
-                raise AssertionError("should not be reached")  # pragma: no cover
+    # Lock holder is reported with the CLI args it was invoked with (if any)
+    for argv, holder in ((["pickley", "install", "foo"], "install foo"), (["pickley"], "-no args-")):
+        monkeypatch.setattr(sys, "argv", argv)
+        with SoftLock("foo", give_up=600) as lock:
+            assert str(lock) == "lock foo"
+            assert os.path.exists(lock_path)
+            with pytest.raises(SoftLockException, match=f"giving up\nIt is being held by: pickley .*{holder}"):
+                # Try to grab same lock a seconds time, give up after 1 second
+                with SoftLock("foo", give_up=1, invalid=600):
+                    raise AssertionError("should not be reached")  # pragma: no cover
 
     assert not os.path.exists(lock_path)  # Check that lock was released
 
